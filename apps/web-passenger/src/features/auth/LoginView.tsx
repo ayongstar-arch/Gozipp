@@ -37,8 +37,12 @@ const LoginView: React.FC = () => {
           transition={{ delay: 0.1 }}
           className="text-center"
         >
-          <h2 className="text-4xl font-black text-white mb-2 tracking-tight">เข้าสู่ระบบ</h2>
-          <p className="text-gray-400 mb-10 font-medium">กรุณากรอกเบอร์โทรศัพท์ของคุณ</p>
+          <h2 className="text-3xl lg:text-4xl font-black text-white mb-4 tracking-tight">ยินดีต้อนรับสู่ GOZIPP</h2>
+          <div className="text-gray-400 mb-8 font-medium leading-relaxed">
+            <p>เรียกวินง่าย</p>
+            <p>เข้าถึงคนขับจริงในพื้นที่</p>
+            <p>ปลอดภัย รวดเร็ว และเป็นธรรม</p>
+          </div>
         </motion.div>
 
         {error && (
@@ -78,7 +82,7 @@ const LoginView: React.FC = () => {
             className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-black py-4 rounded-2xl text-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:scale-100 overflow-hidden shadow-[0_0_20px_rgba(163,255,63,0.2)]"
           >
             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
-            <span className="relative z-10">{isLoading ? 'กำลังดำเนินการ...' : 'เข้าสู่ระบบ'}</span>
+            <span className="relative z-10">{isLoading ? 'กำลังดำเนินการ...' : 'ดำเนินการต่อ'}</span>
           </button>
         </motion.div>
 
