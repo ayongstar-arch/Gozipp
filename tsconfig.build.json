@@ -12,10 +12,15 @@
         "src"
     ],
     "compilerOptions": {
+        "target": "ES2021",
         "module": "commonjs",
         "moduleResolution": "node",
         "allowImportingTsExtensions": false,
         "noEmit": false,
-        "outDir": "./dist"
+        "outDir": "./dist",
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "strictNullChecks": false,
+        "downlevelIteration": true
     }
 }

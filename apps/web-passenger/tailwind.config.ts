@@ -1,0 +1,45 @@
+import type { Config } from 'tailwindcss';
+
+const config: Config = {
+  content: [
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/features/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        gozipp: {
+          green: '#A3FF3F', // Neon Green / Primary
+          greenSecondary: '#B7FF57',
+          navy: '#0B1120',  // Dark Navy
+          dark: '#04070B',  // True Dark
+          white: '#FFFFFF',
+          gray: '#F8FAFC',  // Light Gray
+          blue: '#06B6D4',  // Speed Blue
+        },
+        // Legacy support during transition (optional, but good for stability)
+        winno: {
+          green: '#A3FF3F',
+          navy: '#0B1120',
+          gray: '#F8FAFC',
+        }
+      },
+      fontFamily: {
+        sans: ['var(--font-inter)', 'var(--font-prompt)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        heading: ['var(--font-kanit)', 'var(--font-inter)', 'sans-serif'],
+      },
+      borderRadius: {
+        '3xl': '1.5rem',
+        '4xl': '2rem',
+      },
+      boxShadow: {
+        'premium': '0 20px 50px rgba(0,0,0,0.1)',
+        'gozipp': '0 10px 30px rgba(163, 255, 63, 0.2)',
+      }
+    },
+  },
+  plugins: [require('tailwindcss-animate')],
+};
+export default config;

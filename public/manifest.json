@@ -1,0 +1,21 @@
+{
+  "short_name": "GOZIPP",
+  "name": "GOZIPP: แพลตฟอร์มเรียกวินมอเตอร์ไซค์อันดับ 1",
+  "icons": [
+    {
+      "src": "/icon-gozipp.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-gozipp.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#22C55E",
+  "background_color": "#0F172A",
+  "orientation": "portrait"
+}

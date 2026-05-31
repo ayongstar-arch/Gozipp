@@ -28,3 +28,9 @@ dist-ssr
 .env
 .env.*
 !.env.example
+.aider*
+.next
+.turbo
+build
+out
+.capacitor

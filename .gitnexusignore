@@ -1,0 +1,14 @@
+node_modules/
+dist/
+client_build/
+flutter/
+uploads/
+.git/
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.webp
+*.ico
+*.lock
+package-lock.json
