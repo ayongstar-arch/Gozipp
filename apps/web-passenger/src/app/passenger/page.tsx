@@ -24,14 +24,16 @@ export default function PassengerPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950">
-      {authStep === 'ONBOARDING' && <OnboardingView />}
-      {authStep === 'LOGIN' && <LoginView />}
-      {authStep === 'REGISTER' && <RegisterView />}
-      {authStep === 'OTP' && <OtpView phoneNumber={user?.phone || ''} isRegistering={!user?.id} name={user?.name} />}
-      {authStep === 'LOGIN_PIN' && <PinView mode="LOGIN" phoneNumber={user?.phone} />}
-      {authStep === 'SETUP_PIN' && <PinView mode="SETUP" userId={user?.id} />}
-      
-      {authStep === 'APP_SHELL' && (
+      {authStep !== 'APP_SHELL' ? (
+        <div className="flex-1 flex flex-col max-w-md w-full mx-auto h-[100dvh] shadow-2xl bg-[#030605] relative overflow-hidden border-x border-white/5">
+          {authStep === 'ONBOARDING' && <OnboardingView />}
+          {authStep === 'LOGIN' && <LoginView />}
+          {authStep === 'REGISTER' && <RegisterView />}
+          {authStep === 'OTP' && <OtpView phoneNumber={user?.phone || ''} isRegistering={!user?.id} name={user?.name} />}
+          {authStep === 'LOGIN_PIN' && <PinView mode="LOGIN" phoneNumber={user?.phone} />}
+          {authStep === 'SETUP_PIN' && <PinView mode="SETUP" userId={user?.id} />}
+        </div>
+      ) : (
         <AppLayout>
           {activeTab === 'HOME' && <HomeView />}
           {activeTab === 'WALLET' && <WalletView />}
