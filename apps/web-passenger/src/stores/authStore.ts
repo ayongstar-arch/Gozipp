@@ -69,7 +69,7 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         refreshToken: state.refreshToken,
         user: state.user,
-        authStep: state.authStep === 'APP_SHELL' ? 'APP_SHELL' : 'LOGIN',
+        authStep: state.authStep === 'APP_SHELL' ? 'APP_SHELL' : 'ONBOARDING',
       }),
     }
   )
