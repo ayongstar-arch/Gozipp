@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../hooks/useAuth';
-import { APP_LOGO_PATH, API_BASE_URL } from '@/constants';
+import { API_BASE_URL } from '@/constants';
 import { motion } from 'framer-motion';
 
 const LoginView: React.FC = () => {
@@ -17,57 +17,87 @@ const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#04070B] font-kanit p-6 relative overflow-hidden text-white">
-      {/* Background Orbs */}
-      <div className="absolute top-[-10%] left-[-10%] w-[400px] h-[400px] bg-[#A3FF3F]/10 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[300px] h-[300px] bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
+    <div className="flex flex-col justify-between h-[100dvh] bg-[#030605] font-kanit p-6 relative overflow-hidden text-white w-full">
+      
+      {/* Radial glow background */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-[#A3FF3F]/10 rounded-full blur-[120px] pointer-events-none" />
 
-      <div className="flex-1 flex flex-col justify-center relative z-10">
+      {/* Back Button */}
+      <div className="absolute top-6 left-6 z-20">
+        <button 
+          onClick={() => setAuthStep('ONBOARDING')}
+          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors"
+          aria-label="กลับ"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Top spacing */}
+      <div className="h-10 z-10" />
+
+      {/* Main Form Area */}
+      <div className="flex-1 flex flex-col justify-center relative z-10 max-w-md mx-auto w-full -mt-4">
+        {/* Compact Logo */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8 mx-auto w-48 h-48 rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(255,255,255,0.1)] bg-white flex items-center justify-center p-2"
+          className="mx-auto w-36 h-36 flex items-center justify-center relative mb-2"
         >
-          <img src={APP_LOGO_PATH} className="w-full h-full object-contain" alt="Gozipp" />
+          <div 
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background: 'radial-gradient(circle, rgba(163,255,63,0.12) 0%, transparent 65%)'
+            }}
+          />
+          <img 
+            src="/logo-gozipp.png" 
+            className="w-28 h-auto object-contain mix-blend-screen relative z-10" 
+            alt="Gozipp" 
+          />
         </motion.div>
         
+        {/* Compact Text Headers */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="text-center"
+          className="text-center mb-6"
         >
-          <h2 className="text-3xl lg:text-4xl font-black text-white mb-4 tracking-tight">ยินดีต้อนรับสู่ GOZIPP</h2>
-          <div className="text-gray-400 mb-8 font-medium leading-relaxed">
-            <p>เรียกวินง่าย</p>
-            <p>เข้าถึงคนขับจริงในพื้นที่</p>
-            <p>ปลอดภัย รวดเร็ว และเป็นธรรม</p>
+          <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">ยินดีต้อนรับสู่ GOZIPP</h2>
+          <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
+            <p>เรียกวินง่าย เข้าถึงคนขับจริงในพื้นที่</p>
+            <p>ปลอดภัย รวดเร็ว และโปร่งใส</p>
           </div>
         </motion.div>
 
+        {/* Error message block */}
         {error && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-4 rounded-2xl mb-8 text-sm flex items-center gap-3 backdrop-blur-md"
+            className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-2xl mb-4 text-xs flex items-center gap-2 backdrop-blur-md"
           >
-            <span className="text-xl">⚠️</span> {error}
+            <span className="text-base">⚠️</span> {error}
           </motion.div>
         )}
 
+        {/* Phone number input form */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="space-y-6"
+          className="space-y-4"
         >
           <label className="block relative">
-            <span className="absolute -top-3 left-4 bg-[#04070B] px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">
+            <span className="absolute -top-3 left-4 bg-[#030605] px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">
               เบอร์โทรศัพท์
             </span>
             <input
               type="tel"
-              className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-xl font-bold text-white outline-none focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] transition-all backdrop-blur-md placeholder:text-gray-600"
+              className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-lg font-bold text-white outline-none focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] transition-all backdrop-blur-md placeholder:text-gray-600"
               placeholder="08x-xxx-xxxx"
               value={phone}
               onChange={(e) => {
@@ -79,53 +109,58 @@ const LoginView: React.FC = () => {
           <button
             onClick={handleLogin}
             disabled={isLoading}
-            className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-black py-4 rounded-2xl text-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:scale-100 overflow-hidden shadow-[0_0_20px_rgba(163,255,63,0.2)]"
+            className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-extrabold py-3.5 rounded-2xl text-lg hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 disabled:hover:scale-100 overflow-hidden shadow-[0_0_20px_rgba(163,255,63,0.25)]"
           >
             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
             <span className="relative z-10">{isLoading ? 'กำลังดำเนินการ...' : 'ดำเนินการต่อ'}</span>
           </button>
         </motion.div>
 
+        {/* Sign up prompt */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="text-center mt-8"
+          className="text-center mt-4"
         >
           <button 
             onClick={() => setAuthStep('REGISTER')} 
-            className="text-gray-400 font-medium text-sm hover:text-[#A3FF3F] transition-colors inline-flex items-center gap-1"
+            className="text-gray-400 font-medium text-xs hover:text-[#A3FF3F] transition-colors inline-flex items-center gap-1"
           >
             ยังไม่มีบัญชี? <span className="text-[#A3FF3F] font-bold underline decoration-[#A3FF3F]/30 underline-offset-4">ลงทะเบียนที่นี่</span>
           </button>
         </motion.div>
       </div>
 
+      {/* Alternative Social Login Methods */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="flex flex-col gap-4 mt-12 relative z-10"
+        className="flex flex-col gap-3 mt-4 relative z-10 max-w-md mx-auto w-full pb-4"
       >
-        <div className="flex items-center gap-4 mb-2">
+        <div className="flex items-center gap-4 mb-1">
           <div className="h-px flex-1 bg-white/10"></div>
           <div className="text-center text-gray-500 text-xs font-medium">หรือเข้าสู่ระบบด้วย</div>
           <div className="h-px flex-1 bg-white/10"></div>
         </div>
-        <button 
-          onClick={() => window.location.href = `${API_BASE_URL}/auth/line?type=PASSENGER`} 
-          className="w-full bg-[#06C755] hover:bg-[#00B900] text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-3 transition-colors shadow-lg"
-        >
-          <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" alt="LINE" className="w-6 h-6 brightness-0 invert" />
-          เข้าสู่ระบบด้วย LINE
-        </button>
-        <button 
-          onClick={() => window.location.href = `${API_BASE_URL}/auth/google?type=PASSENGER`} 
-          className="w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-3 transition-colors backdrop-blur-sm"
-        >
-          <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
-          เข้าสู่ระบบด้วย Google
-        </button>
+        
+        <div className="grid grid-cols-2 gap-3">
+          <button 
+            onClick={() => window.location.href = `${API_BASE_URL}/auth/line?type=PASSENGER`} 
+            className="w-full bg-[#06C755] hover:bg-[#00B900] text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors text-xs shadow-md"
+          >
+            <img src="/brand/line.svg" alt="LINE" className="w-4 h-4" />
+            LINE
+          </button>
+          <button 
+            onClick={() => window.location.href = `${API_BASE_URL}/auth/google?type=PASSENGER`} 
+            className="w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors text-xs backdrop-blur-sm"
+          >
+            <img src="/brand/google.svg" alt="Google" className="w-4 h-4" />
+            Google
+          </button>
+        </div>
       </motion.div>
     </div>
   );
