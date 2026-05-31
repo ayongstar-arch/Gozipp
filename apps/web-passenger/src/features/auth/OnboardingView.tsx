@@ -29,9 +29,9 @@ const OnboardingView: React.FC = () => {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="flex-1 flex flex-col items-center justify-center p-10 text-center space-y-12 relative z-10"
+        className="flex-1 flex flex-col items-center justify-center p-6 lg:p-10 text-center space-y-6 lg:space-y-12 relative z-10"
       >
-        <motion.div variants={itemVariants} className="w-64 h-64 bg-white rounded-[40px] flex items-center justify-center mb-4 relative group shadow-[0_0_50px_rgba(255,255,255,0.15)] overflow-hidden p-4">
+        <motion.div variants={itemVariants} className="w-40 h-40 lg:w-56 lg:h-56 bg-white rounded-[32px] flex items-center justify-center mb-2 relative group shadow-[0_0_50px_rgba(255,255,255,0.15)] overflow-hidden p-3 lg:p-4">
           <img 
             src={APP_LOGO_PATH} 
             alt="GOZIPP Logo" 
@@ -39,8 +39,8 @@ const OnboardingView: React.FC = () => {
           />
         </motion.div>
         
-        <motion.div variants={itemVariants} className="space-y-4">
-          <h1 className="text-5xl lg:text-6xl font-black text-white tracking-tighter uppercase font-kanit">GOZIPP</h1>
+        <motion.div variants={itemVariants} className="space-y-3 lg:space-y-4">
+          <h1 className="text-4xl lg:text-6xl font-black text-white tracking-tighter uppercase font-kanit">GOZIPP</h1>
           <div className="w-16 h-2 bg-[#A3FF3F] mx-auto rounded-full shadow-[0_0_15px_rgba(163,255,63,0.6)]"></div>
           <p className="text-gray-400 text-lg leading-relaxed font-medium">
             เรียกวินง่าย รอไม่นาน<br />
@@ -48,14 +48,14 @@ const OnboardingView: React.FC = () => {
           </p>
         </motion.div>
 
-        <motion.div variants={itemVariants} className="grid grid-cols-3 gap-6 w-full max-w-sm mt-8">
+        <motion.div variants={itemVariants} className="grid grid-cols-3 gap-4 lg:gap-6 w-full max-w-sm mt-6 lg:mt-8">
           {[
             { icon: '⚡', label: 'รวดเร็ว' },
             { icon: '🛡️', label: 'ปลอดภัย' },
             { icon: '💎', label: 'พรีเมียม' }
           ].map((feat, idx) => (
             <div key={idx} className="flex flex-col items-center space-y-2">
-              <div className="w-14 h-14 bg-white/5 backdrop-blur-md rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-white/10 group hover:border-[#A3FF3F]/50 transition-colors">
+              <div className="w-12 h-12 lg:w-14 lg:h-14 bg-white/5 backdrop-blur-md rounded-2xl flex items-center justify-center text-xl lg:text-2xl shadow-xl border border-white/10 group hover:border-[#A3FF3F]/50 transition-colors">
                 {feat.icon}
               </div>
               <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{feat.label}</span>
@@ -68,7 +68,7 @@ const OnboardingView: React.FC = () => {
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5, duration: 0.6 }}
-        className="p-10 relative z-10"
+        className="p-6 pb-8 lg:p-10 relative z-10 w-full"
       >
         <button 
           onClick={() => setAuthStep('LOGIN')} 
