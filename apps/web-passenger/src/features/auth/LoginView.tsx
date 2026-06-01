@@ -72,16 +72,10 @@ const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit p-6 relative overflow-hidden text-white w-full">
+    <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit relative overflow-hidden text-white w-full">
       
-      {/* Background SVG Cityscape and Perspective Road */}
-      <div className="absolute top-[8vh] left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
-        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
-      </div>
-
       {/* Back Button */}
-      <div className="absolute top-6 left-6 z-20">
+      <div className="absolute top-6 left-6 z-30">
         <button 
           onClick={() => setAuthStep('ONBOARDING')}
           className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
@@ -93,17 +87,20 @@ const LoginView: React.FC = () => {
         </button>
       </div>
 
-      {/* Top spacing */}
-      <div className="h-4 z-10" />
-
-      {/* Main Form Area */}
-      <div className="flex-1 flex flex-col justify-start mt-8 relative z-10 max-w-md mx-auto w-full">
+      {/* Main Container - Creates ONE stacking context for Background + Logo */}
+      <div className="flex-1 flex flex-col justify-start mt-12 relative z-10 w-full">
         
+        {/* Background SVG Cityscape (Inside the same stacking context!) */}
+        <div className="absolute top-0 left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+          <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+        </div>
+
         {/* Compact Logo */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mx-auto w-32 h-32 flex items-center justify-center relative mb-0 z-20 mix-blend-screen"
+          className="mx-auto w-32 h-32 flex items-center justify-center relative z-20 mix-blend-screen mt-[2vh] mb-4"
         >
           {/* Radial Glow Effect */}
           <div 
@@ -119,29 +116,31 @@ const LoginView: React.FC = () => {
           />
         </motion.div>
         
-        {/* Compact Text Headers */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="text-center mb-4 relative z-20"
-        >
-          <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">ยินดีต้อนรับกลับ</h2>
-          <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
-            <p>กรอกเบอร์โทรศัพท์ของคุณเพื่อเข้าสู่ระบบ</p>
-          </div>
-        </motion.div>
-
-        {/* Error message block */}
-        {error && (
+        {/* Form Container (Constrained width + padding) */}
+        <div className="w-full max-w-md mx-auto px-6 relative z-20 flex flex-col">
+          {/* Compact Text Headers */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-2xl mb-4 text-xs flex items-center gap-2 backdrop-blur-md"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-center mb-6"
           >
-            <span className="text-base">⚠️</span> {error}
+            <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">ยินดีต้อนรับกลับ</h2>
+            <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
+              <p>กรอกเบอร์โทรศัพท์ของคุณเพื่อเข้าสู่ระบบ</p>
+            </div>
           </motion.div>
-        )}
+
+          {/* Error message block */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-2xl mb-4 text-xs flex items-center gap-2 backdrop-blur-md"
+            >
+              <span className="text-base">⚠️</span> {error}
+            </motion.div>
+          )}
 
         {/* Phone number input form */}
         <motion.div
@@ -211,6 +210,7 @@ const LoginView: React.FC = () => {
             </button>
           </div>
         </motion.div>
+        </div>
       </div>
     </div>
   );
