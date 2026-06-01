@@ -53,12 +53,7 @@ const LoginView: React.FC = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mx-auto w-36 h-36 flex items-center justify-center relative mb-2"
         >
-          <div 
-            className="absolute inset-0 rounded-full pointer-events-none"
-            style={{
-              background: 'radial-gradient(circle, rgba(163,255,63,0.12) 0%, transparent 65%)'
-            }}
-          />
+          <div className="absolute inset-0 bg-black/40 rounded-full blur-3xl pointer-events-none" />
           <img 
             src="/logo-gozipp.png" 
             className="w-28 h-auto object-contain mix-blend-screen relative z-10" 
