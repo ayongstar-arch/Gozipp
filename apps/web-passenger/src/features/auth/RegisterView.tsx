@@ -24,93 +24,108 @@ const RegisterView: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#04070B] font-kanit p-8 justify-center relative overflow-hidden text-white">
-      {/* Background Orbs */}
-      <div className="absolute top-[-10%] right-[-10%] w-[400px] h-[400px] bg-[#A3FF3F]/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[300px] h-[300px] bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
+    <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit p-6 relative overflow-hidden text-white w-full">
+      {/* Background SVG Cityscape and Perspective Road */}
+      <div className="absolute bottom-0 left-0 right-0 h-[50vh] pointer-events-none z-0 overflow-hidden flex items-end">
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+      </div>
 
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-12 relative z-10 text-center lg:text-left"
-      >
-        <div className="w-48 h-48 rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(255,255,255,0.1)] bg-white flex items-center justify-center p-2 mb-6 mx-auto lg:mx-0">
-          <img src={APP_LOGO_PATH} className="w-full h-full object-contain" alt="Gozipp" />
-        </div>
-        <h2 className="text-4xl font-black text-white tracking-tighter mb-2">ลงทะเบียนใหม่</h2>
-        <p className="text-gray-400 font-medium text-center lg:text-left">เข้าร่วม GOZIPP เดินทางฉลาด รวดเร็ว ทั่วเมือง</p>
-      </motion.div>
-
-      <motion.form 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        onSubmit={handleSubmit} 
-        className="space-y-6 relative z-10"
-      >
-        {error && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-4 rounded-2xl text-sm font-bold flex items-center gap-3 backdrop-blur-md"
-          >
-            <span className="text-xl">⚠️</span> {error}
-          </motion.div>
-        )}
-
-        <div className="space-y-6">
-          <label className="block relative">
-            <span className="absolute -top-3 left-4 bg-[#04070B] px-2 text-[10px] font-black text-[#A3FF3F] uppercase tracking-widest z-10">ชื่อ-นามสกุล</span>
-            <input
-              type="text"
-              placeholder="เช่น สมชาย ใจดี"
-              value={formData.name}
-              onChange={e => setFormData({ ...formData, name: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white outline-none focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] transition-all backdrop-blur-md placeholder:text-gray-600"
-              required
-            />
-          </label>
-
-          <label className="block relative">
-            <span className="absolute -top-3 left-4 bg-[#04070B] px-2 text-[10px] font-black text-[#A3FF3F] uppercase tracking-widest z-10">เบอร์โทรศัพท์</span>
-            <input
-              type="tel"
-              placeholder="081-234-5678"
-              value={formData.phone}
-              onChange={e => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white outline-none focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] transition-all backdrop-blur-md placeholder:text-gray-600"
-              required
-            />
-          </label>
-        </div>
-
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-black py-5 rounded-2xl shadow-[0_0_30px_rgba(163,255,63,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 overflow-hidden mt-4"
+      {/* Back Button */}
+      <div className="absolute top-6 left-6 z-20">
+        <button 
+          onClick={() => setAuthStep('LOGIN')}
+          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors"
+          aria-label="กลับ"
         >
-          <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
-          <span className="relative z-10 text-lg">{isLoading ? 'กำลังดำเนินการ...' : 'ลงทะเบียนเลย'}</span>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
         </button>
-      </motion.form>
+      </div>
 
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="text-center mt-12 relative z-10"
-      >
-        <p className="text-gray-500 text-sm font-medium">
-          มีบัญชีอยู่แล้ว?{' '}
-          <button 
-            onClick={() => { setAuthStep('LOGIN'); setError(null); }} 
-            className="text-[#A3FF3F] font-black uppercase tracking-widest hover:underline ml-1 decoration-[#A3FF3F]/30 underline-offset-4"
+      <div className="flex-1 flex flex-col justify-center relative z-10 max-w-md mx-auto w-full -mt-4">
+        {/* Compact Logo */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto w-36 h-36 flex items-center justify-center relative mb-2"
+        >
+          <div className="absolute inset-0 bg-black/40 rounded-full blur-3xl pointer-events-none" />
+          <img 
+            src="/logo-gozipp.png" 
+            className="w-28 h-auto object-contain mix-blend-screen relative z-10" 
+            alt="Gozipp" 
+          />
+        </motion.div>
+        
+        {/* Text Headers */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="text-center mb-6"
+        >
+          <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">ลงทะเบียนใหม่</h2>
+          <div className="text-gray-400 font-medium text-sm space-y-0.5 leading-relaxed">
+            <p>เข้าร่วม GOZIPP</p>
+            <p>เดินทางฉลาด รวดเร็ว ทั่วเมือง</p>
+          </div>
+        </motion.div>
+
+        <motion.form 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          onSubmit={handleSubmit} 
+          className="space-y-4"
+        >
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-2xl mb-4 text-xs flex items-center gap-2 backdrop-blur-md"
+            >
+              <span className="text-base">⚠️</span> {error}
+            </motion.div>
+          )}
+
+          <div className="space-y-4">
+            <label className="block relative">
+              <span className="absolute -top-3 left-4 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">ชื่อ-นามสกุล</span>
+              <input
+                type="text"
+                placeholder="เช่น สมชาย ใจดี"
+                value={formData.name}
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-lg font-bold text-white outline-none focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] transition-all backdrop-blur-md placeholder:text-gray-600"
+                required
+              />
+            </label>
+
+            <label className="block relative">
+              <span className="absolute -top-3 left-4 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">เบอร์โทรศัพท์</span>
+              <input
+                type="tel"
+                placeholder="081-234-5678"
+                value={formData.phone}
+                onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-lg font-bold text-white outline-none focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] transition-all backdrop-blur-md placeholder:text-gray-600"
+                required
+              />
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-extrabold py-3.5 rounded-2xl text-lg hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 disabled:hover:scale-100 overflow-hidden shadow-[0_0_20px_rgba(163,255,63,0.25)] mt-4"
           >
-            เข้าสู่ระบบ
+            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
+            <span className="relative z-10">{isLoading ? 'กำลังดำเนินการ...' : 'ลงทะเบียนเลย'}</span>
           </button>
-        </p>
-      </motion.div>
-    </div>
+        </motion.form>
+      </div>
   );
 };
 
