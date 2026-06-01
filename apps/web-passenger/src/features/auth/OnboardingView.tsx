@@ -86,7 +86,7 @@ const OnboardingView: React.FC = () => {
       >
         {/* Primary Action */}
         <button 
-          onClick={() => setAuthStep('REGISTER')} 
+          onClick={() => setAuthStep('REGISTER_METHOD')} 
           className="bg-gradient-to-b from-[#4ADE80] to-[#22C55E] text-black font-extrabold w-full py-4 rounded-2xl text-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(57,181,74,0.3)] hover:shadow-[0_0_25px_rgba(57,181,74,0.5)] border border-white/20"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

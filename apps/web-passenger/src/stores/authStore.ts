@@ -21,6 +21,7 @@ type AuthStep =
   | 'ONBOARDING'
   | 'LOGIN'
   | 'LOGIN_PIN'
+  | 'REGISTER_METHOD'
   | 'REGISTER'
   | 'OTP'
   | 'SETUP_PIN'

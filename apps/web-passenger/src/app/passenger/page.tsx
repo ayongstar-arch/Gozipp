@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 // Auth Views
 import OnboardingView from '@/features/auth/OnboardingView';
 import LoginView from '@/features/auth/LoginView';
+import RegisterMethodView from '@/features/auth/RegisterMethodView';
 import RegisterView from '@/features/auth/RegisterView';
 import OtpView from '@/features/auth/OtpView';
 import PinView from '@/features/auth/PinView';
@@ -34,6 +35,7 @@ export default function PassengerPage() {
         <div className="flex-1 flex flex-col max-w-md w-full mx-auto h-[100dvh] shadow-2xl bg-black relative overflow-hidden border-x border-white/5">
           {authStep === 'ONBOARDING' && <OnboardingView />}
           {authStep === 'LOGIN' && <LoginView />}
+          {authStep === 'REGISTER_METHOD' && <RegisterMethodView />}
           {authStep === 'REGISTER' && <RegisterView />}
           {authStep === 'OTP' && <OtpView phoneNumber={user?.phone || ''} isRegistering={!user?.id} name={user?.name} />}
           {authStep === 'LOGIN_PIN' && <PinView mode="LOGIN" phoneNumber={user?.phone} />}
