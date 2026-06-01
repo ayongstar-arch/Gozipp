@@ -59,18 +59,7 @@ const LoginView: React.FC = () => {
         <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
       </div>
 
-      {/* Back Button */}
-      <div className="absolute top-6 left-6 z-20">
-        <button 
-          onClick={() => setAuthStep('ONBOARDING')}
-          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors"
-          aria-label="กลับ"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-      </div>
+      {/* Back Button Removed per design */}
 
       {/* Top spacing */}
       <div className="h-10 z-10" />
@@ -148,52 +137,10 @@ const LoginView: React.FC = () => {
           </button>
         </motion.div>
 
-        {/* Sign up prompt */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="text-center mt-4"
-        >
-          <button 
-            onClick={() => setAuthStep('REGISTER')} 
-            className="text-gray-400 font-medium text-xs hover:text-[#A3FF3F] transition-colors inline-flex items-center gap-1"
-          >
-            ยังไม่มีบัญชี? <span className="text-[#A3FF3F] font-bold underline decoration-[#A3FF3F]/30 underline-offset-4">ลงทะเบียนที่นี่</span>
-          </button>
-        </motion.div>
+      {/* Sign up prompt removed per design */}
       </div>
 
-      {/* Alternative Social Login Methods */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="flex flex-col gap-3 mt-4 relative z-10 max-w-md mx-auto w-full pb-4"
-      >
-        <div className="flex items-center gap-4 mb-1">
-          <div className="h-px flex-1 bg-white/10"></div>
-          <div className="text-center text-gray-500 text-xs font-medium">หรือเข้าสู่ระบบด้วย</div>
-          <div className="h-px flex-1 bg-white/10"></div>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-3">
-          <button 
-            onClick={() => window.location.href = `${API_BASE_URL}/auth/google?type=PASSENGER`} 
-            className="bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-2xl py-3.5 px-3 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <img src="/brand/google.svg" alt="Google" className="w-4 h-4 shrink-0" />
-            <span className="whitespace-nowrap">Google</span>
-          </button>
-          <button 
-            onClick={handleAppleLogin} 
-            className="bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-2xl py-3.5 px-3 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <img src="/brand/apple.svg" alt="Apple" className="w-4 h-4 shrink-0" />
-            <span className="whitespace-nowrap">Apple ID</span>
-          </button>
-        </div>
-      </motion.div>
+      {/* Alternative Social Login Methods removed per design */}
     </div>
   );
 };

@@ -84,7 +84,7 @@ const OnboardingView: React.FC = () => {
       >
         {/* Primary Action */}
         <button 
-          onClick={() => setAuthStep('LOGIN')} 
+          onClick={() => setAuthStep('REGISTER')} 
           className="bg-[#39B54A] text-black font-extrabold w-full py-4 rounded-2xl text-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-2"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
