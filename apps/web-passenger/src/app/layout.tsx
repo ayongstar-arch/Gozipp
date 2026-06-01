@@ -57,6 +57,14 @@ export const metadata: Metadata = {
     description: 'จุดเริ่มความเร็ว เพื่อทุกการเดินทาง ไปกับ GOZIPP',
     images: ['/og-gozipp.png'],
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'GOZIPP'
+  },
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 export default function RootLayout({

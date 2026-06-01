@@ -108,7 +108,7 @@ const LoginView: React.FC = () => {
           <div className="absolute inset-0 bg-black/40 rounded-full blur-3xl pointer-events-none" />
           <img 
             src="/logo-gozipp.png" 
-            className="w-28 h-auto object-contain relative z-10 drop-shadow-[0_0_15px_rgba(57,181,74,0.3)]" 
+            className="w-28 h-auto object-contain relative z-10 mix-blend-screen drop-shadow-[0_0_15px_rgba(57,181,74,0.3)]" 
             alt="Gozipp" 
           />
         </motion.div>
