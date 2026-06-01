@@ -75,7 +75,7 @@ export const useAuth = () => {
         // Registration flow: verify OTP + create account
         data = await apiFetch('/api/v1/passenger/register', {
           method: 'POST',
-          body: JSON.stringify({ phoneNumber, otp, name: name || 'ผู้ใช้ใหม่' }),
+          body: JSON.stringify({ phoneNumber, name: name || 'ผู้ใช้ใหม่' }),
         });
       } else {
         // Login flow: verify OTP → check if user exists
