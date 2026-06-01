@@ -90,10 +90,10 @@ const LoginView: React.FC = () => {
           transition={{ delay: 0.1 }}
           className="text-center mb-6"
         >
-          <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">ยินดีต้อนรับสู่ GOZIPP</h2>
-          <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
-            <p>เรียกวินง่าย เข้าถึงคนขับจริงในพื้นที่</p>
-            <p>ปลอดภัย รวดเร็ว และโปร่งใส</p>
+          <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">ยินดีต้อนรับกลับ</h2>
+          <div className="text-gray-400 font-medium text-sm space-y-0.5 leading-relaxed">
+            <p>กรอกเบอร์โทรศัพท์ของคุณ</p>
+            <p>เพื่อเข้าสู่ระบบ GOZIPP</p>
           </div>
         </motion.div>
 
