@@ -39,14 +39,14 @@ const OnboardingView: React.FC = () => {
       <InstallPwaPrompt />
       
       {/* Top spacer or branding */}
-      <div className="h-4 z-10" />
+      <div className="h-12 z-10" />
 
       {/* Main Content Area (Logo + Slogans) */}
       <motion.div 
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="flex-1 flex flex-col items-center justify-center space-y-6 relative z-10 -mt-8"
+        className="flex-1 flex flex-col items-center justify-start mt-4 space-y-4 relative z-10"
       >
         {/* Radial glow background wrapper */}
         <motion.div 
