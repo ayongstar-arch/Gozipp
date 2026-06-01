@@ -31,9 +31,11 @@ const OnboardingView: React.FC = () => {
     <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white p-6">
       
       {/* Background SVG Cityscape and Perspective Road */}
-      <div className="absolute bottom-[20vh] left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end">
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
-        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+      <div className="absolute bottom-0 left-0 right-0 h-[55vh] pointer-events-none z-0 overflow-hidden flex items-end">
+        {/* Gradient overlays to blend the image smoothly */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-10"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-transparent z-10"></div>
+        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-70 mix-blend-screen" />
       </div>
 
       <InstallPwaPrompt />
@@ -68,24 +70,30 @@ const OnboardingView: React.FC = () => {
         </motion.div>
         
         {/* Texts */}
-        <motion.div variants={itemVariants} className="space-y-2.5 text-center">
-          <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">เรียกวินใกล้คุณ</h1>
-          <p className="text-gray-300 font-medium text-lg">เข้าถึงคนขับจริงในพื้นที่</p>
-          <p className="text-gray-400 font-medium text-sm">ปลอดภัย รวดเร็ว และโปร่งใส</p>
+        <motion.div variants={itemVariants} className="space-y-2.5 text-center mt-6">
+          <h1 className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight drop-shadow-lg">
+            เรียกวินใกล้คุณ
+          </h1>
+          <p className="text-gray-100 font-medium text-lg drop-shadow-md">
+            เข้าถึงคนขับจริงในพื้นที่
+          </p>
+          <p className="text-gray-400 font-medium text-sm drop-shadow">
+            ปลอดภัย รวดเร็ว และโปร่งใส
+          </p>
         </motion.div>
       </motion.div>
 
-      {/* Actions Area */}
+      {/* Actions Area - Glassmorphism Dock */}
       <motion.div 
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, duration: 0.6 }}
-        className="relative z-10 w-full flex flex-col space-y-4 pb-4"
+        className="relative z-20 w-full flex flex-col space-y-4 bg-black/50 backdrop-blur-xl border-t border-white/10 p-6 -mx-6 pb-8 shadow-[0_-20px_40px_rgba(0,0,0,0.4)]"
       >
         {/* Primary Action */}
         <button 
           onClick={() => setAuthStep('REGISTER')} 
-          className="bg-[#39B54A] text-black font-extrabold w-full py-4 rounded-2xl text-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-2"
+          className="bg-gradient-to-b from-[#4ADE80] to-[#22C55E] text-black font-extrabold w-full py-4 rounded-2xl text-lg transition-transform active:scale-[0.98] flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(57,181,74,0.3)] hover:shadow-[0_0_25px_rgba(57,181,74,0.5)] border border-white/20"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
@@ -105,7 +113,7 @@ const OnboardingView: React.FC = () => {
           <p className="text-gray-400 font-medium text-sm mb-4">มีบัญชีอยู่แล้ว?</p>
           <button 
             onClick={() => setAuthStep('LOGIN')} 
-            className="w-full bg-transparent border border-[#39B54A] text-[#39B54A] font-bold py-3.5 rounded-2xl text-lg hover:bg-[#39B54A]/10 transition-colors"
+            className="w-full bg-white/5 border border-white/10 text-white font-bold py-3.5 rounded-2xl text-lg hover:bg-white/10 transition-colors backdrop-blur-sm"
           >
             เข้าสู่ระบบ
           </button>
