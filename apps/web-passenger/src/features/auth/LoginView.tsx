@@ -11,12 +11,34 @@ const LoginView: React.FC = () => {
   const { requestOtp, error, setError } = useAuth();
   const [phone, setPhone] = useState('');
 
+  const setUser = useAuthStore((state) => state.setUser);
+
   const handleAppleLogin = () => {
     setToastMessage('ระบบล็อกอินด้วย Apple ID ยังไม่เปิดให้บริการในขณะนี้');
   };
 
   const handleLogin = async () => {
     if (!phone) return setError('กรุณากรอกเบอร์โทรศัพท์');
+    
+    try {
+      useUIStore.getState().setIsLoading(true);
+      const statusRes = await fetch(`${API_BASE_URL}/api/v1/auth/check-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phoneNumber: phone, role: 'PASSENGER' })
+      });
+      const statusData = await statusRes.json();
+      
+      if ((statusData.isRegistered || statusData.exists) && statusData.hasPin) {
+          setUser({ id: '', name: '', phone: phone, email: '', avatarSeed: 'user', pointsBalance: 0, freeRidesRemaining: 0 });
+          setAuthStep('LOGIN_PIN');
+          useUIStore.getState().setIsLoading(false);
+          return;
+      }
+    } catch (e) {
+      console.error("Status check failed", e);
+    }
+    
     await requestOtp(phone, false);
   };
 
