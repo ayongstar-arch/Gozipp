@@ -75,9 +75,9 @@ const LoginView: React.FC = () => {
     <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit p-6 relative overflow-hidden text-white w-full">
       
       {/* Background SVG Cityscape and Perspective Road */}
-      <div className="absolute bottom-0 left-0 right-0 h-[50vh] pointer-events-none z-0 overflow-hidden flex items-end">
+      <div className="absolute top-[22dvh] left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end">
         <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
-        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80 mix-blend-screen" />
       </div>
 
       {/* Back Button */}
