@@ -126,6 +126,7 @@ const RegisterView: React.FC = () => {
           </button>
         </motion.form>
       </div>
+    </div>
   );
 };
 
