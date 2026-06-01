@@ -40,16 +40,18 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#04070B] font-kanit p-6 justify-center relative overflow-hidden text-white">
-      {/* Background Orbs */}
-      <div className="absolute top-[-10%] right-[-10%] w-[400px] h-[400px] bg-[#A3FF3F]/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[300px] h-[300px] bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
+    <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit p-6 relative overflow-hidden text-white w-full">
+      {/* Background SVG Cityscape and Perspective Road */}
+      <div className="absolute top-[8vh] left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+      </div>
 
       {/* Back Button */}
       <div className="absolute top-6 left-6 z-20">
         <button 
           onClick={() => setAuthStep('LOGIN')}
-          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors"
+          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
           aria-label="กลับ"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
@@ -58,19 +60,45 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
         </button>
       </div>
 
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="text-center mb-12 relative z-10"
-      >
-        <div className="w-20 h-20 bg-[#A3FF3F]/10 border border-[#A3FF3F]/20 rounded-3xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-[0_0_30px_rgba(163,255,63,0.15)] backdrop-blur-md">🔑</div>
-        <h2 className="text-4xl font-black text-white tracking-tighter uppercase mb-2">
-          {mode === 'SETUP' ? 'ตั้งรหัส PIN' : 'กรอกรหัส PIN'}
-        </h2>
-        <p className="text-gray-400 font-medium">
-          {mode === 'SETUP' ? 'เพื่อความปลอดภัยของบัญชีคุณ' : 'ใช้ PIN 6 หลัก'}
-        </p>
-      </motion.div>
+      {/* Top spacing */}
+      <div className="h-4 z-10" />
+
+      {/* Main Form Area */}
+      <div className="flex-1 flex flex-col justify-start mt-8 relative z-10 max-w-md mx-auto w-full">
+        {/* Compact Logo */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto w-32 h-32 flex items-center justify-center relative mb-0 z-20 mix-blend-screen"
+        >
+          {/* Radial Glow Effect */}
+          <div 
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background: 'radial-gradient(circle, rgba(163,255,63,0.15) 0%, transparent 70%)'
+            }}
+          />
+          <img 
+            src="/logo-gozipp.png" 
+            className="w-28 h-auto object-contain relative z-10 contrast-125" 
+            alt="Gozipp" 
+          />
+        </motion.div>
+        
+        {/* Compact Text Headers */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="text-center mb-4 relative z-20"
+        >
+          <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">
+            {mode === 'SETUP' ? 'ตั้งรหัส PIN' : 'กรอกรหัส PIN'}
+          </h2>
+          <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
+            <p>{mode === 'SETUP' ? 'เพื่อความปลอดภัยของบัญชีคุณ' : 'ใช้ PIN 6 หลัก'}</p>
+          </div>
+        </motion.div>
 
       {error && (
         <motion.div 
@@ -125,6 +153,7 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
           ลืมรหัส PIN?
         </motion.button>
       )}
+      </div>
     </div>
   );
 };

@@ -26,7 +26,7 @@ const RegisterView: React.FC = () => {
   return (
     <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit p-6 relative overflow-hidden text-white w-full">
       {/* Background SVG Cityscape and Perspective Road */}
-      <div className="absolute bottom-0 left-0 right-0 h-[50vh] pointer-events-none z-0 overflow-hidden flex items-end">
+      <div className="absolute top-[8vh] left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
         <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
         <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
       </div>
@@ -35,7 +35,7 @@ const RegisterView: React.FC = () => {
       <div className="absolute top-6 left-6 z-20">
         <button 
           onClick={() => setAuthStep('LOGIN')}
-          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors"
+          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
           aria-label="กลับ"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
@@ -44,17 +44,28 @@ const RegisterView: React.FC = () => {
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col justify-center relative z-10 max-w-md mx-auto w-full -mt-4">
+      {/* Top spacing */}
+      <div className="h-4 z-10" />
+
+      {/* Main Form Area */}
+      <div className="flex-1 flex flex-col justify-start mt-8 relative z-10 max-w-md mx-auto w-full">
+        
         {/* Compact Logo */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mx-auto w-36 h-36 flex items-center justify-center relative mb-2"
+          className="mx-auto w-32 h-32 flex items-center justify-center relative mb-0 z-20 mix-blend-screen"
         >
-          <div className="absolute inset-0 bg-black/40 rounded-full blur-3xl pointer-events-none" />
+          {/* Radial Glow Effect */}
+          <div 
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background: 'radial-gradient(circle, rgba(163,255,63,0.15) 0%, transparent 70%)'
+            }}
+          />
           <img 
             src="/logo-gozipp.png" 
-            className="w-28 h-auto object-contain mix-blend-screen relative z-10" 
+            className="w-28 h-auto object-contain relative z-10 contrast-125" 
             alt="Gozipp" 
           />
         </motion.div>
@@ -64,12 +75,11 @@ const RegisterView: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="text-center mb-6"
+          className="text-center mb-4 relative z-20"
         >
-          <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">ลงทะเบียนใหม่</h2>
-          <div className="text-gray-400 font-medium text-sm space-y-0.5 leading-relaxed">
-            <p>เข้าร่วม GOZIPP</p>
-            <p>เดินทางฉลาด รวดเร็ว ทั่วเมือง</p>
+          <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">ลงทะเบียนใหม่</h2>
+          <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
+            <p>เข้าร่วม GOZIPP เดินทางฉลาด รวดเร็ว ทั่วเมือง</p>
           </div>
         </motion.div>
 

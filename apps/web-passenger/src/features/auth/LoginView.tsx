@@ -114,7 +114,7 @@ const LoginView: React.FC = () => {
           />
           <img 
             src="/logo-gozipp.png" 
-            className="w-28 h-auto object-contain relative z-10" 
+            className="w-28 h-auto object-contain relative z-10 contrast-125" 
             alt="Gozipp" 
           />
         </motion.div>

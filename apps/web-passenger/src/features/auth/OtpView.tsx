@@ -41,30 +41,74 @@ const OtpView: React.FC<{ phoneNumber: string, isRegistering: boolean, name?: st
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#04070B] font-kanit p-6 justify-center relative overflow-hidden text-white">
-      {/* Background Orbs */}
-      <div className="absolute top-[-10%] right-[-10%] w-[400px] h-[400px] bg-[#A3FF3F]/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[300px] h-[300px] bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
+    <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit p-6 relative overflow-hidden text-white w-full">
+      {/* Background SVG Cityscape and Perspective Road */}
+      <div className="absolute top-[8vh] left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+      </div>
 
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="text-center mb-12 relative z-10"
-      >
-        <div className="w-20 h-20 bg-[#A3FF3F]/10 border border-[#A3FF3F]/20 rounded-3xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-[0_0_30px_rgba(163,255,63,0.15)] backdrop-blur-md">🛡️</div>
-        <h2 className="text-4xl font-black text-white tracking-tighter uppercase mb-2">ยืนยันรหัส OTP</h2>
-        <p className="text-gray-400 font-medium">รหัสถูกส่งไปที่ <span className="text-[#A3FF3F]">{phoneNumber}</span></p>
-      </motion.div>
-
-      {error && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-4 rounded-2xl mb-8 text-sm text-center font-bold backdrop-blur-md relative z-10"
+      {/* Back Button */}
+      <div className="absolute top-6 left-6 z-20">
+        <button 
+          onClick={() => { setAuthStep(isRegistering ? 'REGISTER' : 'LOGIN'); setError(null); }}
+          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
+          aria-label="กลับ"
         >
-          ⚠️ {error}
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Top spacing */}
+      <div className="h-4 z-10" />
+
+      {/* Main Form Area */}
+      <div className="flex-1 flex flex-col justify-start mt-8 relative z-10 max-w-md mx-auto w-full">
+        {/* Compact Logo */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto w-32 h-32 flex items-center justify-center relative mb-0 z-20 mix-blend-screen"
+        >
+          {/* Radial Glow Effect */}
+          <div 
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background: 'radial-gradient(circle, rgba(163,255,63,0.15) 0%, transparent 70%)'
+            }}
+          />
+          <img 
+            src="/logo-gozipp.png" 
+            className="w-28 h-auto object-contain relative z-10 contrast-125" 
+            alt="Gozipp" 
+          />
         </motion.div>
-      )}
+        
+        {/* Compact Text Headers */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="text-center mb-4 relative z-20"
+        >
+          <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">ยืนยันรหัส OTP</h2>
+          <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
+            <p>รหัสถูกส่งไปที่ <span className="text-[#A3FF3F]">{phoneNumber}</span></p>
+          </div>
+        </motion.div>
+
+        {/* Error message block */}
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-2xl mb-4 text-xs flex items-center gap-2 backdrop-blur-md relative z-10"
+          >
+            <span className="text-base">⚠️</span> {error}
+          </motion.div>
+        )}
 
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
@@ -118,15 +162,7 @@ const OtpView: React.FC<{ phoneNumber: string, isRegistering: boolean, name?: st
         </div>
       </motion.div>
 
-      <motion.button 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-        onClick={() => { setAuthStep(isRegistering ? 'REGISTER' : 'LOGIN'); setError(null); }} 
-        className="w-full text-gray-500 text-sm font-bold mt-12 hover:text-[#A3FF3F] transition-colors relative z-10"
-      >
-        ← แก้ไขเบอร์โทรศัพท์
-      </motion.button>
+      </div>
     </div>
   );
 };

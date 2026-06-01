@@ -59,7 +59,7 @@ const OnboardingView: React.FC = () => {
           <img 
             src="/logo-gozipp.png" 
             alt="GOZIPP Logo" 
-            className="w-40 h-auto relative z-10 object-contain"
+            className="w-40 h-auto relative z-10 object-contain contrast-125"
           />
         </motion.div>
         
