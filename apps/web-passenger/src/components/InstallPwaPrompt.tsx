@@ -51,8 +51,9 @@ const InstallPwaPrompt: React.FC = () => {
   // Android / Desktop Chrome Button
   if (supportsPWA) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 p-4 z-50 animate-in slide-in-from-bottom-4">
-        <div className="bg-slate-900/95 backdrop-blur text-white p-4 rounded-2xl shadow-2xl border border-slate-700 flex items-center justify-between gap-4 max-w-md mx-auto">
+      <div className="fixed top-4 left-0 right-0 p-4 z-50 animate-in slide-in-from-top-4">
+        <div className="bg-slate-900/95 backdrop-blur text-white p-4 rounded-2xl shadow-2xl border border-slate-700 flex items-center justify-between gap-4 max-w-md mx-auto relative pr-10">
+            <button onClick={() => setSupportsPWA(false)} className="absolute top-2 right-2 text-slate-500 hover:text-white">✕</button>
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center text-xl">🛵</div>
                 <div>
@@ -74,7 +75,7 @@ const InstallPwaPrompt: React.FC = () => {
   // iOS Instruction Card
   if (isIOS) {
       return (
-        <div className="fixed bottom-0 left-0 right-0 p-4 z-50 animate-in slide-in-from-bottom-4">
+        <div className="fixed top-4 left-0 right-0 p-4 z-50 animate-in slide-in-from-top-4">
             <div className="bg-slate-900/95 backdrop-blur text-white p-4 rounded-2xl shadow-2xl border border-slate-700 max-w-md mx-auto relative">
                 <button onClick={() => setIsIOS(false)} className="absolute top-2 right-2 text-slate-500 hover:text-white">✕</button>
                 <div className="flex items-start gap-4">
@@ -83,13 +84,11 @@ const InstallPwaPrompt: React.FC = () => {
                          <h4 className="font-bold text-sm mb-1">ติดตั้ง GOZIPP บน iPhone</h4>
                          <p className="text-xs text-slate-300 mb-2">เพื่อให้ใช้งานได้เต็มจอ เหมือนแอปทั่วไป:</p>
                          <ol className="text-xs text-slate-400 space-y-2 list-decimal ml-4">
-                             <li>กดปุ่ม <span className="font-bold text-green-500">แชร์ (Share)</span> ด้านล่าง</li>
+                             <li>กดปุ่ม <span className="font-bold text-green-500">แชร์ (Share)</span> ด้านล่างจอ</li>
                              <li>เลือกเมนู <span className="font-bold text-white">"เพิ่มไปยังหน้าจอโฮม"</span> <br/>(Add to Home Screen)</li>
                          </ol>
                      </div>
                 </div>
-                {/* Pointer Arrow */}
-                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-900 rotate-45 border-r border-b border-slate-700"></div>
             </div>
         </div>
       );
