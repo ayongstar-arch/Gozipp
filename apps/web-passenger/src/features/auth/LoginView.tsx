@@ -103,7 +103,7 @@ const LoginView: React.FC = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mx-auto w-32 h-32 flex items-center justify-center relative mb-0 z-20"
+          className="mx-auto w-32 h-32 flex items-center justify-center relative mb-0 z-20 mix-blend-screen"
         >
           {/* Radial Glow Effect */}
           <div 
@@ -114,7 +114,7 @@ const LoginView: React.FC = () => {
           />
           <img 
             src="/logo-gozipp.png" 
-            className="w-28 h-auto object-contain relative z-10 mix-blend-screen" 
+            className="w-28 h-auto object-contain relative z-10" 
             alt="Gozipp" 
           />
         </motion.div>

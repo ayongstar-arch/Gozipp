@@ -47,7 +47,7 @@ const OnboardingView: React.FC = () => {
         {/* Radial glow background wrapper */}
         <motion.div 
           variants={itemVariants} 
-          className="relative flex items-center justify-center w-56 h-56 mx-auto"
+          className="relative flex items-center justify-center w-56 h-56 mx-auto mix-blend-screen"
         >
           {/* Radial Glow Effect */}
           <div 
@@ -59,7 +59,7 @@ const OnboardingView: React.FC = () => {
           <img 
             src="/logo-gozipp.png" 
             alt="GOZIPP Logo" 
-            className="w-40 h-auto relative z-10 object-contain mix-blend-screen"
+            className="w-40 h-auto relative z-10 object-contain"
           />
         </motion.div>
         
