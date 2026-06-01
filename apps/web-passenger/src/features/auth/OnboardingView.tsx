@@ -31,11 +31,10 @@ const OnboardingView: React.FC = () => {
     <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white p-6">
       
       {/* Background SVG Cityscape and Perspective Road */}
-      <div className="absolute bottom-0 left-0 right-0 h-[55vh] pointer-events-none z-0 overflow-hidden flex items-end">
+      <div className="absolute bottom-0 left-0 right-0 h-[60vh] pointer-events-none z-0 overflow-hidden flex items-end">
         {/* Gradient overlays to blend the image smoothly */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-10"></div>
-        <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-transparent z-10"></div>
-        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-70 mix-blend-screen" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10 opacity-90"></div>
+        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-85 mix-blend-screen" />
       </div>
 
       <InstallPwaPrompt />
