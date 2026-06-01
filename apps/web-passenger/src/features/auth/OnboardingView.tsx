@@ -31,7 +31,7 @@ const OnboardingView: React.FC = () => {
     <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white p-6">
       
       {/* Background SVG Cityscape and Perspective Road */}
-      <div className="absolute bottom-0 left-0 right-0 h-[50vh] pointer-events-none z-0 overflow-hidden flex items-end">
+      <div className="absolute bottom-[20vh] left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end">
         <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
         <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
       </div>
@@ -39,14 +39,14 @@ const OnboardingView: React.FC = () => {
       <InstallPwaPrompt />
       
       {/* Top spacer or branding */}
-      <div className="h-12 z-10" />
+      <div className="h-4 z-10" />
 
       {/* Main Content Area (Logo + Slogans) */}
       <motion.div 
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="flex-1 flex flex-col items-center justify-start mt-4 space-y-4 relative z-10"
+        className="flex-1 flex flex-col items-center justify-start mt-0 space-y-2 relative z-10"
       >
         {/* Radial glow background wrapper */}
         <motion.div 
@@ -63,7 +63,7 @@ const OnboardingView: React.FC = () => {
           <img 
             src="/logo-gozipp.png" 
             alt="GOZIPP Logo" 
-            className="w-48 h-auto relative z-10 object-contain mix-blend-screen"
+            className="w-40 h-auto relative z-10 object-contain mix-blend-screen"
           />
         </motion.div>
         
