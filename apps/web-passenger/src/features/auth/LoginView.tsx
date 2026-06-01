@@ -80,11 +80,24 @@ const LoginView: React.FC = () => {
         <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
       </div>
 
+      {/* Back Button */}
+      <div className="absolute top-6 left-6 z-20">
+        <button 
+          onClick={() => setAuthStep('ONBOARDING')}
+          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
+          aria-label="กลับ"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+      </div>
+
       {/* Top spacing */}
-      <div className="h-4 z-10" />
+      <div className="h-12 z-10" />
 
       {/* Main Form Area */}
-      <div className="flex-1 flex flex-col justify-center relative z-10 max-w-md mx-auto w-full">
+      <div className="flex-1 flex flex-col justify-start mt-8 relative z-10 max-w-md mx-auto w-full">
         {/* Compact Logo */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
