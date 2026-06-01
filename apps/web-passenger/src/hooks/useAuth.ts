@@ -159,7 +159,7 @@ export const useAuth = () => {
       });
 
       setToastMessage('ตั้ง PIN สำเร็จ!');
-      setAuthStep('APP_SHELL');
+      // Let PinView handle the transition so it can show the Biometric prompt
       return true;
     } catch (err: any) {
       setError(err.message);

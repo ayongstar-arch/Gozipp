@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../hooks/useAuth';
+import { useWebAuthn } from '../../hooks/useWebAuthn';
 import { motion } from 'framer-motion';
 
 interface PinViewProps {
@@ -14,8 +15,10 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
   const { isLoading } = useUIStore();
   const { setupPin, loginWithPin, error, setError } = useAuth();
+  const { registerPasskey, authenticatePasskey } = useWebAuthn();
   
   const [pin, setPin] = useState(['', '', '', '', '', '']);
+  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
 
   const handlePinChange = (index: number, value: string) => {
     if (isNaN(Number(value))) return;
@@ -33,11 +36,62 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
     if (pinCode.length < 6) return;
     
     if (mode === 'SETUP' && userId) {
-      await setupPin(pinCode);
+      const success = await setupPin(pinCode);
+      if (success) {
+        // Show biometric setup prompt
+        setShowBiometricPrompt(true);
+      }
     } else if (mode === 'LOGIN' && phoneNumber) {
       await loginWithPin(phoneNumber, pinCode);
     }
   };
+
+  const handleSetupBiometrics = async () => {
+    await registerPasskey('PASSENGER');
+    setAuthStep('APP_SHELL'); // Continue to app
+  };
+
+  const handleSkipBiometrics = () => {
+    setAuthStep('APP_SHELL'); // Continue to app
+  };
+
+  const handleLoginBiometrics = async () => {
+    if (!phoneNumber) return;
+    await authenticatePasskey(phoneNumber, 'PASSENGER');
+  };
+
+  if (showBiometricPrompt) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[100dvh] bg-black text-white p-6 font-kanit">
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center w-full max-w-sm">
+          <div className="w-24 h-24 mx-auto bg-[#39B54A]/20 text-[#39B54A] rounded-full flex items-center justify-center text-5xl mb-6 shadow-[0_0_30px_rgba(57,181,74,0.3)]">
+            🛡️
+          </div>
+          <h2 className="text-2xl font-bold mb-3 tracking-tighter">เปิดใช้งานสแกนใบหน้า</h2>
+          <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+            เพิ่มความสะดวกและปลอดภัยในการเข้าสู่ระบบครั้งถัดไป โดยไม่ต้องจำรหัส PIN (Face ID / Touch ID / Fingerprint)
+          </p>
+
+          <div className="space-y-4">
+            <button 
+              onClick={handleSetupBiometrics}
+              disabled={isLoading}
+              className="w-full bg-[#39B54A] text-black font-black py-4 rounded-2xl hover:bg-[#2d953a] transition-colors"
+            >
+              เปิดใช้งานทันที
+            </button>
+            <button 
+              onClick={handleSkipBiometrics}
+              disabled={isLoading}
+              className="w-full bg-white/10 text-white font-bold py-4 rounded-2xl hover:bg-white/20 transition-colors"
+            >
+              ไว้คราวหลัง
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit relative overflow-hidden text-white w-full">
@@ -54,9 +108,9 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
         </button>
       </div>
 
-      {/* Main Container - Creates ONE stacking context for Background + Logo */}
+      {/* Main Container */}
       <div className="flex-1 flex flex-col justify-start mt-12 relative z-10 w-full">
-        {/* Background SVG Cityscape (Inside the same stacking context!) */}
+        {/* Background SVG Cityscape */}
         <div className="absolute top-0 left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
           <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
           <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
@@ -68,7 +122,6 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
           animate={{ opacity: 1, y: 0 }}
           className="mx-auto w-32 h-32 flex items-center justify-center relative z-20 mix-blend-screen mt-[2vh] mb-4"
         >
-          {/* Radial Glow Effect */}
           <div 
             className="absolute inset-0 rounded-full pointer-events-none"
             style={{
@@ -82,7 +135,7 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
           />
         </motion.div>
         
-        {/* Form Container (Constrained width + padding) */}
+        {/* Form Container */}
         <div className="w-full max-w-md mx-auto px-6 relative z-20 flex flex-col">
           {/* Compact Text Headers */}
           <motion.div
@@ -113,7 +166,7 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="flex gap-3 justify-center mb-12 relative z-10"
+        className="flex gap-3 justify-center mb-8 relative z-10"
       >
         {pin.map((digit, i) => (
           <input
@@ -135,22 +188,39 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
         transition={{ delay: 0.2 }}
         onClick={handleSubmit}
         disabled={isLoading || pin.join('').length < 6}
-        className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-black py-5 rounded-2xl shadow-[0_0_30px_rgba(163,255,63,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 overflow-hidden text-lg z-10"
+        className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-black py-5 rounded-2xl shadow-[0_0_30px_rgba(163,255,63,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 overflow-hidden text-lg z-10 mb-4"
       >
         <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
         <span className="relative z-10 uppercase tracking-tighter">{isLoading ? 'กำลังประมวลผล...' : mode === 'SETUP' ? 'ยืนยัน PIN' : 'เข้าสู่ระบบ'}</span>
       </motion.button>
 
       {mode === 'LOGIN' && (
-        <motion.button 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          onClick={() => { setAuthStep('LOGIN'); setError(null); }} 
-          className="w-full text-gray-500 text-sm font-bold mt-12 hover:text-[#A3FF3F] transition-colors relative z-10"
+          className="flex flex-col gap-4 relative z-10"
         >
-          ลืมรหัส PIN?
-        </motion.button>
+          <div className="flex items-center gap-4 py-2">
+            <div className="h-px bg-white/10 flex-1"></div>
+            <span className="text-gray-500 text-xs font-bold uppercase tracking-widest">หรือ</span>
+            <div className="h-px bg-white/10 flex-1"></div>
+          </div>
+          
+          <button
+            onClick={handleLoginBiometrics}
+            className="w-full bg-[#39B54A]/10 text-[#39B54A] border border-[#39B54A]/30 font-black py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-[#39B54A]/20 transition-all"
+          >
+            <span className="text-2xl">🛡️</span> สแกน Face ID / ลายนิ้วมือ
+          </button>
+
+          <button 
+            onClick={() => { setAuthStep('LOGIN'); setError(null); }} 
+            className="text-gray-500 text-sm font-bold mt-4 hover:text-[#A3FF3F] transition-colors"
+          >
+            ลืมรหัส PIN?
+          </button>
+        </motion.div>
       )}
         </div>
       </div>

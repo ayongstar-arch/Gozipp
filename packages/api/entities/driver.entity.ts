@@ -64,6 +64,9 @@ export class DriverEntity {
   @Column({ nullable: true })
   provider_id: string;
 
+  @Column({ nullable: true })
+  webauthn_current_challenge: string;
+
   // Payout Profile
   @Column({ nullable: true })
   bank_name: string;

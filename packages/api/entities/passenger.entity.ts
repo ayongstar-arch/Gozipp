@@ -31,6 +31,9 @@ export class PassengerEntity {
   @Column({ nullable: true })
   provider_id: string; // LINE userId or Google sub
 
+  @Column({ nullable: true })
+  webauthn_current_challenge: string; // Stores challenge for WebAuthn Registration/Authentication
+
   // Credits
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   points_balance: number;

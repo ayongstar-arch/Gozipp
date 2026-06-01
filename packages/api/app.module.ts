@@ -93,7 +93,7 @@ import { AiService } from './ai.service';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || '',
       database: process.env.DB_NAME || 'gozipp_db',
-      entities: [DriverEntity, TripEntity, ChatMessageEntity, PassengerEntity, AuditLogEntity, RefreshTokenEntity, DriverDocumentEntity, DriverPreferenceEntity, DriverTrainingStatusEntity],
+      entities: [DriverEntity, TripEntity, ChatMessageEntity, PassengerEntity, AuditLogEntity, RefreshTokenEntity, DriverDocumentEntity, DriverPreferenceEntity, DriverTrainingStatusEntity, __dirname + '/**/*.entity{.ts,.js}'],
       // CRITICAL FOR PRODUCTION: Disable synchronize to prevent data loss
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
