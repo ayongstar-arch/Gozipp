@@ -3,6 +3,7 @@
 import React from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
+import { useAuth } from '@/hooks/useAuth';
 
 // Auth Views
 import OnboardingView from '@/features/auth/OnboardingView';
@@ -21,6 +22,11 @@ import ProfileView from '@/features/auth/ProfileView';
 export default function PassengerPage() {
   const { authStep, user } = useAuthStore();
   const { activeTab } = useUIStore();
+  const { restoreSession } = useAuth();
+
+  React.useEffect(() => {
+    restoreSession();
+  }, [restoreSession]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950">

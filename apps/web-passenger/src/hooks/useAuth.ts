@@ -8,21 +8,24 @@ import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
 import { API_BASE_URL } from '@/constants';
 
-// Internal helper: authenticated fetch with JWT
-const apiFetch = async (path: string, options: RequestInit = {}, token?: string | null) => {
+// Internal helper: authenticated fetch with HttpOnly Cookies
+const apiFetch = async (path: string, options: RequestInit = {}) => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers as Record<string, string> || {}),
   };
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE_URL}${path}`, { 
+    ...options, 
+    headers,
+    credentials: 'include' // Important: Send HttpOnly cookies automatically
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
   return data;
 };
 
 export const useAuth = () => {
-  const { setAuthStep, setUser, setToken, token, user, logout: storeLogout } = useAuthStore();
+  const { setAuthStep, setUser, user, logout: storeLogout } = useAuthStore();
   const { setIsLoading, setToastMessage } = useUIStore();
   const [error, setError] = useState<string | null>(null);
 
@@ -91,11 +94,8 @@ export const useAuth = () => {
         }
       }
 
-      // Save tokens & user
-      if (data.token || data.accessToken) {
-        const accessToken = data.token || data.accessToken;
-        const refreshToken = data.refreshToken || null;
-        setToken(accessToken, refreshToken);
+      // Save user (Tokens are saved automatically as HttpOnly cookies by the backend)
+      if (data.success || data.user || data.passengerId) {
         setUser({
           id: data.passengerId || data.user?.id,
           name: data.name || data.user?.name || name || '',
@@ -131,7 +131,7 @@ export const useAuth = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [setAuthStep, setIsLoading, setToken, setUser]);
+  }, [setAuthStep, setIsLoading, setUser]);
 
   // --- STEP 3: Setup PIN (first time) ---
   const setupPin = useCallback(async (pin: string): Promise<boolean> => {
@@ -144,7 +144,7 @@ export const useAuth = () => {
       await apiFetch('/api/v1/auth/set-pin', {
         method: 'POST',
         body: JSON.stringify({ pin, role: 'PASSENGER' }),
-      }, token);
+      });
 
       setToastMessage('ตั้ง PIN สำเร็จ!');
       setAuthStep('APP_SHELL');
@@ -155,7 +155,7 @@ export const useAuth = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [token, setAuthStep, setIsLoading, setToastMessage]);
+  }, [setAuthStep, setIsLoading, setToastMessage]);
 
   // --- STEP 3 ALT: Login with PIN (returning user) ---
   const loginWithPin = useCallback(async (phoneNumber: string, pin: string): Promise<boolean> => {
@@ -170,8 +170,6 @@ export const useAuth = () => {
         body: JSON.stringify({ phoneNumber, pin, role: 'PASSENGER' }),
       });
 
-      const accessToken = data.accessToken || data.token;
-      setToken(accessToken, data.refreshToken || null);
       setUser({
         id: data.user.id,
         name: data.user.name,
@@ -189,24 +187,47 @@ export const useAuth = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [setAuthStep, setIsLoading, setToken, setUser]);
+  }, [setAuthStep, setIsLoading, setUser]);
 
   // --- Refresh Access Token ---
-  const refreshAccessToken = useCallback(async (): Promise<string | null> => {
-    const { refreshToken } = useAuthStore.getState();
-    if (!refreshToken) return null;
+  const refreshAccessToken = useCallback(async (): Promise<boolean> => {
     try {
-      const data = await apiFetch('/api/v1/auth/refresh', {
+      // Backend reads refreshToken from cookie automatically
+      await apiFetch('/api/v1/auth/refresh', {
         method: 'POST',
-        body: JSON.stringify({ refreshToken }),
       });
-      setToken(data.accessToken, data.refreshToken);
-      return data.accessToken;
+      return true;
     } catch {
       storeLogout();
-      return null;
+      return false;
     }
-  }, [setToken, storeLogout]);
+  }, [storeLogout]);
+
+  // --- Restore Session ---
+  const restoreSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const data = await apiFetch('/api/v1/passenger/me', {
+        method: 'GET',
+      });
+      if (data.success && data.user) {
+        setUser({
+          id: data.user.id,
+          name: data.user.name,
+          phone: data.user.phone,
+          email: data.user.email || '',
+          avatarSeed: data.user.id.slice(0, 8),
+          pointsBalance: data.user.pointsBalance ?? 0,
+          freeRidesRemaining: data.user.freeRidesRemaining ?? 0,
+        });
+        setAuthStep('APP_SHELL');
+        return true;
+      }
+      return false;
+    } catch {
+      // Not authenticated, do nothing or logout
+      return false;
+    }
+  }, [setUser, setAuthStep]);
 
   // --- Logout ---
   const logout = useCallback(() => {
@@ -220,10 +241,10 @@ export const useAuth = () => {
     setupPin,
     loginWithPin,
     refreshAccessToken,
+    restoreSession,
     logout,
     error,
     setError,
     user,
-    token,
   };
 };

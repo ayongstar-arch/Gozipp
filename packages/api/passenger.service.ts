@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import Redis from 'ioredis';
+import * as argon2 from 'argon2';
 import { RideRequestDto, PassengerRegisterDto } from './dtos';
 import { CreditService } from './credit.service';
 import { MapService } from './map.service';
@@ -54,8 +55,12 @@ export class PassengerService implements OnModuleInit {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const key = `otp:passenger:${phoneNumber}`;
-    await this.redis.set(key, otp, 'EX', 300);
-    await this.redis.set(rateLimitKey, count + 1, 'EX', 600);
+    
+    // Hash OTP before storing (Security)
+    const otpHash = await argon2.hash(otp, { type: argon2.argon2id });
+    await this.redis.set(key, otpHash, 'EX', 300); // 5 mins expiry
+    
+    await this.redis.set(rateLimitKey, count + 1, 'EX', 900); // 15 min lock for limit
     await this.smsService.sendOtp(phoneNumber, otp);
 
     this.logger.log(`OTP requested for passenger ${phoneNumber}`);
@@ -64,14 +69,21 @@ export class PassengerService implements OnModuleInit {
 
   async verifyOtp(phoneNumber: string, otp: string) {
     const key = `otp:passenger:${phoneNumber}`;
-    const storedOtp = await this.redis.get(key);
+    const storedOtpHash = await this.redis.get(key);
     const isTestMode = otp === '123456' && process.env.ALLOW_TEST_OTP === 'true';
 
-    if (!isTestMode && storedOtp !== otp) {
-      throw new BadRequestException('รหัส OTP ไม่ถูกต้องหรือหมดอายุ');
+    if (!isTestMode) {
+      if (!storedOtpHash) {
+        throw new BadRequestException('รหัส OTP หมดอายุหรือไม่ถูกต้อง');
+      }
+      const isValid = await argon2.verify(storedOtpHash, otp);
+      if (!isValid) {
+        throw new BadRequestException('รหัส OTP ไม่ถูกต้อง');
+      }
+      // Delete after successful use
+      await this.redis.del(key);
     }
-
-    if (!isTestMode) await this.redis.del(key);
+    
     return { success: true };
   }
 

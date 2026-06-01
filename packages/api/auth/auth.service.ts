@@ -34,18 +34,19 @@ export class AuthService {
         const accessToken = this.jwtService.sign(payload);
 
         // 2. Generate Refresh Token (Long-lived)
-        const refreshToken = crypto.randomBytes(40).toString('hex');
-        const tokenHash = await argon2.hash(refreshToken, { type: argon2.argon2id });
+        const rawToken = crypto.randomBytes(40).toString('hex');
+        const tokenHash = await argon2.hash(rawToken, { type: argon2.argon2id });
 
         // 3. Store Refresh Token Hash
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
 
-        await this.refreshRepo.save({
+        const savedToken = await this.refreshRepo.save({
             userId,
             userRole: role,
             tokenHash,
             expiresAt,
+            ipAddress,
         });
 
         // 4. Log Audit Event
@@ -56,16 +57,71 @@ export class AuthService {
             ipAddress,
         });
 
-        return { accessToken, refreshToken };
+        // Return token as recordId:rawToken for fast O(1) lookup during refresh
+        return { accessToken, refreshToken: `${savedToken.id}:${rawToken}` };
     }
 
     async refreshTokens(oldRefreshToken: string, ipAddress?: string) {
-        // This is a simplified version; in production, you'd find the token first,
-        // then verify the hash. For now, we need to pass userId or lookup by hash.
-        // Let's assume we pass the raw token and userId for lookup.
-        // (Implementation details usually involve passing both or a JTI)
-        // For MVP Phase 1, we will implement this more strictly in the next sub-step.
-        return { accessToken: 'new-token', refreshToken: 'new-refresh' };
+        if (!oldRefreshToken || !oldRefreshToken.includes(':')) {
+             throw new UnauthorizedException('Invalid Refresh Token Format');
+        }
+
+        const [recordId, rawToken] = oldRefreshToken.split(':');
+        
+        // Find the token record
+        const tokenRecord = await this.refreshRepo.findOne({ where: { id: recordId } });
+        if (!tokenRecord) {
+            throw new UnauthorizedException('Refresh Token not found');
+        }
+
+        // Verify Hash
+        const isValid = await argon2.verify(tokenRecord.tokenHash, rawToken);
+        if (!isValid) {
+            throw new UnauthorizedException('Invalid Refresh Token');
+        }
+
+        // Check Expiry
+        if (new Date() > tokenRecord.expiresAt) {
+            throw new UnauthorizedException('Refresh Token Expired');
+        }
+
+        // REUSE DETECTION (Stolen Token)
+        if (tokenRecord.isRevoked) {
+            // A revoked token was used again! This means the token was likely stolen.
+            // Revoke ALL sessions for this user to protect their account.
+            await this.refreshRepo.update({ userId: tokenRecord.userId }, { isRevoked: true });
+            await this.auditLog.log({
+                actorId: tokenRecord.userId,
+                actorRole: tokenRecord.userRole,
+                action: 'TOKEN_REUSE_DETECTED',
+                ipAddress,
+            });
+            throw new UnauthorizedException('Security Alert: Token Reuse Detected. All sessions revoked. Please log in again.');
+        }
+
+        // Token is valid. Rotate it.
+        const newRawToken = crypto.randomBytes(40).toString('hex');
+        const newTokenHash = await argon2.hash(newRawToken, { type: argon2.argon2id });
+        const newExpiresAt = new Date();
+        newExpiresAt.setDate(newExpiresAt.getDate() + 30);
+
+        const newSavedToken = await this.refreshRepo.save({
+            userId: tokenRecord.userId,
+            userRole: tokenRecord.userRole,
+            tokenHash: newTokenHash,
+            expiresAt: newExpiresAt,
+            ipAddress,
+        });
+
+        // Revoke the old token and link it to the new one
+        tokenRecord.isRevoked = true;
+        tokenRecord.replacedByTokenHash = newTokenHash;
+        await this.refreshRepo.save(tokenRecord);
+
+        // Generate new Access Token
+        const accessToken = this.jwtService.sign({ sub: tokenRecord.userId, role: tokenRecord.userRole });
+
+        return { accessToken, refreshToken: `${newSavedToken.id}:${newRawToken}` };
     }
 
     // --- GOOGLE HANDLER ---

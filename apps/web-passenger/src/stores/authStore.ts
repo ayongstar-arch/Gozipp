@@ -27,13 +27,10 @@ type AuthStep =
   | 'APP_SHELL';
 
 interface AuthState {
-  token: string | null;
-  refreshToken: string | null;
   user: UserProfile | null;
   authStep: AuthStep;
 
   // Actions
-  setToken: (token: string | null, refresh?: string | null) => void;
   setUser: (user: UserProfile | null) => void;
   setAuthStep: (step: AuthStep) => void;
   updatePointsBalance: (balance: number) => void;
@@ -43,12 +40,9 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      token: null,
-      refreshToken: null,
       user: null,
       authStep: 'ONBOARDING',
 
-      setToken: (token, refreshToken = null) => set({ token, refreshToken }),
       setUser: (user) => set({ user }),
       setAuthStep: (authStep) => set({ authStep }),
       updatePointsBalance: (balance) =>
@@ -57,8 +51,6 @@ export const useAuthStore = create<AuthState>()(
         })),
       logout: () =>
         set({
-          token: null,
-          refreshToken: null,
           user: null,
           authStep: 'LOGIN',
         }),
@@ -66,8 +58,6 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'gozipp-auth-storage',
       partialize: (state) => ({
-        token: state.token,
-        refreshToken: state.refreshToken,
         user: state.user,
         authStep: state.authStep === 'APP_SHELL' ? 'APP_SHELL' : 'ONBOARDING',
       }),

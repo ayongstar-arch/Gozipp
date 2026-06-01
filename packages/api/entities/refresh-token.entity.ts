@@ -21,6 +21,12 @@ export class RefreshTokenEntity {
   @Column({ default: false })
   isRevoked: boolean;
 
+  @Column({ length: 512, nullable: true })
+  replacedByTokenHash: string;
+
+  @Column({ nullable: true })
+  ipAddress: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }

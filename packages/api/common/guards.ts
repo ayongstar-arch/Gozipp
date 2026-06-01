@@ -10,15 +10,10 @@ export class AuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers.authorization;
+    const token = request.cookies?.access_token || request.headers.authorization?.split(' ')[1];
 
-    if (!authHeader) {
-      throw new UnauthorizedException('Missing Authorization Header');
-    }
-
-    const [type, token] = authHeader.split(' ');
-    if (type !== 'Bearer' || !token) {
-      throw new UnauthorizedException('Invalid Token Format');
+    if (!token) {
+      throw new UnauthorizedException('Missing Authentication Token (Cookie)');
     }
 
     try {

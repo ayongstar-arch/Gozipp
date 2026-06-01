@@ -4,6 +4,7 @@ import {
   Delete, Res
 } from '@nestjs/common';
 import { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { PassengerService } from './passenger.service';
 import {
   RideRequestDto, PassengerRequestOtpDto,
@@ -25,6 +26,7 @@ export class PassengerController {
   /** POST /api/v1/passenger/otp */
   @Post('otp')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 900000 } }) // Max 3 OTPs per 15 minutes
   async requestOtp(@Body() body: PassengerRequestOtpDto) {
     return this.passengerService.requestOtp(body.phoneNumber);
   }
@@ -60,6 +62,26 @@ export class PassengerController {
   }
 
   // --- PROTECTED ENDPOINTS (Auth Required) ---
+
+  /** GET /api/v1/passenger/me */
+  @Get('me')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('PASSENGER')
+  async getMe(@Req() req: any) {
+    // This allows the frontend to restore session state from the HttpOnly cookie
+    const profile = await this.passengerService.getProfile(req.user.sub);
+    return {
+      success: true,
+      user: {
+        id: profile.id,
+        name: profile.name,
+        phone: profile.phone,
+        email: profile.email,
+        pointsBalance: profile.points_balance,
+        freeRidesRemaining: profile.free_rides_remaining,
+      }
+    };
+  }
 
   /** GET /api/v1/passenger/profile */
   @Get('profile')
