@@ -30,24 +30,20 @@ const OnboardingView: React.FC = () => {
   return (
     <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white">
       
-      {/* Background SVG Cityscape and Perspective Road */}
-      <div className="absolute bottom-0 left-0 right-0 h-[50vh] pointer-events-none z-0 overflow-hidden flex items-end">
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
-        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
-      </div>
-
       <InstallPwaPrompt />
-      
-      {/* Top spacer or branding */}
-      <div className="h-4 z-10" />
 
       {/* Main Content Area (Logo + Slogans) */}
       <motion.div 
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="flex-1 flex flex-col items-center justify-start mt-0 space-y-2 relative z-10 px-6 pt-6"
+        className="flex-1 flex flex-col items-center justify-start mt-0 space-y-2 relative z-10 w-full pt-12"
       >
+        {/* Background SVG Cityscape anchored to the bottom of THIS container (above dock) */}
+        <div className="absolute bottom-0 left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end w-full">
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+          <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80 mix-blend-screen" />
+        </div>
         {/* Radial glow background wrapper */}
         <motion.div 
           variants={itemVariants} 
