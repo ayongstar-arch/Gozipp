@@ -1,17 +1,24 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import ReferralView from '../passenger/ReferralView';
+import DevicesView from './DevicesView';
 
 const ProfileView: React.FC = () => {
   const { user, logout } = useAuthStore();
   const [showReferral, setShowReferral] = useState(false);
+  const [showDevices, setShowDevices] = useState(false);
 
   if (showReferral) {
     return <ReferralView onClose={() => setShowReferral(false)} />;
   }
 
+  if (showDevices) {
+    return <DevicesView onClose={() => setShowDevices(false)} />;
+  }
+
   const menuItems = [
     { label: 'ชวนเพื่อนรับแต้มสะสม', icon: '🎁', color: 'text-pink-400', onClick: () => setShowReferral(true) },
+    { label: 'อุปกรณ์ที่เข้าสู่ระบบ (อุปกรณ์ของฉัน)', icon: '📱', color: 'text-[#39B54A]', onClick: () => setShowDevices(true) },
     { label: 'Saved Places', icon: '📍', color: 'text-blue-400' },
     { label: 'Payment Methods', icon: '💳', color: 'text-gozipp-green' },
     { label: 'Support Center', icon: '💬', color: 'text-amber-400' },

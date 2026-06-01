@@ -14,6 +14,15 @@ import { RefreshTokenEntity } from '../entities/refresh-token.entity';
 import { AuditLogService } from '../common/audit-log.service';
 import * as crypto from 'crypto';
 
+export interface DeviceMetadata {
+    ipAddress?: string;
+    deviceId?: string;
+    deviceName?: string;
+    os?: string;
+    browser?: string;
+    location?: string;
+}
+
 @Injectable()
 export class AuthService {
     constructor(
@@ -27,7 +36,7 @@ export class AuthService {
 
     // --- TOKEN MANAGEMENT ---
 
-    async issueTokens(userId: string, role: string, ipAddress?: string) {
+    async issueTokens(userId: string, role: string, deviceMeta: DeviceMetadata = {}) {
         const payload = { sub: userId, role };
         
         // 1. Generate Access Token (Short-lived)
@@ -46,7 +55,13 @@ export class AuthService {
             userRole: role,
             tokenHash,
             expiresAt,
-            ipAddress,
+            ipAddress: deviceMeta.ipAddress,
+            deviceId: deviceMeta.deviceId,
+            deviceName: deviceMeta.deviceName,
+            os: deviceMeta.os,
+            browser: deviceMeta.browser,
+            location: deviceMeta.location,
+            lastActiveAt: new Date(),
         });
 
         // 4. Log Audit Event
@@ -54,14 +69,14 @@ export class AuthService {
             actorId: userId,
             actorRole: role,
             action: 'LOGIN',
-            ipAddress,
+            ipAddress: deviceMeta.ipAddress,
         });
 
         // Return token as recordId:rawToken for fast O(1) lookup during refresh
         return { accessToken, refreshToken: `${savedToken.id}:${rawToken}` };
     }
 
-    async refreshTokens(oldRefreshToken: string, ipAddress?: string) {
+    async refreshTokens(oldRefreshToken: string, deviceMeta: DeviceMetadata = {}) {
         if (!oldRefreshToken || !oldRefreshToken.includes(':')) {
              throw new UnauthorizedException('Invalid Refresh Token Format');
         }
@@ -87,19 +102,17 @@ export class AuthService {
 
         // REUSE DETECTION (Stolen Token)
         if (tokenRecord.isRevoked) {
-            // A revoked token was used again! This means the token was likely stolen.
-            // Revoke ALL sessions for this user to protect their account.
             await this.refreshRepo.update({ userId: tokenRecord.userId }, { isRevoked: true });
             await this.auditLog.log({
                 actorId: tokenRecord.userId,
                 actorRole: tokenRecord.userRole,
                 action: 'TOKEN_REUSE_DETECTED',
-                ipAddress,
+                ipAddress: deviceMeta.ipAddress,
             });
             throw new UnauthorizedException('Security Alert: Token Reuse Detected. All sessions revoked. Please log in again.');
         }
 
-        // Token is valid. Rotate it.
+        // Token is valid. Rotate it. Maintain the same device info if not provided
         const newRawToken = crypto.randomBytes(40).toString('hex');
         const newTokenHash = await argon2.hash(newRawToken, { type: argon2.argon2id });
         const newExpiresAt = new Date();
@@ -110,7 +123,13 @@ export class AuthService {
             userRole: tokenRecord.userRole,
             tokenHash: newTokenHash,
             expiresAt: newExpiresAt,
-            ipAddress,
+            ipAddress: deviceMeta.ipAddress || tokenRecord.ipAddress,
+            deviceId: deviceMeta.deviceId || tokenRecord.deviceId,
+            deviceName: deviceMeta.deviceName || tokenRecord.deviceName,
+            os: deviceMeta.os || tokenRecord.os,
+            browser: deviceMeta.browser || tokenRecord.browser,
+            location: deviceMeta.location || tokenRecord.location,
+            lastActiveAt: new Date(),
         });
 
         // Revoke the old token and link it to the new one
@@ -125,17 +144,18 @@ export class AuthService {
     }
 
     // --- GOOGLE HANDLER ---
-    async validateGoogleLogin(userProfile: any, userType: 'PASSENGER' | 'DRIVER') {
+    async validateGoogleLogin(userProfile: any, userType: 'PASSENGER' | 'DRIVER', deviceMeta: DeviceMetadata = {}) {
         return this.findOrCreateSocialUser(
             'GOOGLE',
             userProfile.providerId,
             userProfile,
-            userType
+            userType,
+            deviceMeta
         );
     }
 
     // --- LINE HANDLER (Manual Implementation) ---
-    async handleLineCallback(code: string, userType: 'PASSENGER' | 'DRIVER') {
+    async handleLineCallback(code: string, userType: 'PASSENGER' | 'DRIVER', deviceMeta: DeviceMetadata = {}) {
         try {
             // 1. Exchange Code for Token
             const tokenRes = await axios.post(
@@ -169,7 +189,8 @@ export class AuthService {
                     lastName: '',
                     picture: profile.pictureUrl,
                 },
-                userType
+                userType,
+                deviceMeta
             );
 
         } catch (error) {
@@ -183,7 +204,8 @@ export class AuthService {
         provider: string,
         providerId: string,
         profile: { email?: string; firstName: string; lastName?: string; picture?: string },
-        userType: 'PASSENGER' | 'DRIVER'
+        userType: 'PASSENGER' | 'DRIVER',
+        deviceMeta: DeviceMetadata = {}
     ) {
         if (userType === 'PASSENGER') {
             let passenger = await this.passengerRepo.findOne({
@@ -217,7 +239,7 @@ export class AuthService {
             }
 
             // Generate Tokens
-            const tokens = await this.issueTokens(passenger.id, 'PASSENGER');
+            const tokens = await this.issueTokens(passenger.id, 'PASSENGER', deviceMeta);
 
             return {
                 ...tokens,
@@ -259,7 +281,7 @@ export class AuthService {
                 });
             }
 
-            const tokens = await this.issueTokens(driver.id, 'DRIVER');
+            const tokens = await this.issueTokens(driver.id, 'DRIVER', deviceMeta);
 
             return {
                 ...tokens,
@@ -306,7 +328,7 @@ export class AuthService {
         return { success: true };
     }
 
-    async validatePinLogin(phoneNumber: string, pin: string, role: 'PASSENGER' | 'DRIVER') {
+    async validatePinLogin(phoneNumber: string, pin: string, role: 'PASSENGER' | 'DRIVER', deviceMeta: DeviceMetadata = {}) {
         let user;
         if (role === 'PASSENGER') {
             user = await this.passengerRepo.findOne({ where: { phone: phoneNumber } });
@@ -337,13 +359,14 @@ export class AuthService {
                 actorId: user.id,
                 actorRole: role,
                 action: 'LOGIN_FAILED_PIN',
-                metadata: { phone: phoneNumber }
+                metadata: { phone: phoneNumber },
+                ipAddress: deviceMeta.ipAddress,
             });
             throw new UnauthorizedException('Invalid PIN');
         }
 
         // Generate Tokens
-        const tokens = await this.issueTokens(user.id, role);
+        const tokens = await this.issueTokens(user.id, role, deviceMeta);
 
         return {
             success: true,
@@ -366,5 +389,49 @@ export class AuthService {
 
         if (!user) return { exists: false };
         return { exists: true, hasPin: !!user.pin_hash };
+    }
+
+    // --- SESSION MANAGEMENT ---
+    async getUserSessions(userId: string) {
+        // Return active sessions (not revoked, not expired)
+        const sessions = await this.refreshRepo.find({
+            where: { userId, isRevoked: false },
+            order: { lastActiveAt: 'DESC' }
+        });
+
+        // Filter out expired sessions manually or in query
+        const now = new Date();
+        const activeSessions = sessions.filter(s => s.expiresAt > now).map(s => ({
+            id: s.id,
+            deviceId: s.deviceId,
+            deviceName: s.deviceName || 'Unknown Device',
+            os: s.os || 'Unknown OS',
+            browser: s.browser || 'Unknown Browser',
+            location: s.location || 'Unknown Location',
+            lastActiveAt: s.lastActiveAt || s.createdAt,
+            ipAddress: s.ipAddress,
+            isCurrent: false // We will let the frontend figure this out if they send the current device ID
+        }));
+
+        return { sessions: activeSessions };
+    }
+
+    async revokeSession(userId: string, sessionId: string) {
+        const session = await this.refreshRepo.findOne({ where: { id: sessionId, userId } });
+        if (!session) {
+            throw new UnauthorizedException('Session not found');
+        }
+
+        session.isRevoked = true;
+        await this.refreshRepo.save(session);
+
+        await this.auditLog.log({
+            actorId: userId,
+            actorRole: session.userRole,
+            action: 'REVOKE_SESSION',
+            metadata: { sessionId }
+        });
+
+        return { success: true };
     }
 }

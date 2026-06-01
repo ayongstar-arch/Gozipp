@@ -27,6 +27,25 @@ export class RefreshTokenEntity {
   @Column({ nullable: true })
   ipAddress: string;
 
+  // --- Device & Session Trust (V2) ---
+  @Column({ nullable: true })
+  deviceId: string;
+
+  @Column({ nullable: true })
+  deviceName: string; // e.g. "iPhone 16 Pro", "Windows PC"
+
+  @Column({ nullable: true })
+  os: string;
+
+  @Column({ nullable: true })
+  browser: string;
+
+  @Column({ nullable: true })
+  location: string; // e.g. "Bangkok, Thailand"
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastActiveAt: Date;
+
   @CreateDateColumn()
   createdAt: Date;
 }

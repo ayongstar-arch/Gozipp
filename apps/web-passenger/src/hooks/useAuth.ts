@@ -8,10 +8,22 @@ import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
 import { API_BASE_URL } from '@/constants';
 
+// Helper: Get or create persistent Device ID
+const getDeviceId = () => {
+  if (typeof window === 'undefined') return '';
+  let deviceId = localStorage.getItem('gozipp_device_id');
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    localStorage.setItem('gozipp_device_id', deviceId);
+  }
+  return deviceId;
+};
+
 // Internal helper: authenticated fetch with HttpOnly Cookies
-const apiFetch = async (path: string, options: RequestInit = {}) => {
+export const apiFetch = async (path: string, options: RequestInit = {}) => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Device-Id': getDeviceId(),
     ...(options.headers as Record<string, string> || {}),
   };
   const res = await fetch(`${API_BASE_URL}${path}`, { 
