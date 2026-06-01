@@ -74,6 +74,12 @@ const LoginView: React.FC = () => {
   return (
     <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit p-6 relative overflow-hidden text-white w-full">
       
+      {/* Background SVG Cityscape and Perspective Road */}
+      <div className="absolute top-[8vh] left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+      </div>
+
       {/* Back Button */}
       <div className="absolute top-6 left-6 z-20">
         <button 
@@ -93,38 +99,26 @@ const LoginView: React.FC = () => {
       {/* Main Form Area */}
       <div className="flex-1 flex flex-col justify-start mt-8 relative z-10 max-w-md mx-auto w-full">
         
-        {/* Compact Logo & Aligned Cityscape Background */}
-        <div className="relative w-full flex justify-center items-center mb-0 h-40">
-          {/* Absolute Background Cityscape tied to Logo position */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[40%] w-[100vw] h-[45vh] pointer-events-none z-0 flex items-end justify-center">
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
-            <img 
-              src="/bg-city-realistic.png" 
-              alt="Cityscape" 
-              className="w-full h-full object-cover object-bottom opacity-90 mix-blend-screen" 
-            />
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="w-32 h-32 flex items-center justify-center relative z-10"
-          >
-            <div className="absolute inset-0 bg-black/40 rounded-full blur-3xl pointer-events-none" />
-            <img 
-              src="/logo-gozipp.png" 
-              className="w-28 h-auto object-contain mix-blend-screen relative z-10 drop-shadow-[0_0_15px_rgba(57,181,74,0.3)]" 
-              alt="Gozipp" 
-            />
-          </motion.div>
-        </div>
+        {/* Compact Logo */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto w-32 h-32 flex items-center justify-center relative mb-0 z-20"
+        >
+          <div className="absolute inset-0 bg-black/40 rounded-full blur-3xl pointer-events-none" />
+          <img 
+            src="/logo-gozipp.png" 
+            className="w-28 h-auto object-contain relative z-10 drop-shadow-[0_0_15px_rgba(57,181,74,0.3)]" 
+            alt="Gozipp" 
+          />
+        </motion.div>
         
         {/* Compact Text Headers */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="text-center mb-4"
+          className="text-center mb-4 relative z-20"
         >
           <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">ยินดีต้อนรับกลับ</h2>
           <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
