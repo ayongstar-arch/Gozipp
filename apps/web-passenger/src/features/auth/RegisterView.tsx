@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 const RegisterView: React.FC = () => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
   const { isLoading } = useUIStore();
-  const { requestOtp, error, setError } = useAuth();
+  const { verifyOtp, error, setError } = useAuth();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -18,7 +18,9 @@ const RegisterView: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.phone) return;
-    await requestOtp(formData.phone, true, formData.name);
+    
+    // BYPASS OTP for initial phase: directly register the user with a mock OTP
+    await verifyOtp(formData.phone, '000000', true, formData.name);
   };
 
   return (

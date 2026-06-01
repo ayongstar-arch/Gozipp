@@ -29,6 +29,13 @@ const LoginView: React.FC = () => {
       });
       const statusData = await statusRes.json();
       
+      if (!statusData.isRegistered && !statusData.exists) {
+          // New user -> Go directly to register, bypassing OTP
+          setAuthStep('REGISTER');
+          useUIStore.getState().setIsLoading(false);
+          return;
+      }
+      
       if ((statusData.isRegistered || statusData.exists) && statusData.hasPin) {
           setUser({ id: '', name: '', phone: phone, email: '', avatarSeed: 'user', pointsBalance: 0, freeRidesRemaining: 0 });
           setAuthStep('LOGIN_PIN');
@@ -39,6 +46,7 @@ const LoginView: React.FC = () => {
       console.error("Status check failed", e);
     }
     
+    // Fallback: If user is registered but has no PIN, use OTP to verify them
     await requestOtp(phone, false);
   };
 
