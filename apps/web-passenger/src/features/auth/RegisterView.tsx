@@ -38,34 +38,36 @@ const RegisterView: React.FC = () => {
         </button>
       </div>
 
-      {/* Background SVG Cityscape fixed to the bottom of the screen */}
-      <div className="absolute bottom-0 left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end w-full">
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
-        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80 mix-blend-screen" />
-      </div>
-
       {/* Main Container */}
       <div className="flex-1 flex flex-col justify-start mt-8 w-full z-10">
         
-        {/* Master Logo */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mx-auto w-48 h-48 flex items-center justify-center relative z-20 mix-blend-screen mb-2"
-        >
-          {/* Radial Glow Effect */}
-          <div 
-            className="absolute inset-0 rounded-full pointer-events-none scale-125"
-            style={{
-              background: 'radial-gradient(circle, rgba(163,255,63,0.15) 0%, transparent 70%)'
-            }}
-          />
-          <img 
-            src="/logo-gozipp.png" 
-            className="w-40 h-auto object-contain relative z-10 contrast-125" 
-            alt="Gozipp" 
-          />
-        </motion.div>
+        <div className="relative w-full">
+          {/* Background SVG Cityscape anchored EXACTLY below the logo (Match Master) */}
+          <div className="absolute top-[120px] left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-start w-full">
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+            <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-top opacity-80 mix-blend-screen" />
+          </div>
+          
+          {/* Master Logo */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mx-auto w-48 h-48 flex items-center justify-center relative z-20 mix-blend-screen mb-2"
+          >
+            {/* Radial Glow Effect */}
+            <div 
+              className="absolute inset-0 rounded-full pointer-events-none scale-125"
+              style={{
+                background: 'radial-gradient(circle, rgba(163,255,63,0.15) 0%, transparent 70%)'
+              }}
+            />
+            <img 
+              src="/logo-gozipp.png" 
+              className="w-40 h-auto object-contain relative z-10 contrast-125" 
+              alt="Gozipp" 
+            />
+          </motion.div>
+        </div>
         
         {/* Form Container (Constrained width + padding) */}
         <div className="w-full max-w-md mx-auto px-6 relative z-20 flex flex-col pb-8">
