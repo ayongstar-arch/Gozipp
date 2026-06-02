@@ -6,7 +6,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useRideStore } from '../../stores/rideStore';
-import { useAuthStore } from '../../stores/authStore';
 import { API_BASE_URL, SOCKET_URL } from '@/constants';
 import { io, Socket } from 'socket.io-client';
 
@@ -20,16 +19,15 @@ interface DriverLocation {
 
 const TrackingView: React.FC = () => {
   const { activeDriver, myLocation, currentTripId } = useRideStore();
-  const { token } = useAuthStore();
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [ridePhase, setRidePhase] = useState<'DRIVER_COMING' | 'IN_PROGRESS' | 'COMPLETED'>('DRIVER_COMING');
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    if (!token || !currentTripId || !activeDriver) return;
+    if (!currentTripId || !activeDriver) return;
 
     const socket = io(SOCKET_URL, {
-      auth: { token },
+      withCredentials: true,
       transports: ['websocket'],
     });
     socketRef.current = socket;
@@ -53,7 +51,7 @@ const TrackingView: React.FC = () => {
       socket.emit('CHAT_LEAVE_ROOM', { tripId: currentTripId });
       socket.disconnect();
     };
-  }, [token, currentTripId, activeDriver?.id]);
+  }, [currentTripId, activeDriver?.id]);
 
   if (!activeDriver) {
     return (

@@ -4,7 +4,6 @@
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRideStore } from '../stores/rideStore';
-import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
 import { API_BASE_URL, SOCKET_URL } from '@/constants';
 import { io, Socket } from 'socket.io-client';
@@ -26,7 +25,6 @@ export interface ActiveDriver {
 }
 
 export const useRide = () => {
-  const { token } = useAuthStore();
   const { myLocation, setIsSearching, setActiveDriver, setCurrentTripId, resetRide, currentTripId } = useRideStore();
   const { setToastMessage } = useUIStore();
 
@@ -38,10 +36,8 @@ export const useRide = () => {
 
   // Connect to Socket.io with auth token
   useEffect(() => {
-    if (!token) return;
-
     const socket = io(SOCKET_URL, {
-      auth: { token },
+      withCredentials: true,
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: 5,
@@ -94,7 +90,7 @@ export const useRide = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [token, currentTripId]);
+  }, [currentTripId]);
 
   // Request a ride
   const requestRide = useCallback(async (
@@ -105,10 +101,6 @@ export const useRide = () => {
     destLng: number,
     destAddress: string,
   ): Promise<boolean> => {
-    if (!token) {
-      setError('กรุณาเข้าสู่ระบบก่อน');
-      return false;
-    }
 
     setIsLoading(true);
     setError(null);
@@ -118,8 +110,8 @@ export const useRide = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           pickupLat,
           pickupLng,
@@ -160,7 +152,7 @@ export const useRide = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [token, setCurrentTripId, setIsSearching, setToastMessage]);
+  }, [setCurrentTripId, setIsSearching, setToastMessage]);
 
   // Cancel a ride
   const cancelRide = useCallback(async (): Promise<void> => {
@@ -169,7 +161,7 @@ export const useRide = () => {
     try {
       await fetch(`${API_BASE_URL}/api/v1/passenger/ride/${currentTripId}/cancel`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
     } catch {
       // Silently fail on cancel
@@ -183,21 +175,21 @@ export const useRide = () => {
     setRideStatus(null);
     setEstimate(null);
     setToastMessage('ยกเลิกการค้นหาแล้ว');
-  }, [currentTripId, token, resetRide, setToastMessage]);
+  }, [currentTripId, resetRide, setToastMessage]);
 
   // Poll ride status (fallback if socket misses event)
   const pollRideStatus = useCallback(async (): Promise<void> => {
-    if (!currentTripId || !token) return;
+    if (!currentTripId) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/passenger/ride/${currentTripId}/status`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       const data = await res.json();
       if (data.status) setRideStatus(data.status);
     } catch {
       // Ignore poll errors
     }
-  }, [currentTripId, token]);
+  }, [currentTripId]);
 
   return {
     requestRide,

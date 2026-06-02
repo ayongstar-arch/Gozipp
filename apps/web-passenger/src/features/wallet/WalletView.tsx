@@ -32,7 +32,7 @@ const TXN_LABELS: Record<string, string> = {
 };
 
 const WalletView: React.FC = () => {
-  const { user, token } = useAuthStore();
+  const { user } = useAuthStore();
   const { setToastMessage } = useUIStore();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -44,10 +44,10 @@ const WalletView: React.FC = () => {
 
   // Fetch transaction history
   useEffect(() => {
-    if (!token || !user?.id) return;
+    if (!user?.id) return;
     setIsLoading(true);
     fetch(`${API_BASE_URL}/api/v1/credit/history`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     })
       .then(r => r.json())
       .then(data => {
@@ -56,15 +56,15 @@ const WalletView: React.FC = () => {
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, [token, user?.id]);
+  }, [user?.id]);
 
   const handleTopup = async (amount: number) => {
-    if (!token) return;
     setIsLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/credit/topup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ amount, paymentMethod: 'PROMPTPAY' }),
       });
       const data = await res.json();
