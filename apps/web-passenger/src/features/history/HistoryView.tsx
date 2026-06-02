@@ -4,7 +4,6 @@
  */
 'use client';
 import React, { useEffect, useState } from 'react';
-import { useAuthStore } from '../../stores/authStore';
 import { API_BASE_URL } from '@/constants';
 
 interface Trip {
@@ -32,18 +31,16 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 };
 
 const HistoryView: React.FC = () => {
-  const { token } = useAuthStore();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
   const fetchTrips = async (pageNum: number) => {
-    if (!token) return;
     setIsLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/passenger/trips?page=${pageNum}&limit=10`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include', // Send HttpOnly cookies
       });
       const data = await res.json();
       const newTrips: Trip[] = Array.isArray(data) ? data : data.trips || [];
@@ -59,7 +56,7 @@ const HistoryView: React.FC = () => {
 
   useEffect(() => {
     fetchTrips(1);
-  }, [token]);
+  }, []);
 
   const loadMore = () => {
     const next = page + 1;
