@@ -38,8 +38,8 @@ export default function PassengerPage() {
           {authStep === 'REGISTER_METHOD' && <RegisterMethodView />}
           {authStep === 'REGISTER' && <RegisterView />}
           {authStep === 'OTP' && <OtpView phoneNumber={user?.phone || ''} isRegistering={!user?.id} name={user?.name} />}
-          {authStep === 'LOGIN_PIN' && <PinView mode="LOGIN" phoneNumber={user?.phone} />}
-          {authStep === 'SETUP_PIN' && <PinView mode="SETUP" userId={user?.id} />}
+          {authStep === 'LOGIN_PIN' && <PinView isSetup={false} />}
+          {authStep === 'SETUP_PIN' && <PinView isSetup={true} />}
         </div>
       ) : (
         <AppLayout>
