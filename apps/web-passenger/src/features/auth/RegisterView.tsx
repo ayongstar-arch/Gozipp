@@ -38,20 +38,20 @@ const RegisterView: React.FC = () => {
         </button>
       </div>
 
+      {/* Background SVG Cityscape fixed to the bottom of the screen */}
+      <div className="absolute bottom-0 left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end w-full">
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80 mix-blend-screen" />
+      </div>
+
       {/* Main Container */}
-      <div className="flex-1 flex flex-col justify-start mt-8 w-full">
+      <div className="flex-1 flex flex-col justify-start mt-8 w-full z-10">
         
-        {/* Background SVG Cityscape anchored to the bottom */}
-        <div className="absolute bottom-0 left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end w-full">
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
-          <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80 mix-blend-screen" />
-        </div>
-        
-        {/* Compact Logo */}
+        {/* Master Logo */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mx-auto w-32 h-32 flex items-center justify-center relative z-20 mix-blend-screen mb-2"
+          className="mx-auto w-48 h-48 flex items-center justify-center relative z-20 mix-blend-screen mb-2"
         >
           {/* Radial Glow Effect */}
           <div 
@@ -62,7 +62,7 @@ const RegisterView: React.FC = () => {
           />
           <img 
             src="/logo-gozipp.png" 
-            className="w-28 h-auto object-contain relative z-10 contrast-125" 
+            className="w-40 h-auto object-contain relative z-10 contrast-125" 
             alt="Gozipp" 
           />
         </motion.div>
