@@ -13,6 +13,8 @@ import { PassengerEntity } from '../entities/passenger.entity';
 import { DriverEntity } from '../entities/driver.entity';
 import { AuthService, DeviceMetadata } from './auth.service';
 import { AuditLogService } from '../common/audit-log.service';
+import { RefreshTokenEntity } from '../entities/refresh-token.entity';
+import { RiskEngineService } from './risk-engine.service';
 
 @Injectable()
 export class WebauthnService {
@@ -25,9 +27,11 @@ export class WebauthnService {
         @InjectRepository(PasskeyCredentialEntity) private passkeyRepo: Repository<PasskeyCredentialEntity>,
         @InjectRepository(PassengerEntity) private passengerRepo: Repository<PassengerEntity>,
         @InjectRepository(DriverEntity) private driverRepo: Repository<DriverEntity>,
+        @InjectRepository(RefreshTokenEntity) private refreshRepo: Repository<RefreshTokenEntity>,
         private configService: ConfigService,
         private authService: AuthService,
         private auditLog: AuditLogService,
+        private riskEngine: RiskEngineService,
     ) {
         // e.g. 'localhost' or 'gozipp.com'
         this.rpID = this.configService.get('RP_ID') || 'localhost'; 
@@ -202,6 +206,23 @@ export class WebauthnService {
 
             // Clear challenge
             await this.saveUserChallenge(user.id, role, null);
+
+            // RISK ENGINE EVALUATION
+            if (deviceMeta.ipAddress) {
+                const risk = await this.riskEngine.evaluateLoginRisk(user.id, deviceMeta.ipAddress);
+                if (risk.highRisk) {
+                    await this.auditLog.log({
+                        actorId: user.id,
+                        actorRole: role,
+                        action: 'LOGIN_BLOCKED_RISK',
+                        metadata: { reason: risk.reason },
+                        ipAddress: deviceMeta.ipAddress,
+                    });
+                    // Revoke all active sessions to force a complete re-auth (OTP)
+                    await this.refreshRepo.update({ userId: user.id }, { isRevoked: true });
+                    throw new BadRequestException('REQUIRE_OTP');
+                }
+            }
 
             // Issue JWT
             const tokens = await this.authService.issueTokens(user.id, role, deviceMeta);

@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller';
 import { WebauthnController } from './webauthn.controller';
 import { AuthService } from './auth.service';
 import { WebauthnService } from './webauthn.service';
+import { RiskEngineService } from './risk-engine.service';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { PassengerEntity } from '../entities/passenger.entity';
 import { DriverEntity } from '../entities/driver.entity';
@@ -19,7 +20,7 @@ import { AuditLogEntity } from '../entities/audit-log.entity';
         PassportModule
     ],
     controllers: [AuthController, WebauthnController],
-    providers: [AuthService, WebauthnService, GoogleStrategy, AuditLogService],
-    exports: [AuthService, WebauthnService, AuditLogService]
+    providers: [AuthService, WebauthnService, RiskEngineService, GoogleStrategy, AuditLogService],
+    exports: [AuthService, WebauthnService, RiskEngineService, AuditLogService]
 })
 export class AuthModule { }

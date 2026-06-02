@@ -12,6 +12,7 @@ import { PassengerEntity } from '../entities/passenger.entity';
 import { DriverEntity } from '../entities/driver.entity';
 import { RefreshTokenEntity } from '../entities/refresh-token.entity';
 import { AuditLogService } from '../common/audit-log.service';
+import { RiskEngineService } from './risk-engine.service';
 import * as crypto from 'crypto';
 
 export interface DeviceMetadata {
@@ -32,6 +33,7 @@ export class AuthService {
         private jwtService: JwtService,
         private configService: ConfigService,
         private auditLog: AuditLogService,
+        private riskEngine: RiskEngineService,
     ) { }
 
     // --- TOKEN MANAGEMENT ---
@@ -363,6 +365,23 @@ export class AuthService {
                 ipAddress: deviceMeta.ipAddress,
             });
             throw new UnauthorizedException('Invalid PIN');
+        }
+
+        // RISK ENGINE EVALUATION
+        if (deviceMeta.ipAddress) {
+            const risk = await this.riskEngine.evaluateLoginRisk(user.id, deviceMeta.ipAddress);
+            if (risk.highRisk) {
+                await this.auditLog.log({
+                    actorId: user.id,
+                    actorRole: role,
+                    action: 'LOGIN_BLOCKED_RISK',
+                    metadata: { reason: risk.reason },
+                    ipAddress: deviceMeta.ipAddress,
+                });
+                // Revoke all active sessions to force a complete re-auth (OTP)
+                await this.refreshRepo.update({ userId: user.id }, { isRevoked: true });
+                throw new UnauthorizedException('REQUIRE_OTP');
+            }
         }
 
         // Generate Tokens

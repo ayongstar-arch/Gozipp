@@ -90,6 +90,11 @@ export const useWebAuthn = () => {
 
       return false;
     } catch (err: any) {
+      if (err.message === 'REQUIRE_OTP' || err.message.includes('REQUIRE_OTP')) {
+        setToastMessage('ระบบตรวจพบความเสี่ยง กรุณายืนยันตัวตนใหม่ด้วย OTP');
+        setAuthStep('LOGIN');
+        return false;
+      }
       console.error(err);
       setToastMessage('เข้าสู่ระบบด้วยสแกนใบหน้า/ลายนิ้วมือไม่สำเร็จ');
       return false;

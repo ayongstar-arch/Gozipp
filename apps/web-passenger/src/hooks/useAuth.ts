@@ -194,12 +194,17 @@ export const useAuth = () => {
       setAuthStep('APP_SHELL');
       return true;
     } catch (err: any) {
+      if (err.message === 'REQUIRE_OTP' || err.message.includes('REQUIRE_OTP')) {
+        setToastMessage('ระบบตรวจพบความเสี่ยง กรุณายืนยันตัวตนใหม่ด้วย OTP');
+        setAuthStep('LOGIN');
+        return false;
+      }
       setError(err.message);
       return false;
     } finally {
       setIsLoading(false);
     }
-  }, [setAuthStep, setIsLoading, setUser]);
+  }, [setAuthStep, setIsLoading, setUser, setToastMessage]);
 
   // --- Refresh Access Token ---
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
