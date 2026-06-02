@@ -38,24 +38,24 @@ const RegisterView: React.FC = () => {
         </button>
       </div>
 
-      {/* Main Container - Creates ONE stacking context for Background + Logo */}
-      <div className="flex-1 flex flex-col justify-start mt-12 relative z-10 w-full">
+      {/* Main Container */}
+      <div className="flex-1 flex flex-col justify-start mt-8 w-full">
         
-        {/* Background SVG Cityscape (Inside the same stacking context!) */}
-        <div className="absolute top-0 left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
+        {/* Background SVG Cityscape anchored to the bottom */}
+        <div className="absolute bottom-0 left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end w-full">
           <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
-          <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+          <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80 mix-blend-screen" />
         </div>
         
         {/* Compact Logo */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mx-auto w-32 h-32 flex items-center justify-center relative z-20 mix-blend-screen mt-[2vh] mb-4"
+          className="mx-auto w-32 h-32 flex items-center justify-center relative z-20 mix-blend-screen mb-2"
         >
           {/* Radial Glow Effect */}
           <div 
-            className="absolute inset-0 rounded-full pointer-events-none"
+            className="absolute inset-0 rounded-full pointer-events-none scale-125"
             style={{
               background: 'radial-gradient(circle, rgba(163,255,63,0.15) 0%, transparent 70%)'
             }}
@@ -68,16 +68,16 @@ const RegisterView: React.FC = () => {
         </motion.div>
         
         {/* Form Container (Constrained width + padding) */}
-        <div className="w-full max-w-md mx-auto px-6 relative z-20 flex flex-col">
+        <div className="w-full max-w-md mx-auto px-6 relative z-20 flex flex-col pb-8">
           {/* Text Headers */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="text-center mb-4"
+            className="text-center mb-6 mt-2"
           >
-            <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">ลงทะเบียนใหม่</h2>
-            <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
+            <h2 className="text-[28px] font-extrabold text-white mb-1 tracking-tight drop-shadow-lg">ลงทะเบียนใหม่</h2>
+            <div className="text-gray-300 font-medium text-sm space-y-0.5 drop-shadow-md">
               <p>เข้าร่วม GOZIPP เดินทางฉลาด รวดเร็ว ทั่วเมือง</p>
             </div>
           </motion.div>
