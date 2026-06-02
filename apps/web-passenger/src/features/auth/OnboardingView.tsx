@@ -37,7 +37,7 @@ const OnboardingView: React.FC = () => {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="flex-1 flex flex-col items-center justify-start mt-0 space-y-2 relative z-10 w-full pt-12"
+        className="flex-1 flex flex-col items-center justify-start mt-0 space-y-2 relative z-10 w-full pt-8"
       >
         {/* Background SVG Cityscape anchored to the bottom of THIS container (above dock) */}
         <div className="absolute bottom-0 left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end w-full">
@@ -47,11 +47,11 @@ const OnboardingView: React.FC = () => {
         {/* Radial glow background wrapper */}
         <motion.div 
           variants={itemVariants} 
-          className="relative flex items-center justify-center w-56 h-56 mx-auto mix-blend-screen"
+          className="relative flex items-center justify-center w-48 h-48 mx-auto mix-blend-screen"
         >
           {/* Radial Glow Effect */}
           <div 
-            className="absolute inset-0 rounded-full pointer-events-none"
+            className="absolute inset-0 rounded-full pointer-events-none scale-125"
             style={{
               background: 'radial-gradient(circle, rgba(163,255,63,0.12) 0%, transparent 65%)'
             }}
@@ -64,7 +64,7 @@ const OnboardingView: React.FC = () => {
         </motion.div>
         
         {/* Texts */}
-        <motion.div variants={itemVariants} className="space-y-2.5 text-center mt-6">
+        <motion.div variants={itemVariants} className="space-y-2.5 text-center mt-2">
           <h1 className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight drop-shadow-lg">
             เรียกวินใกล้คุณ
           </h1>
