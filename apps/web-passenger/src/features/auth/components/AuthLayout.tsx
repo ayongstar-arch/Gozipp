@@ -20,18 +20,17 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({
   dockMode = false 
 }) => {
   return (
-    <div className="flex flex-col justify-between min-h-[100dvh] bg-[#04070B] font-kanit relative overflow-hidden text-white w-full">
+    <div className="flex flex-col justify-between min-h-[100dvh] bg-black font-kanit relative overflow-hidden text-white w-full">
       
       {/* 1. MASTER BACKGROUND LAYER */}
-      {/* Positioned at the absolute background. Anchored to bottom. */}
-      <div className="absolute inset-0 pointer-events-none z-0 flex items-end overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none flex items-end overflow-hidden">
         {/* Top fade: Smooth transition from black top to the city skyline */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#04070B] via-transparent to-[#04070B]/80 z-10"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-black/80 z-10"></div>
         {/* The Master Background Image: Object-cover, bottom aligned to ensure the glowing road is always visible */}
         <img 
           src="/bg-city-realistic.png" 
           alt="Gozipp Master Background" 
-          className="w-full h-full object-cover object-bottom opacity-90 mix-blend-screen" 
+          className="w-full h-full object-cover object-bottom opacity-100" 
         />
       </div>
 
@@ -51,26 +50,26 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({
       )}
 
       {/* 3. MAIN CONTENT WRAPPER */}
-      {/* We use pt-12 to push the logo down slightly from the very top. */}
-      <div className={`flex-1 flex flex-col justify-start relative z-20 w-full pt-[10vh]`}>
+      {/* NO relative/z-index here so it doesn't create a new stacking context, letting mix-blend-screen reach the background image! */}
+      <div className={`flex-1 flex flex-col justify-start w-full pt-[15vh]`}>
         
         {/* MASTER LOGO */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="mx-auto w-40 h-40 flex items-center justify-center relative mix-blend-screen mb-2"
+          className="mx-auto w-48 h-48 flex items-center justify-center mix-blend-screen mb-6 relative"
         >
           {/* Radial Glow Effect behind the logo (The Green Aura) */}
           <div 
             className="absolute inset-0 rounded-full pointer-events-none"
             style={{
-              background: 'radial-gradient(circle, rgba(163,255,63,0.18) 0%, transparent 65%)'
+              background: 'radial-gradient(circle, rgba(163,255,63,0.15) 0%, transparent 60%)'
             }}
           />
           <img 
             src={APP_LOGO_PATH} 
-            className="w-32 h-auto object-contain relative z-10 contrast-125 drop-shadow-[0_0_15px_rgba(57,181,74,0.4)]" 
+            className="w-36 h-auto object-contain relative z-10 contrast-125" 
             alt="Gozipp" 
           />
         </motion.div>
@@ -81,10 +80,10 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.5, ease: 'easeOut' }}
-            className="text-center mb-6 px-6"
+            className="text-center mb-6 px-6 relative z-30"
           >
             {title && (
-              <h2 className="text-[28px] lg:text-[32px] font-extrabold text-white mb-1.5 tracking-tight drop-shadow-lg">
+              <h2 className="text-[28px] lg:text-[32px] font-extrabold text-white mb-2 tracking-tight drop-shadow-lg">
                 {title}
               </h2>
             )}
