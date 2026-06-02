@@ -4,7 +4,6 @@ import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../hooks/useAuth';
 import { API_BASE_URL } from '@/constants';
 import { motion } from 'framer-motion';
-import AuthLayout from './components/AuthLayout';
 
 const LoginView: React.FC = () => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
@@ -73,92 +72,147 @@ const LoginView: React.FC = () => {
   };
 
   return (
-    <AuthLayout
-      title="ยินดีต้อนรับกลับ"
-      subtitle="กรอกเบอร์โทรศัพท์ของคุณเพื่อเข้าสู่ระบบ"
-      showBackButton={true}
-      onBack={() => setAuthStep('ONBOARDING')}
-    >
-      {/* Error message block */}
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-2xl mb-4 text-xs flex items-center gap-2 backdrop-blur-md"
+    <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit relative overflow-hidden text-white w-full">
+      
+      {/* Back Button */}
+      <div className="absolute top-6 left-6 z-30">
+        <button 
+          onClick={() => setAuthStep('ONBOARDING')}
+          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
+          aria-label="กลับ"
         >
-          <span className="text-base">⚠️</span> {error}
-        </motion.div>
-      )}
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+      </div>
 
-      {/* Phone number input form */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="space-y-4"
-      >
-        <label className="block relative">
-          <span className="absolute -top-3 left-4 bg-[#04070B] px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">
-            เบอร์โทรศัพท์
-          </span>
-          <input
-            type="tel"
-            inputMode="none"
-            readOnly
-            className="w-full bg-white/5 border border-white/10 p-3 rounded-2xl text-2xl tracking-widest font-bold text-center text-[#A3FF3F] outline-none focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] transition-all backdrop-blur-md placeholder:text-gray-600"
-            placeholder="08X-XXX-XXXX"
-            value={phone}
-            onClick={(e) => {
-              e.preventDefault();
+      {/* Main Container - Creates ONE stacking context for Background + Logo */}
+      <div className="flex-1 flex flex-col justify-start mt-12 relative z-10 w-full">
+        
+        {/* Background SVG Cityscape (Inside the same stacking context!) */}
+        <div className="absolute top-0 left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+          <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+        </div>
+
+        {/* Compact Logo */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto w-32 h-32 flex items-center justify-center relative z-20 mix-blend-screen mt-[2vh] mb-4"
+        >
+          {/* Radial Glow Effect */}
+          <div 
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background: 'radial-gradient(circle, rgba(163,255,63,0.15) 0%, transparent 70%)'
             }}
           />
-        </label>
-        <button
-          onClick={handleLogin}
-          disabled={isLoading || phone.replace(/\D/g, '').length < 10}
-          className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-extrabold py-3.5 rounded-2xl text-lg hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 disabled:hover:scale-100 overflow-hidden shadow-[0_0_20px_rgba(163,255,63,0.25)]"
-        >
-          <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
-          <span className="relative z-10">{isLoading ? 'กำลังดำเนินการ...' : 'ดำเนินการต่อ'}</span>
-        </button>
-      </motion.div>
+          <img 
+            src="/logo-gozipp.png" 
+            className="w-28 h-auto object-contain relative z-10 contrast-125" 
+            alt="Gozipp" 
+          />
+        </motion.div>
+        
+        {/* Form Container (Constrained width + padding) */}
+        <div className="w-full max-w-md mx-auto px-6 relative z-20 flex flex-col">
+          {/* Compact Text Headers */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-center mb-6"
+          >
+            <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">ยินดีต้อนรับกลับ</h2>
+            <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
+              <p>กรอกเบอร์โทรศัพท์ของคุณเพื่อเข้าสู่ระบบ</p>
+            </div>
+          </motion.div>
 
-      {/* Custom Numpad */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="grid grid-cols-3 gap-3 mt-6 relative z-10"
-      >
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+          {/* Error message block */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-2xl mb-4 text-xs flex items-center gap-2 backdrop-blur-md"
+            >
+              <span className="text-base">⚠️</span> {error}
+            </motion.div>
+          )}
+
+        {/* Phone number input form */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="space-y-4"
+        >
+          <label className="block relative">
+            <span className="absolute -top-3 left-4 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">
+              เบอร์โทรศัพท์
+            </span>
+            <input
+              type="tel"
+              inputMode="none"
+              readOnly
+              className="w-full bg-white/5 border border-white/10 p-3 rounded-2xl text-2xl tracking-widest font-bold text-center text-[#A3FF3F] outline-none focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] transition-all backdrop-blur-md placeholder:text-gray-600"
+              placeholder="08X-XXX-XXXX"
+              value={phone}
+              onClick={(e) => {
+                e.preventDefault();
+              }}
+            />
+          </label>
           <button
-            key={num}
-            onClick={() => handleNumpadPress(num.toString())}
-            className="bg-white/5 hover:bg-[#A3FF3F]/20 active:bg-[#A3FF3F]/40 border border-white/10 hover:border-[#A3FF3F]/30 text-white text-2xl font-semibold py-4 rounded-2xl transition-all backdrop-blur-md"
+            onClick={handleLogin}
+            disabled={isLoading || phone.replace(/\D/g, '').length < 10}
+            className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-extrabold py-3.5 rounded-2xl text-lg hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 disabled:hover:scale-100 overflow-hidden shadow-[0_0_20px_rgba(163,255,63,0.25)]"
           >
-            {num}
+            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
+            <span className="relative z-10">{isLoading ? 'กำลังดำเนินการ...' : 'ดำเนินการต่อ'}</span>
           </button>
-        ))}
-        <div className="col-start-2">
-          <button
-            onClick={() => handleNumpadPress('0')}
-            className="w-full bg-white/5 hover:bg-[#A3FF3F]/20 active:bg-[#A3FF3F]/40 border border-white/10 hover:border-[#A3FF3F]/30 text-white text-2xl font-semibold py-4 rounded-2xl transition-all backdrop-blur-md"
-          >
-            0
-          </button>
+        </motion.div>
+
+        {/* Custom Numpad */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="grid grid-cols-3 gap-3 mt-6 relative z-10"
+        >
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+            <button
+              key={num}
+              onClick={() => handleNumpadPress(num.toString())}
+              className="bg-white/5 hover:bg-[#A3FF3F]/20 active:bg-[#A3FF3F]/40 border border-white/10 hover:border-[#A3FF3F]/30 text-white text-2xl font-semibold py-4 rounded-2xl transition-all backdrop-blur-md"
+            >
+              {num}
+            </button>
+          ))}
+          <div className="col-start-2">
+            <button
+              onClick={() => handleNumpadPress('0')}
+              className="w-full bg-white/5 hover:bg-[#A3FF3F]/20 active:bg-[#A3FF3F]/40 border border-white/10 hover:border-[#A3FF3F]/30 text-white text-2xl font-semibold py-4 rounded-2xl transition-all backdrop-blur-md"
+            >
+              0
+            </button>
+          </div>
+          <div className="col-start-3 flex justify-center items-center">
+            <button
+              onClick={handleNumpadDelete}
+              className="w-full bg-white/5 hover:bg-red-500/20 active:bg-red-500/40 border border-white/10 hover:border-red-500/30 text-white text-xl font-bold py-4 rounded-2xl transition-all backdrop-blur-md flex items-center justify-center"
+            >
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" />
+              </svg>
+            </button>
+          </div>
+        </motion.div>
         </div>
-        <div className="col-start-3 flex justify-center items-center">
-          <button
-            onClick={handleNumpadDelete}
-            className="w-full bg-white/5 hover:bg-red-500/20 active:bg-red-500/40 border border-white/10 hover:border-red-500/30 text-white text-xl font-bold py-4 rounded-2xl transition-all backdrop-blur-md flex items-center justify-center"
-          >
-            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" />
-            </svg>
-          </button>
-        </div>
-      </motion.div>
-    </AuthLayout>
+      </div>
+    </div>
   );
 };
 

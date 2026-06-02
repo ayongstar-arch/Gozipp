@@ -25,8 +25,8 @@ const PassengerMain: React.FC = () => {
   if (authStep === 'LOGIN') return <LoginView />;
   if (authStep === 'REGISTER') return <RegisterView />;
   if (authStep === 'OTP') return <OtpView phoneNumber={user?.phone || ''} isRegistering={!user?.id} name={user?.name} />;
-  if (authStep === 'LOGIN_PIN') return <PinView isSetup={false} />;
-  if (authStep === 'SETUP_PIN') return <PinView isSetup={true} />;
+  if (authStep === 'LOGIN_PIN') return <PinView mode="LOGIN" phoneNumber={user?.phone} />;
+  if (authStep === 'SETUP_PIN') return <PinView mode="SETUP" userId={user?.id} />;
 
   // 2. Render App Shell
   return (
