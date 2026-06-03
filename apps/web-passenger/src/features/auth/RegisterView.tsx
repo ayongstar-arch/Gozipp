@@ -38,17 +38,21 @@ const RegisterView: React.FC = () => {
         </button>
       </div>
 
+      {/* Exact Master Background Layer */}
+      <div className="fixed inset-0 pointer-events-none z-0 flex flex-col justify-between">
+        <div className="flex-1 relative w-full">
+          {/* Cityscape aligned exactly as in OnboardingView */}
+          <div className="absolute bottom-0 left-0 right-0 h-[45vh] overflow-hidden flex items-end w-full">
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+            <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80 mix-blend-screen" />
+          </div>
+        </div>
+        {/* Dummy dock height spacer (matching OnboardingView dock) */}
+        <div className="h-[320px] w-full shrink-0"></div>
+      </div>
+
       {/* Main Container */}
       <div className="flex-1 flex flex-col justify-start mt-8 w-full z-10">
-        
-        <div className="relative w-full">
-          {/* Background SVG Cityscape anchored EXACTLY below the logo (Match Master) */}
-          <div className="absolute top-[120px] left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-start w-full">
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
-            <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-top opacity-80 mix-blend-screen" />
-          </div>
-          
-          {/* Master Logo */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -67,7 +71,6 @@ const RegisterView: React.FC = () => {
               alt="Gozipp" 
             />
           </motion.div>
-        </div>
         
         {/* Form Container (Constrained width + padding) */}
         <div className="w-full max-w-md mx-auto px-6 relative z-20 flex flex-col pb-8">
