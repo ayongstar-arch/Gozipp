@@ -1,0 +1,34 @@
+version: 2.1
+
+# Define jobs that can be run
+jobs:
+  build:
+    # Use standard CircleCI Node.js image
+    docker:
+      - image: cimg/node:20.11
+
+    # Steps to perform in this job
+    steps:
+      # 1. Pull code from the repository
+      - checkout
+
+      # 2. Install dependencies (Root and all workspaces)
+      - run:
+          name: Install Dependencies
+          command: npm install
+
+      # 3. Code quality check (Linting)
+      - run:
+          name: Run Linter
+          command: npm run lint
+
+      # 4. Build application (using Turborepo)
+      - run:
+          name: Build Project
+          command: npm run build
+
+# Define workflow to orchestrate jobs
+workflows:
+  build-and-test-workflow:
+    jobs:
+      - build
