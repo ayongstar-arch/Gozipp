@@ -6,6 +6,7 @@ const InstallPwaPrompt: React.FC = () => {
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     const standalone =
@@ -28,7 +29,7 @@ const InstallPwaPrompt: React.FC = () => {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  if (isStandalone) return null;
+  if (isStandalone || dismissed) return null;
   if (!isMobile && !supportsPWA && !isIOS) return null;
 
   const handleInstallClick = async (e: React.MouseEvent) => {
@@ -40,8 +41,8 @@ const InstallPwaPrompt: React.FC = () => {
   };
 
   const card = (
-    <div className="bg-slate-900/95 backdrop-blur text-white p-4 rounded-2xl shadow-2xl border border-slate-700 max-w-md mx-auto relative ring-1 ring-[#A3FF3F]/20">
-      <button onClick={() => setSupportsPWA(false)} className="absolute top-2 right-2 text-slate-500 hover:text-white">×</button>
+    <div className="bg-slate-900/95 backdrop-blur text-white p-4 rounded-2xl shadow-2xl border border-slate-700 max-w-md mx-auto relative ring-1 ring-[#A3FF3F]/20 pointer-events-auto">
+      <button onClick={() => setDismissed(true)} className="absolute top-2 right-2 text-slate-500 hover:text-white">×</button>
       <div className="flex items-center gap-3">
         <div className="w-11 h-11 bg-[#A3FF3F] rounded-xl flex items-center justify-center text-xl shadow-lg shadow-green-900/20">🛵</div>
         <div className="flex-1">
@@ -67,7 +68,7 @@ const InstallPwaPrompt: React.FC = () => {
   );
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 p-4 z-50 animate-in slide-in-from-bottom-4">
+    <div className="fixed bottom-0 left-0 right-0 p-4 z-50 pointer-events-none animate-in slide-in-from-bottom-4">
       {card}
     </div>
   );
