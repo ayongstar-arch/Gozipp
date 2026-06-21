@@ -4,7 +4,7 @@
  */
 'use client';
 import React, { useEffect, useState } from 'react';
-import { API_BASE_URL } from '@/constants';
+import { apiFetch } from '../../services/api';
 
 interface Trip {
   id: string;
@@ -39,10 +39,7 @@ const HistoryView: React.FC = () => {
   const fetchTrips = async (pageNum: number) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/passenger/trips?page=${pageNum}&limit=10`, {
-        credentials: 'include', // Send HttpOnly cookies
-      });
-      const data = await res.json();
+      const data = await apiFetch(`/api/v1/passenger/trips?page=${pageNum}&limit=10`);
       const newTrips: Trip[] = Array.isArray(data) ? data : data.trips || [];
       if (pageNum === 1) setTrips(newTrips);
       else setTrips(prev => [...prev, ...newTrips]);

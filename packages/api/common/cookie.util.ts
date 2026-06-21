@@ -2,11 +2,12 @@ import { Response } from 'express';
 
 export function setAuthCookies(res: Response, accessToken?: string, refreshToken?: string) {
     const isProd = process.env.NODE_ENV === 'production';
+    const domain = process.env.COOKIE_DOMAIN || undefined;
     const cookieOptions = {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? 'lax' : 'lax',
-        domain: isProd ? '.gozipp.app' : undefined,
+        domain,
         path: '/',
     } as any;
 
@@ -20,11 +21,12 @@ export function setAuthCookies(res: Response, accessToken?: string, refreshToken
 
 export function clearAuthCookies(res: Response) {
     const isProd = process.env.NODE_ENV === 'production';
+    const domain = process.env.COOKIE_DOMAIN || undefined;
     const cookieOptions = {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? 'lax' : 'lax',
-        domain: isProd ? '.gozipp.app' : undefined,
+        domain,
         path: '/',
     } as any;
     res.clearCookie('access_token', cookieOptions);

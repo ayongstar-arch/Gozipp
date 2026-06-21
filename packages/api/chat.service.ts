@@ -72,14 +72,14 @@ export class ChatService {
      */
     async markMessagesAsRead(tripId: string, readerId: string): Promise<void> {
         try {
-            await this.chatRepository.update(
-                {
-                    tripId,
-                    isRead: false,
-                    // Mark messages from the OTHER party as read
-                },
-                { isRead: true }
-            );
+            await this.chatRepository
+                .createQueryBuilder()
+                .update(ChatMessageEntity)
+                .set({ isRead: true })
+                .where('trip_id = :tripId', { tripId })
+                .andWhere('sender_id != :readerId', { readerId })
+                .andWhere('is_read = false')
+                .execute();
         } catch (error) {
             this.logger.error(`Failed to mark messages as read: ${error.message}`);
         }
@@ -90,13 +90,12 @@ export class ChatService {
      */
     async getUnreadCount(tripId: string, userId: string): Promise<number> {
         try {
-            const count = await this.chatRepository.count({
-                where: {
-                    tripId,
-                    isRead: false,
-                    // Count messages NOT sent by this user
-                },
-            });
+            const count = await this.chatRepository
+                .createQueryBuilder('message')
+                .where('message.trip_id = :tripId', { tripId })
+                .andWhere('message.is_read = false')
+                .andWhere('message.sender_id != :userId', { userId })
+                .getCount();
             return count;
         } catch (error) {
             this.logger.error(`Failed to get unread count: ${error.message}`);

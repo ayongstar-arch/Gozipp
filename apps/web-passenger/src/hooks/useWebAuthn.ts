@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
-import { apiFetch } from './useAuth';
+import { apiFetch } from '../services/api';
 import { useUIStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 

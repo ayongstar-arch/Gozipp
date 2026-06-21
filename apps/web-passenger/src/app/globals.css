@@ -19,6 +19,13 @@ body {
   min-height: 100vh;
   font-family: 'Noto Sans Thai', ui-sans-serif, system-ui, sans-serif;
   overscroll-behavior-y: none;
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-top: env(safe-area-inset-top);
+}
+
+html {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
 }
 
 /* Custom scrollbar */

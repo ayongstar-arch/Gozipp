@@ -33,6 +33,7 @@ const kanit = Kanit({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://gozipp.app'),
   title: 'GOZIPP – แอปเรียกวินอัจฉริยะ รวดเร็ว ปลอดภัย',
   description: 'จองรถมอเตอร์ไซค์รับจ้างได้ทันทีกับ GOZIPP ปลอดภัย ฉลาด และราคาประหยัด เพื่อการเดินทางในเมืองที่ไร้ขีดจำกัด',
   manifest: '/manifest.json',
@@ -67,6 +68,14 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -74,7 +83,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="th" className={`${notoThai.variable} ${inter.variable} ${prompt.variable} ${kanit.variable}`}>
-      <body className="bg-[#04070B] text-slate-50 antialiased overflow-x-hidden selection:bg-[#A3FF3F]/30 selection:text-[#A3FF3F]">
+      <body className="bg-[#04070B] text-slate-50 antialiased overflow-x-hidden selection:bg-[#A3FF3F]/30 selection:text-[#A3FF3F] min-h-screen overscroll-none touch-pan-y">
         <Providers>{children}</Providers>
       </body>
     </html>

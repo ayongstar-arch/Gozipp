@@ -24,6 +24,7 @@ type AuthStep =
   | 'LOGIN_PIN'
   | 'REGISTER'
   | 'OTP'
+  | 'PENDING'
   | 'SETUP_PIN'
   | 'APP_SHELL';
 

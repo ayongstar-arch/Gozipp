@@ -65,8 +65,7 @@ export class WebauthnService {
             userDisplayName: user.name,
             attestationType: 'none',
             excludeCredentials: userPasskeys.map(passkey => ({
-                id: Buffer.from(passkey.credentialID, 'base64url'),
-                type: 'public-key',
+                id: passkey.credentialID,
                 transports: passkey.transports,
             })),
             authenticatorSelection: {
@@ -148,8 +147,7 @@ export class WebauthnService {
         const options = await generateAuthenticationOptions({
             rpID: this.rpID,
             allowCredentials: userPasskeys.map(passkey => ({
-                id: Buffer.from(passkey.credentialID, 'base64url'),
-                type: 'public-key',
+                id: passkey.credentialID,
                 transports: passkey.transports,
             })),
             userVerification: 'preferred',
@@ -185,9 +183,9 @@ export class WebauthnService {
                 expectedChallenge: user.webauthn_current_challenge,
                 expectedOrigin: this.origin,
                 expectedRPID: this.rpID,
-                authenticator: {
-                    credentialID: Buffer.from(passkey.credentialID, 'base64url'),
-                    credentialPublicKey: Buffer.from(passkey.credentialPublicKey, 'base64'),
+                credential: {
+                    id: passkey.credentialID,
+                    publicKey: new Uint8Array(Buffer.from(passkey.credentialPublicKey, 'base64')),
                     counter: passkey.counter,
                     transports: passkey.transports,
                 },

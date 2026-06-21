@@ -80,7 +80,7 @@ INSERT INTO invite_codes (code, station_id, type, max_uses, expires_at, note) VA
 
 CREATE TABLE passengers (
   id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  phone            VARCHAR(20) UNIQUE NOT NULL,
+  phone            VARCHAR(20) UNIQUE,
   name             VARCHAR(200) NOT NULL,
   email            VARCHAR(200),
   avatar_url       TEXT,
@@ -90,6 +90,7 @@ CREATE TABLE passengers (
   auth_provider    auth_provider NOT NULL DEFAULT 'OTP',
   pin_hash         TEXT,           -- bcrypt hash of 6-digit PIN
   provider_id      TEXT,           -- LINE userId or Google sub
+  webauthn_current_challenge TEXT,
 
   -- Credits / Wallet
   points_balance   NUMERIC(10, 2) NOT NULL DEFAULT 0,
@@ -98,6 +99,7 @@ CREATE TABLE passengers (
 
   -- Referral
   referral_code    VARCHAR(50),    -- Driver referral code used at registration
+  referred_by_id   UUID REFERENCES passengers(id),
 
   -- Timestamps
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -124,6 +126,7 @@ CREATE TABLE drivers (
   auth_provider            auth_provider NOT NULL DEFAULT 'OTP',
   pin_hash                 TEXT,
   provider_id              TEXT,
+  webauthn_current_challenge TEXT,
 
   -- Station Assignment
   station_id               VARCHAR(50) REFERENCES stations(id),
@@ -303,6 +306,31 @@ CREATE INDEX idx_wallet_txn_created ON wallet_transactions(created_at DESC);
 CREATE INDEX idx_wallet_txn_type ON wallet_transactions(type);
 
 -- =============================================================
+-- PAYMENT TRANSACTIONS
+-- =============================================================
+
+CREATE TABLE payment_transactions (
+  id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  passenger_id     UUID NOT NULL REFERENCES passengers(id),
+  payment_ref      VARCHAR(100) NOT NULL UNIQUE,
+  idempotency_key  VARCHAR(150) UNIQUE,
+  provider_name    VARCHAR(50) NOT NULL DEFAULT 'PROMPTPAY',
+  payment_method   payment_method NOT NULL DEFAULT 'PROMPTPAY',
+  amount_baht      NUMERIC(10, 2) NOT NULL,
+  bonus_points     NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  status           VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  provider_payload JSONB,
+  signature        TEXT,
+  confirmed_at     TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_payment_txn_passenger ON payment_transactions(passenger_id);
+CREATE INDEX idx_payment_txn_status ON payment_transactions(status);
+CREATE INDEX idx_payment_txn_created ON payment_transactions(created_at DESC);
+
+-- =============================================================
 -- REFRESH TOKENS
 -- =============================================================
 
@@ -313,11 +341,35 @@ CREATE TABLE refresh_tokens (
   token_hash   TEXT NOT NULL UNIQUE,
   expires_at   TIMESTAMPTZ NOT NULL,
   is_revoked   BOOLEAN NOT NULL DEFAULT FALSE,
+  replaced_by_token_hash TEXT,
+  ip_address   VARCHAR(64),
+  device_id    VARCHAR(255),
+  device_name  VARCHAR(255),
+  os           VARCHAR(255),
+  browser      VARCHAR(255),
+  location     VARCHAR(255),
+  last_active_at TIMESTAMPTZ,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id, user_type);
 CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens(token_hash);
+
+CREATE TYPE passkey_user_role AS ENUM ('PASSENGER', 'DRIVER');
+CREATE TABLE passkey_credentials (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL,
+  user_role passkey_user_role NOT NULL,
+  credential_id TEXT UNIQUE NOT NULL,
+  credential_public_key TEXT NOT NULL,
+  counter BIGINT NOT NULL DEFAULT 0,
+  credential_device_type VARCHAR(100),
+  credential_backed_up BOOLEAN NOT NULL DEFAULT FALSE,
+  transports JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_passkey_credentials_user_id ON passkey_credentials(user_id);
 
 -- =============================================================
 -- AUDIT LOG

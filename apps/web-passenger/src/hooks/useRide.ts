@@ -5,8 +5,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRideStore } from '../stores/rideStore';
 import { useUIStore } from '../stores/uiStore';
-import { API_BASE_URL, SOCKET_URL } from '@/constants';
+import { SOCKET_URL } from '@/constants';
 import { io, Socket } from 'socket.io-client';
+import { apiFetch } from '../services/api';
 
 export interface RideEstimate {
   tripId: string;
@@ -25,11 +26,12 @@ export interface ActiveDriver {
 }
 
 export const useRide = () => {
-  const { myLocation, setIsSearching, setActiveDriver, setCurrentTripId, resetRide, currentTripId } = useRideStore();
+  const {
+    setIsSearching, setActiveDriver, setCurrentTripId, resetRide, currentTripId,
+    estimate, setEstimate, rideStatus, setRideStatus, setDriverLocation,
+  } = useRideStore();
   const { setToastMessage } = useUIStore();
 
-  const [estimate, setEstimate] = useState<RideEstimate | null>(null);
-  const [rideStatus, setRideStatus] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -48,17 +50,37 @@ export const useRide = () => {
     // Listen for ride events
     socket.on('connect', () => {
       console.log('[Socket] Connected:', socket.id);
+      if (currentTripId) socket.emit('TRIP_JOIN_ROOM', { tripId: currentTripId });
     });
 
-    socket.on('TRIP_ACCEPT', (data: { driverId: string; tripId: string; driverName: string; driverPlate: string; driverRating: number }) => {
+    socket.on('STATE_RESTORED', (data: { type: string; trip?: any }) => {
+      if (data.type !== 'ACTIVE_TRIP' || !data.trip) return;
+      const trip = data.trip;
+      setCurrentTripId(trip.id);
+      setRideStatus(trip.status);
+      setIsSearching(trip.status === 'SEARCHING');
+      if (trip.driver) setActiveDriver(trip.driver);
+      setEstimate({
+        tripId: trip.id,
+        fare: Number(trip.fare || 0),
+        distance: `${Number(trip.distance_km || 0).toFixed(1)} กม.`,
+        eta: trip.duration_mins ? `${trip.duration_mins} นาที` : '-',
+      });
+    });
+
+    socket.on('TRIP_STATUS_UPDATE', (data: { tripId: string; status: string }) => {
+      if (data.tripId !== currentTripId) return;
+      setRideStatus(data.status);
+      setIsSearching(data.status === 'SEARCHING');
+    });
+
+    socket.on('DRIVER_LOCATION_UPDATE', (data: { tripId: string; lat: number; lng: number; heading?: number }) => {
+      if (data.tripId === currentTripId) setDriverLocation(data);
+    });
+
+    socket.on('TRIP_ACCEPT', (data: { tripId: string; driver: ActiveDriver }) => {
       if (data.tripId === currentTripId) {
-        setActiveDriver({
-          id: data.driverId,
-          name: data.driverName || 'คนขับ',
-          plate: data.driverPlate || '???',
-          phone: '',
-          rating: data.driverRating || 5,
-        });
+        setActiveDriver(data.driver);
         setRideStatus('ACCEPTED');
         setIsSearching(false);
         setToastMessage('🛵 คนขับรับงานแล้ว! กำลังเดินทางมา...');
@@ -90,7 +112,7 @@ export const useRide = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [currentTripId]);
+  }, [currentTripId, setActiveDriver, setCurrentTripId, setDriverLocation, setEstimate, setIsSearching, setRideStatus, setToastMessage, resetRide]);
 
   // Request a ride
   const requestRide = useCallback(async (
@@ -106,12 +128,8 @@ export const useRide = () => {
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/passenger/ride/request`, {
+      const data = await apiFetch('/api/v1/passenger/ride/request', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
         body: JSON.stringify({
           pickupLat,
           pickupLng,
@@ -121,9 +139,6 @@ export const useRide = () => {
           destAddress,
         }),
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'ขอเรียกรถไม่สำเร็จ');
 
       setEstimate({
         tripId: data.tripId,
@@ -137,11 +152,7 @@ export const useRide = () => {
 
       // Emit via Socket.io for real-time dispatch
       if (socketRef.current?.connected) {
-        socketRef.current.emit('RIDE_REQUEST', {
-          tripId: data.tripId,
-          location: { lat: pickupLat, lng: pickupLng },
-          destination: { lat: destLat, lng: destLng },
-        });
+        socketRef.current.emit('TRIP_JOIN_ROOM', { tripId: data.tripId });
       }
 
       return true;
@@ -159,9 +170,8 @@ export const useRide = () => {
     if (!currentTripId) return;
 
     try {
-      await fetch(`${API_BASE_URL}/api/v1/passenger/ride/${currentTripId}/cancel`, {
+      await apiFetch(`/api/v1/passenger/ride/${currentTripId}/cancel`, {
         method: 'POST',
-        credentials: 'include',
       });
     } catch {
       // Silently fail on cancel
@@ -181,15 +191,25 @@ export const useRide = () => {
   const pollRideStatus = useCallback(async (): Promise<void> => {
     if (!currentTripId) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/passenger/ride/${currentTripId}/status`, {
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (data.status) setRideStatus(data.status);
+      const data = await apiFetch(`/api/v1/passenger/ride/${currentTripId}/status`);
+      if (data.status) {
+        setRideStatus(data.status);
+        if (['TIMEOUT_NO_DRIVER', 'CANCELLED'].includes(data.status)) {
+          setIsSearching(false);
+          setToastMessage(data.status === 'TIMEOUT_NO_DRIVER' ? 'ยังไม่พบคนขับในขณะนี้ กรุณาลองใหม่อีกครั้ง' : 'ทริปถูกยกเลิกแล้ว');
+          resetRide();
+        }
+      }
     } catch {
       // Ignore poll errors
     }
-  }, [currentTripId]);
+  }, [currentTripId, resetRide, setIsSearching, setRideStatus, setToastMessage]);
+
+  useEffect(() => {
+    if (!currentTripId || rideStatus !== 'SEARCHING') return;
+    const timer = window.setInterval(() => void pollRideStatus(), 5000);
+    return () => window.clearInterval(timer);
+  }, [currentTripId, rideStatus, pollRideStatus]);
 
   return {
     requestRide,

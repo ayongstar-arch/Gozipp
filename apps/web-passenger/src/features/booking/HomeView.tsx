@@ -79,10 +79,6 @@ const HomeView: React.FC = () => {
   const destStation = STATION_ZONES.find(s => s.id === destStationId) || stationsWithDist[1];
 
   const handleRequestRide = async () => {
-    if ((user?.pointsBalance ?? 0) < 2 && (user?.freeRidesRemaining ?? 0) === 0) {
-      setToastMessage('แต้มไม่พอ กรุณาเติมเงินก่อนครับ');
-      return;
-    }
     if (!myLocation) {
       setToastMessage('กำลังระบุตำแหน่ง กรุณารอสักครู่');
       return;
@@ -227,7 +223,7 @@ const HomeView: React.FC = () => {
                   {isLoading ? 'กำลังส่งคำขอ...' : 'เรียก GOZIPP เลย'}
                 </div>
                 <div className="text-[10px] opacity-70 font-black uppercase tracking-widest">
-                  {freeRides > 0 ? `ฟรีไรด์ ${freeRides} เที่ยว` : `2 Credits · ประมาณ 5 นาที`}
+                  {freeRides > 0 ? `ฟรีไรด์ ${freeRides} เที่ยว` : 'แสดงค่าโดยสารก่อนยืนยันทุกครั้ง'}
                 </div>
               </div>
             </button>

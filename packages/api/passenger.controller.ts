@@ -28,35 +28,39 @@ export class PassengerController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 3, ttl: 900000 } }) // Max 3 OTPs per 15 minutes
   async requestOtp(@Body() body: PassengerRequestOtpDto) {
-    return this.passengerService.requestOtp(body.phoneNumber);
+    return this.passengerService.requestOtp(body.phoneNumber, 'REGISTER');
   }
 
   /** POST /api/v1/passenger/request-otp (legacy alias) */
   @Post('request-otp')
   @HttpCode(HttpStatus.OK)
   async requestOtpLegacy(@Body() body: PassengerRequestOtpDto) {
-    return this.passengerService.requestOtp(body.phoneNumber);
+    return this.passengerService.requestOtp(body.phoneNumber, 'REGISTER');
   }
 
   /** POST /api/v1/passenger/login */
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() body: PassengerVerifyOtpDto, @Res({ passthrough: true }) res: Response) {
-    const result = await this.passengerService.login(body.phoneNumber, body.otp);
-    if (result.token) {
-      setAuthCookies(res, result.token);
-      delete result.token;
-    }
-    return result;
+  async login(@Body() body: PassengerVerifyOtpDto, @Req() req: any, @Res({ passthrough: true }) res: Response) {
+    return this.passengerService.login(body.phoneNumber, body.otp, {
+      ipAddress: req.ip,
+      deviceId: req.headers['x-device-id'],
+      deviceName: req.headers['x-device-name'],
+    });
   }
 
   /** POST /api/v1/passenger/register */
   @Post('register')
-  async register(@Body() body: PassengerRegisterDto, @Res({ passthrough: true }) res: Response) {
-    const result = await this.passengerService.register(body);
-    if (result.token) {
-      setAuthCookies(res, result.token);
-      delete result.token;
+  async register(@Body() body: PassengerRegisterDto, @Req() req: any, @Res({ passthrough: true }) res: Response) {
+    const result = await this.passengerService.register(body, {
+      ipAddress: req.ip,
+      deviceId: req.headers['x-device-id'],
+      deviceName: req.headers['x-device-name'],
+    });
+    if (result.accessToken) {
+      setAuthCookies(res, result.accessToken, result.refreshToken);
+      delete result.accessToken;
+      delete result.refreshToken;
     }
     return result;
   }
@@ -77,8 +81,8 @@ export class PassengerController {
         name: profile.name,
         phone: profile.phone,
         email: profile.email,
-        pointsBalance: profile.points_balance,
-        freeRidesRemaining: profile.free_rides_remaining,
+        pointsBalance: profile.pointsBalance,
+        freeRidesRemaining: profile.freeRidesRemaining,
       }
     };
   }
@@ -127,9 +131,10 @@ export class RideController {
 
   /** GET /api/v1/passenger/ride/:tripId/status */
   @Get(':tripId/status')
-  @UseGuards(AuthGuard)
-  async getRideStatus(@Param('tripId') tripId: string) {
-    return this.passengerService.getRideStatus(tripId);
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('PASSENGER')
+  async getRideStatus(@Param('tripId') tripId: string, @Req() req: any) {
+    return this.passengerService.getRideStatus(tripId, req.user.sub);
   }
 
   /** POST /api/v1/passenger/ride/:tripId/cancel */

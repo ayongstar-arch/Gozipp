@@ -70,7 +70,11 @@ const WalletView: React.FC = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       useAuthStore.getState().updatePointsBalance(data.balance);
-      setToastMessage(`✅ เติมเงินสำเร็จ +${data.pointsAdded} แต้ม`);
+      if (data.status === 'CONFIRMED') {
+        setToastMessage(`✅ เติมเงินสำเร็จ +${data.pointsAdded} แต้ม`);
+      } else {
+        setToastMessage(`⏳ สร้างรายการเติมเงินแล้ว รอชำระ: ${data.paymentRef}`);
+      }
       setShowTopup(false);
     } catch (err: any) {
       setToastMessage('❌ ' + err.message);

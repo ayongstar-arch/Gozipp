@@ -9,15 +9,17 @@ interface PinViewProps {
   mode: 'SETUP' | 'LOGIN';
   userId?: string;
   phoneNumber?: string | null;
+  onForgotPin?: () => void;
 }
 
-const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
+const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPin }) => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
   const { isLoading } = useUIStore();
   const { setupPin, loginWithPin, error, setError } = useAuth();
   const { registerPasskey, authenticatePasskey } = useWebAuthn();
   
   const [pin, setPin] = useState(['', '', '', '', '', '']);
+  const [firstPin, setFirstPin] = useState<string | null>(null);
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
 
   const handlePinChange = (index: number, value: string) => {
@@ -36,6 +38,20 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
     if (pinCode.length < 6) return;
     
     if (mode === 'SETUP' && userId) {
+      if (!firstPin) {
+        setFirstPin(pinCode);
+        setPin(['', '', '', '', '', '']);
+        setError(null);
+        setTimeout(() => document.getElementById('pin-0')?.focus(), 0);
+        return;
+      }
+      if (pinCode !== firstPin) {
+        setError('รหัส PIN ไม่ตรงกัน กรุณาลองอีกครั้ง');
+        setFirstPin(null);
+        setPin(['', '', '', '', '', '']);
+        setTimeout(() => document.getElementById('pin-0')?.focus(), 0);
+        return;
+      }
       const success = await setupPin(pinCode);
       if (success) {
         // Show biometric setup prompt
@@ -58,6 +74,16 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
   const handleLoginBiometrics = async () => {
     if (!phoneNumber) return;
     await authenticatePasskey(phoneNumber, 'PASSENGER');
+  };
+
+  const handleBack = () => {
+    if (mode === 'SETUP' && firstPin) {
+      setFirstPin(null);
+      setPin(['', '', '', '', '', '']);
+      setError(null);
+      return;
+    }
+    setAuthStep('LOGIN');
   };
 
   if (showBiometricPrompt) {
@@ -98,7 +124,7 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
       {/* Back Button */}
       <div className="absolute top-6 left-6 z-30">
         <button 
-          onClick={() => setAuthStep('LOGIN')}
+          onClick={handleBack}
           className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
           aria-label="กลับ"
         >
@@ -145,10 +171,10 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
             className="text-center mb-4"
           >
             <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">
-              {mode === 'SETUP' ? 'ตั้งรหัส PIN' : 'กรอกรหัส PIN'}
+              {mode === 'SETUP' ? (firstPin ? 'ยืนยันรหัส PIN' : 'ตั้งรหัส PIN') : 'กรอกรหัส PIN'}
             </h2>
             <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
-              <p>{mode === 'SETUP' ? 'เพื่อความปลอดภัยของบัญชีคุณ' : 'ใช้ PIN 6 หลัก'}</p>
+              <p>{mode === 'SETUP' ? (firstPin ? 'กรอกรหัสเดิมอีกครั้งให้ตรงกัน' : 'ใช้ตัวเลข 6 หลักที่คุณจำได้') : 'ใช้ PIN 6 หลัก'}</p>
             </div>
           </motion.div>
 
@@ -214,11 +240,12 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
             <span className="text-2xl">🛡️</span> สแกน Face ID / ลายนิ้วมือ
           </button>
 
-          <button 
-            onClick={() => { setAuthStep('LOGIN'); setError(null); }} 
-            className="text-gray-500 text-sm font-bold mt-4 hover:text-[#A3FF3F] transition-colors"
+          <button
+            onClick={onForgotPin}
+            className="text-gray-500 text-sm font-medium mt-4 text-center leading-relaxed hover:text-[#A3FF3F] transition-colors"
+            type="button"
           >
-            ลืมรหัส PIN?
+            ลืม PIN? ขอรีเซ็ตด้วยการยืนยันเบอร์โทร
           </button>
         </motion.div>
       )}

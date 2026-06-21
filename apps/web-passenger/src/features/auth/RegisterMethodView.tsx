@@ -41,7 +41,7 @@ const RegisterMethodView: React.FC = () => {
           className="mb-8"
         >
           <h2 className="text-2xl font-bold text-white mb-2">สมัครสมาชิกใหม่</h2>
-          <p className="text-gray-400 font-medium text-sm">เลือกวิธีที่คุณสะดวก</p>
+          <p className="text-gray-400 font-medium text-sm">ยืนยันเบอร์ครั้งแรกแล้วตั้ง PIN เพื่อเข้าใช้งานครั้งถัดไป</p>
         </motion.div>
 
         {/* Auth Methods Container */}
@@ -64,7 +64,7 @@ const RegisterMethodView: React.FC = () => {
             </div>
             <div className="flex-1 text-left">
               <h3 className="text-white font-bold text-base">เบอร์โทรศัพท์</h3>
-              <p className="text-gray-400 text-xs mt-0.5">สมัครสมาชิกด้วยเบอร์มือถือ</p>
+              <p className="text-gray-400 text-xs mt-0.5">ยืนยันเบอร์และตั้ง PIN ครั้งแรก</p>
             </div>
             <div className="text-[#39B54A]">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

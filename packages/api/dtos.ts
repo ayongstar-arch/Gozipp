@@ -1,4 +1,6 @@
-import { IsString, IsNumber, IsNotEmpty, IsOptional, IsEnum, Min, Max, IsBoolean, IsDateString, IsArray } from 'class-validator';
+import { IsString, IsNumber, IsNotEmpty, IsOptional, IsEnum, Min, Max, IsBoolean, IsDateString, IsArray, Matches, Length } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { normalizeThaiMobileNumber } from './common/phone.util';
 
 export type AuthProvider = 'OTP' | 'LINE' | 'GOOGLE';
 
@@ -184,29 +186,42 @@ export class CreateInviteCodeDto {
 // --- Passenger DTOs ---
 
 export class PassengerRequestOtpDto {
+  @Transform(({ value }) => normalizeThaiMobileNumber(value) ?? value)
   @IsString()
   @IsNotEmpty()
+  @Matches(/^0[689]\d{8}$/, { message: 'phoneNumber must be a valid Thai mobile number' })
   phoneNumber: string;
 }
 
 export class PassengerVerifyOtpDto {
+  @Transform(({ value }) => normalizeThaiMobileNumber(value) ?? value)
   @IsString()
   @IsNotEmpty()
+  @Matches(/^0[689]\d{8}$/, { message: 'phoneNumber must be a valid Thai mobile number' })
   phoneNumber: string;
 
   @IsString()
   @IsNotEmpty()
+  @Matches(/^\d{6}$/, { message: 'otp must contain exactly 6 digits' })
   otp: string;
 }
 
 export class PassengerRegisterDto {
+  @Transform(({ value }) => normalizeThaiMobileNumber(value) ?? value)
   @IsString()
   @IsNotEmpty()
+  @Matches(/^0[689]\d{8}$/, { message: 'phoneNumber must be a valid Thai mobile number' })
   phoneNumber: string;
 
   @IsString()
   @IsNotEmpty()
+  @Length(2, 200)
   name: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d{6}$/, { message: 'otp must contain exactly 6 digits' })
+  otp?: string;
 
   @IsString()
   @IsOptional()
@@ -253,6 +268,16 @@ export class TopupDto {
   @IsString()
   @IsOptional()
   paymentMethod?: string; // e.g. 'PROMPTPAY'
+}
+
+export class CreateTopupIntentDto {
+  @IsNumber()
+  @Min(20, { message: 'Minimum top-up is 20 THB' })
+  amount: number;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
 }
 
 export class AdminRefundDto {

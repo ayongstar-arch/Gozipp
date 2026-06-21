@@ -1,10 +1,12 @@
 import { Controller, Get, Post, Body, Req, Res, UseGuards, Query, Delete, Param } from '@nestjs/common';
 import { Response } from 'express';
-import { AuthGuard } from '@nestjs/passport';
+import { AuthGuard as PassportAuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { setAuthCookies, clearAuthCookies } from '../common/cookie.util';
+import { AuthGuard as ApiAuthGuard } from '../common/guards';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
 export class AuthController {
@@ -19,7 +21,7 @@ export class AuthController {
     async googleAuth(@Req() req) { }
 
     @Get('google/callback')
-    @UseGuards(AuthGuard('google'))
+    @UseGuards(PassportAuthGuard('google'))
     async googleAuthRedirect(@Req() req, @Res() res: Response) {
         const userType = req.query.state as 'PASSENGER' | 'DRIVER';
         const deviceMeta = this.getDeviceMeta(req);
@@ -91,16 +93,23 @@ export class AuthController {
     }
 
     @Post('set-pin')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(ApiAuthGuard)
     async setPin(@Body() body: { pin: string, role: 'PASSENGER' | 'DRIVER' }, @Req() req: any) {
-        // Extract userId from JWT, don't trust body
-        return this.authService.setPin(req.user?.sub || req.user?.userId, body.pin, body.role);
+        // Both identity and role come from the verified JWT, never from client input.
+        return this.authService.setPin(req.user.sub, body.pin, req.user.role);
+    }
+
+    @Post('change-pin')
+    @UseGuards(ApiAuthGuard)
+    @Throttle({ default: { limit: 5, ttl: 900000 } })
+    async changePin(@Body() body: { currentPin: string, newPin: string }, @Req() req: any) {
+        return this.authService.changePin(req.user.sub, body.currentPin, body.newPin, req.user.role);
     }
 
     @Post('refresh')
     async refresh(@Body() body: { refreshToken: string }, @Req() req: any, @Res({ passthrough: true }) res: Response) {
         // Typically refreshToken is read from cookies, but keeping body for backward compatibility if needed, or we can read from cookies.
-        const tokenToRefresh = body.refreshToken || (req => req.cookies?.refresh_token)(res.req);
+        const tokenToRefresh = body?.refreshToken || req.cookies?.refresh_token;
         const deviceMeta = this.getDeviceMeta(req);
         const result = await this.authService.refreshTokens(tokenToRefresh, deviceMeta);
         setAuthCookies(res, result.accessToken, result.refreshToken);
@@ -109,7 +118,8 @@ export class AuthController {
     }
 
     @Post('logout')
-    async logout(@Res({ passthrough: true }) res: Response) {
+    async logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
+        await this.authService.revokeRefreshToken(req.cookies?.refresh_token);
         clearAuthCookies(res);
         return { success: true };
     }
@@ -117,16 +127,54 @@ export class AuthController {
     // --- SESSION MANAGEMENT ---
     
     @Get('sessions')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(ApiAuthGuard)
     async getSessions(@Req() req: any) {
         const userId = req.user?.sub || req.user?.userId;
         return this.authService.getUserSessions(userId);
     }
 
     @Delete('sessions/:id')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(ApiAuthGuard)
     async revokeSession(@Req() req: any, @Param('id') sessionId: string) {
         const userId = req.user?.sub || req.user?.userId;
         return this.authService.revokeSession(userId, sessionId);
+    }
+
+    @Delete('sessions')
+    @UseGuards(ApiAuthGuard)
+    async revokeOtherSessions(@Req() req: any) {
+        const userId = req.user?.sub || req.user?.userId;
+        const currentDeviceId = req.headers['x-device-id'] as string | undefined;
+        return this.authService.revokeOtherSessions(userId, currentDeviceId);
+    }
+
+    // --- PIN RESET VIA TRUSTED DEVICE ---
+    @Post('pin-reset/request')
+    async requestPinReset(@Body() body: { phoneNumber: string, role: 'PASSENGER' | 'DRIVER' }) {
+        return this.authService.createPinResetRequest(body.phoneNumber, body.role);
+    }
+
+    @Get('pin-reset/:requestId')
+    async getPinReset(@Param('requestId') requestId: string) {
+        return this.authService.getPinResetRequest(requestId);
+    }
+
+    @Get('pin-reset')
+    @UseGuards(ApiAuthGuard)
+    async listPinResets(@Req() req: any) {
+        const userId = req.user?.sub || req.user?.userId;
+        return this.authService.listPendingPinResetRequests(userId, req.user.role);
+    }
+
+    @Post('pin-reset/:requestId/approve')
+    @UseGuards(ApiAuthGuard)
+    async approvePinReset(@Req() req: any, @Param('requestId') requestId: string) {
+        const userId = req.user?.sub || req.user?.userId;
+        return this.authService.approvePinResetRequest(requestId, userId, req.user.role);
+    }
+
+    @Post('pin-reset/:requestId/complete')
+    async completePinReset(@Param('requestId') requestId: string, @Body() body: { newPin: string }) {
+        return this.authService.completePinReset(requestId, body.newPin);
     }
 }

@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Req, Res, UseGuards, Query } from '@nestjs/common';
 import { Response } from 'express';
-import { AuthGuard } from '@nestjs/passport';
+import { AuthGuard } from '../common/guards';
 import { WebauthnService } from './webauthn.service';
 import { setAuthCookies } from '../common/cookie.util';
 
@@ -26,14 +26,14 @@ export class WebauthnController {
     // --- REGISTRATION ---
 
     @Get('generate-registration-options')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(AuthGuard)
     async generateRegistrationOptions(@Req() req: any, @Query('role') role: 'PASSENGER' | 'DRIVER' = 'PASSENGER') {
         const userId = req.user?.sub || req.user?.userId;
         return this.webauthnService.getRegistrationOptions(userId, role);
     }
 
     @Post('verify-registration')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(AuthGuard)
     async verifyRegistration(@Req() req: any, @Body() body: any, @Query('role') role: 'PASSENGER' | 'DRIVER' = 'PASSENGER') {
         const userId = req.user?.sub || req.user?.userId;
         return this.webauthnService.verifyRegistration(userId, role, body);

@@ -2,11 +2,47 @@ import React, { useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import ReferralView from '../passenger/ReferralView';
 import DevicesView from './DevicesView';
+import { useAuth } from '../../hooks/useAuth';
+import { useUIStore } from '../../stores/uiStore';
+import { apiFetch } from '../../services/api';
 
 const ProfileView: React.FC = () => {
-  const { user, logout } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
+  const { logout } = useAuth();
+  const isLoading = useUIStore((state) => state.isLoading);
   const [showReferral, setShowReferral] = useState(false);
   const [showDevices, setShowDevices] = useState(false);
+  const [showChangePin, setShowChangePin] = useState(false);
+  const [currentPin, setCurrentPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [pinBusy, setPinBusy] = useState(false);
+
+  const handleChangePin = async () => {
+    if (!/^\d{6}$/.test(currentPin) || !/^\d{6}$/.test(newPin) || newPin !== confirmPin) {
+      setPinError('กรุณากรอกรหัส PIN 6 หลักให้ครบและตรงกัน');
+      return;
+    }
+
+    try {
+      setPinBusy(true);
+      setPinError('');
+      await apiFetch('/api/v1/auth/change-pin', {
+        method: 'POST',
+        body: JSON.stringify({ currentPin, newPin }),
+      });
+      setShowChangePin(false);
+      setCurrentPin('');
+      setNewPin('');
+      setConfirmPin('');
+      useUIStore.getState().setToastMessage('เปลี่ยน PIN สำเร็จ');
+    } catch (err: any) {
+      setPinError(err.message || 'เปลี่ยน PIN ไม่สำเร็จ');
+    } finally {
+      setPinBusy(false);
+    }
+  };
 
   if (showReferral) {
     return <ReferralView onClose={() => setShowReferral(false)} />;
@@ -23,7 +59,27 @@ const ProfileView: React.FC = () => {
     { label: 'Payment Methods', icon: '💳', color: 'text-gozipp-green' },
     { label: 'Support Center', icon: '💬', color: 'text-amber-400' },
     { label: 'Privacy & Security', icon: '🛡️', color: 'text-slate-400' },
+    { label: 'Change PIN', icon: '🔐', color: 'text-emerald-400', onClick: () => setShowChangePin(true) },
   ];
+
+  if (showChangePin) {
+    return (
+      <div className="flex-1 bg-slate-950 font-sans p-6 overflow-y-auto">
+        <button onClick={() => setShowChangePin(false)} className="w-10 h-10 rounded-full bg-slate-900 text-white mb-6">←</button>
+        <h2 className="text-2xl font-black text-white mb-2">เปลี่ยน PIN</h2>
+        <p className="text-slate-500 text-sm mb-6">ยืนยัน PIN เดิมก่อนตั้งรหัสใหม่</p>
+        {pinError && <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-400 text-sm">{pinError}</div>}
+        <div className="space-y-4">
+          <input value={currentPin} onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="PIN เดิม" className="w-full rounded-2xl bg-slate-900 border border-white/5 p-4 text-white" />
+          <input value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="PIN ใหม่" className="w-full rounded-2xl bg-slate-900 border border-white/5 p-4 text-white" />
+          <input value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="ยืนยัน PIN ใหม่" className="w-full rounded-2xl bg-slate-900 border border-white/5 p-4 text-white" />
+          <button disabled={pinBusy} onClick={handleChangePin} className="w-full rounded-2xl bg-[#39B54A] text-black font-black py-4 disabled:opacity-50">
+            {pinBusy ? 'กำลังบันทึก...' : 'บันทึก PIN ใหม่'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 bg-slate-950 font-sans p-6 overflow-y-auto">
@@ -58,9 +114,10 @@ const ProfileView: React.FC = () => {
       <div className="mt-12 space-y-6">
         <button 
           onClick={logout}
+          disabled={isLoading}
           className="w-full bg-red-500/10 border border-red-500/20 text-red-500 font-black py-5 rounded-2xl hover:bg-red-500/20 transition-all uppercase tracking-tighter text-sm"
         >
-          Sign Out
+          {isLoading ? 'กำลังออกจากระบบ...' : 'ออกจากระบบ'}
         </button>
         <div className="text-center">
             <div className="text-[10px] text-slate-700 font-black uppercase tracking-widest">GOZIPP App Version 2.0.0 (Production)</div>

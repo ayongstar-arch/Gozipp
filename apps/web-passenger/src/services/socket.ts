@@ -1,7 +1,7 @@
 
 import { EventEmitter } from 'events';
 import { io, Socket } from 'socket.io-client';
-import { SOCKET_URL, IS_PRODUCTION } from '../constants';
+import { SOCKET_URL, IS_PRODUCTION, USE_REAL_SOCKET } from '../constants';
 
 export interface ISocketService {
   on(event: string, listener: (...args: any[]) => void): this;
@@ -56,6 +56,13 @@ class MockSocketService extends EventEmitter implements ISocketService {
   }
 }
 
+class NoopSocketService extends EventEmitter implements ISocketService {
+  public off(event: string, listener: (...args: any[]) => void): this {
+    super.removeListener(event, listener);
+    return this;
+  }
+}
+
 /**
  * REAL SOCKET SERVICE
  * Connects to the NestJS Backend via WebSocket
@@ -72,6 +79,7 @@ class RealSocketService extends EventEmitter implements ISocketService {
         this.socket = io(SOCKET_URL, {
             transports: IS_PRODUCTION ? ['polling', 'websocket'] : ['websocket'],
             autoConnect: true,
+            withCredentials: true,
             reconnection: true,
             reconnectionAttempts: 10,
             reconnectionDelay: 1000,
@@ -115,6 +123,7 @@ class RealSocketService extends EventEmitter implements ISocketService {
     }
 
     public emit(event: string, ...args: any[]): boolean {
+        if (!this.socket.connected) this.socket.connect();
         this.socket.emit(event, ...args);
         return true;
     }
@@ -127,4 +136,8 @@ class RealSocketService extends EventEmitter implements ISocketService {
 // FACTORY: Choose based on Environment
 // If IS_PRODUCTION is true (Auto-detected), we ALWAYS use the Real Socket.
 // If Local, we default to Mock for UI testing, UNLESS we explicitly want to connect to local backend (you can toggle this logic).
-export const socket: ISocketService = IS_PRODUCTION ? new RealSocketService() : new MockSocketService();
+export const socket: ISocketService = typeof window === 'undefined'
+  ? new NoopSocketService()
+  : USE_REAL_SOCKET
+    ? new RealSocketService()
+    : new MockSocketService();

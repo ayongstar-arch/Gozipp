@@ -8,7 +8,31 @@ import cookieParser from 'cookie-parser';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors';
 
+function validateProductionEnvironment() {
+  if (process.env.NODE_ENV !== 'production') return;
+
+  const required = [
+    'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME',
+    'REDIS_URL', 'JWT_SECRET', 'ALLOWED_ORIGINS',
+    'THAIBULKSMS_APP_KEY', 'THAIBULKSMS_APP_SECRET',
+  ];
+  const missing = required.filter((key) => !process.env[key]?.trim());
+  if (missing.length) {
+    throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
+  }
+  if (process.env.JWT_SECRET.length < 64 || /change|your-/i.test(process.env.JWT_SECRET)) {
+    throw new Error('JWT_SECRET must be a non-placeholder secret of at least 64 characters');
+  }
+  if (process.env.ALLOW_TEST_OTP === 'true') {
+    throw new Error('ALLOW_TEST_OTP must be disabled in production');
+  }
+  if (process.env.ALLOW_REGISTRATION_WITHOUT_OTP === 'true') {
+    throw new Error('ALLOW_REGISTRATION_WITHOUT_OTP must be disabled in production');
+  }
+}
+
 async function bootstrap() {
+  validateProductionEnvironment();
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
@@ -37,7 +61,7 @@ async function bootstrap() {
 
   // 4. Secure CORS (Production Grade)
   const allowedOrigins = process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',') 
+    ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
     : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:5174'];
 
   app.enableCors({

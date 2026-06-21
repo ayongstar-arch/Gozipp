@@ -2,7 +2,8 @@ import { Injectable, BadRequestException, InternalServerErrorException, Logger }
 import Redis from 'ioredis';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { TopupDto, AdminRefundDto } from './dtos';
+import { randomUUID } from 'crypto';
+import { CreateTopupIntentDto } from './dtos';
 import { PromotionService } from './promotion.service';
 import { signTransaction, verifyTransaction } from './common/utils/crypto';
 
@@ -15,6 +16,8 @@ export class CreditService {
   private readonly redis: Redis;
   private readonly logger = new Logger(CreditService.name);
   private readonly txSecret: string;
+  private readonly paymentWebhookSecret: string;
+  private readonly paymentProvider: string;
 
   constructor(
     private dataSource: DataSource,
@@ -23,6 +26,8 @@ export class CreditService {
   ) {
     this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
     this.txSecret = this.configService.get<string>('WALLET_SECRET') || 'WINNO_TX_SECURE_2026';
+    this.paymentWebhookSecret = this.configService.get<string>('PAYMENT_WEBHOOK_SECRET') || '';
+    this.paymentProvider = (this.configService.get<string>('PAYMENT_PROVIDER') || 'PROMPTPAY').trim().toUpperCase();
   }
 
   private async acquireLock(passengerId: string): Promise<boolean> {
@@ -33,6 +38,51 @@ export class CreditService {
 
   private async releaseLock(passengerId: string): Promise<void> {
     await this.redis.del(`lock:passenger:${passengerId}:credit`);
+  }
+
+  private createPaymentRef(): string {
+    return `TP-${Date.now()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+  }
+
+  private normalizeMethod(paymentMethod?: string) {
+    const method = (paymentMethod || 'PROMPTPAY').trim().toUpperCase();
+    return method || 'PROMPTPAY';
+  }
+
+  private isPaymentProviderReady() {
+    return Boolean(this.paymentProvider) && this.paymentProvider !== 'NONE';
+  }
+
+  async getTopupStatus(passengerId: string, paymentRef: string) {
+    const rows = await this.dataSource.query(
+      `SELECT payment_ref, status, amount_baht, bonus_points, provider_name, payment_method, created_at, confirmed_at
+       FROM ${TABLE_PAYMENT_TXN}
+       WHERE passenger_id = $1 AND payment_ref = $2
+       LIMIT 1`,
+      [passengerId, paymentRef]
+    );
+
+    if (!rows.length) {
+      throw new BadRequestException('Payment reference not found');
+    }
+
+    const row = rows[0];
+    return {
+      success: true,
+      paymentRef: row.payment_ref,
+      status: row.status,
+      amount: Number(row.amount_baht),
+      bonusPoints: Number(row.bonus_points),
+      providerName: row.provider_name,
+      paymentMethod: row.payment_method,
+      createdAt: row.created_at,
+      confirmedAt: row.confirmed_at,
+      providerReady: this.isPaymentProviderReady(),
+      providerConfiguredName: this.paymentProvider,
+      message: row.status === 'CONFIRMED'
+        ? 'รายการนี้ได้รับการยืนยันแล้ว'
+        : 'รายการนี้ยังรอการยืนยันจากผู้ให้บริการชำระเงิน',
+    };
   }
 
   async getBalance(passengerId: string): Promise<number> {
@@ -78,60 +128,242 @@ export class CreditService {
     };
   }
 
-  async topup(dto: TopupDto) {
-    const locked = await this.acquireLock(dto.passengerId);
-    if (!locked) throw new BadRequestException('กำลังดำเนินการทำรายการอื่นอยู่ กรุณารอสักครู่');
+  async requestTopup(
+    passengerId: string,
+    dto: CreateTopupIntentDto,
+    idempotencyKey?: string,
+  ) {
+    const amount = Number(dto.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Top-up amount must be positive');
+    }
+
+    const paymentMethod = this.normalizeMethod(dto.paymentMethod);
+    const bonus = this.promotionService.evaluateTopup(passengerId, amount).bonus;
+
+    if (idempotencyKey) {
+      const existing = await this.dataSource.query(
+        `SELECT payment_ref, status, amount_baht, bonus_points, provider_name, payment_method, created_at
+         FROM ${TABLE_PAYMENT_TXN}
+         WHERE passenger_id = $1 AND idempotency_key = $2
+         LIMIT 1`,
+        [passengerId, idempotencyKey]
+      );
+      if (existing.length) {
+        const row = existing[0];
+        return {
+          success: true,
+          status: row.status,
+          paymentRef: row.payment_ref,
+          amount: Number(row.amount_baht),
+          bonusPoints: Number(row.bonus_points),
+          paymentMethod: row.payment_method,
+          providerName: row.provider_name,
+          balance: await this.getBalance(passengerId),
+          message: row.status === 'CONFIRMED'
+            ? 'รายการเติมเงินนี้ได้รับการยืนยันแล้ว'
+            : 'สร้างรายการเติมเงินไว้แล้ว กรุณาชำระด้วยอ้างอิงเดิม',
+        };
+      }
+    }
+
+    const paymentRef = this.createPaymentRef();
+    const paymentSignature = signTransaction(
+      { passengerId, paymentRef, amount, bonus, paymentMethod },
+      this.txSecret,
+    );
+
+    await this.dataSource.query(
+      `INSERT INTO ${TABLE_PAYMENT_TXN}
+        (passenger_id, payment_ref, idempotency_key, provider_name, payment_method, amount_baht, bonus_points, status, signature, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8, NOW(), NOW())`,
+      [
+        passengerId,
+        paymentRef,
+        idempotencyKey || null,
+        paymentMethod,
+        paymentMethod,
+        amount,
+        bonus,
+        paymentSignature,
+      ]
+    );
+
+    return {
+      success: true,
+      status: 'PENDING',
+      paymentRef,
+      paymentMethod,
+      amount,
+      bonusPoints: bonus,
+      balance: await this.getBalance(passengerId),
+      providerReady: this.isPaymentProviderReady(),
+      providerConfiguredName: this.paymentProvider,
+      message: 'สร้างรายการเติมเงินแล้ว รอการยืนยันจากช่องทางชำระเงิน',
+      instructions: paymentMethod === 'PROMPTPAY'
+        ? 'ชำระผ่าน PromptPay แล้วระบบจะอัปเดตแต้มเมื่อ webhook ยืนยัน'
+        : 'รายการถูกบันทึกแล้ว รอการยืนยันจากผู้ให้บริการชำระเงิน',
+    };
+  }
+
+  async processPaymentWebhook(payload: any, signature?: string) {
+    const paymentRef = payload?.referenceNo || payload?.reference_id || payload?.paymentRef || payload?.transactionId;
+    if (!paymentRef) {
+      throw new BadRequestException('Missing payment reference');
+    }
+
+    if (this.paymentWebhookSecret) {
+      if (!signature) {
+        throw new BadRequestException('Missing webhook signature');
+      }
+      if (!verifyTransaction(payload, signature, this.paymentWebhookSecret)) {
+        throw new BadRequestException('Invalid webhook signature');
+      }
+    }
+
+    const status = String(payload?.status || '').toUpperCase();
+    const amount = Number(payload?.amount ?? payload?.amount_baht ?? 0);
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      const { bonus } = this.promotionService.evaluateTopup(dto.passengerId, dto.amount);
-      const totalPoints = dto.amount + bonus;
+      const paymentRows = await queryRunner.query(
+        `SELECT * FROM ${TABLE_PAYMENT_TXN} WHERE payment_ref = $1 FOR UPDATE`,
+        [paymentRef]
+      );
+      if (!paymentRows.length) {
+        throw new BadRequestException('Unknown payment reference');
+      }
 
-      // 1. Update Wallet
-      await queryRunner.query(
-        `INSERT INTO ${TABLE_WALLET} (passenger_id, point_balance, updated_at)
-         VALUES ($1, $2, NOW())
-         ON CONFLICT (passenger_id) 
-         DO UPDATE SET point_balance = ${TABLE_WALLET}.point_balance + $2, updated_at = NOW()`,
-        [dto.passengerId, totalPoints]
+      const payment = paymentRows[0];
+      if (payment.status === 'CONFIRMED') {
+        await queryRunner.commitTransaction();
+        return {
+          success: true,
+          status: 'CONFIRMED',
+          paymentRef,
+          providerReady: this.isPaymentProviderReady(),
+          balance: await this.getBalance(payment.passenger_id),
+        };
+      }
+
+      if (status && status !== 'SUCCESS' && status !== 'PAID' && status !== 'CONFIRMED') {
+        await queryRunner.query(
+          `UPDATE ${TABLE_PAYMENT_TXN}
+           SET status = 'FAILED', provider_payload = $2, signature = $3, updated_at = NOW()
+           WHERE payment_ref = $1`,
+          [paymentRef, JSON.stringify(payload), signature || null]
+        );
+        await queryRunner.commitTransaction();
+        return {
+          success: true,
+          status: 'FAILED',
+          paymentRef,
+        };
+      }
+
+      const expectedAmount = Number(payment.amount_baht);
+      if (expectedAmount > 0 && amount > 0 && Math.abs(expectedAmount - amount) > 0.01) {
+        throw new BadRequestException('Payment amount mismatch');
+      }
+
+      const totalPoints = await this.creditWalletFromPayment(
+        queryRunner,
+        payment.passenger_id,
+        expectedAmount,
+        Number(payment.bonus_points || 0),
+        paymentRef,
+        payment.payment_method,
+        payload,
+        signature || null,
       );
 
-      // 2. Sign Transaction
-      const txPayload = {
-        userId: dto.passengerId,
-        type: 'TOPUP',
-        change: totalPoints,
-        ts: Date.now()
-      };
-      const signature = signTransaction(txPayload, this.txSecret);
-
-      // 3. Log Transaction
       await queryRunner.query(
-        `INSERT INTO ${TABLE_WALLET_TXN} 
-         (passenger_id, type, point_change, amount_baht, reference_id, status, signature, created_at)
-         VALUES ($1, 'TOPUP', $2, $3, $4, 'SUCCESS', $5, NOW())`,
-        [dto.passengerId, totalPoints, dto.amount, 'PP-' + Date.now(), signature]
+        `UPDATE ${TABLE_PAYMENT_TXN}
+         SET status = 'CONFIRMED', provider_payload = $2, signature = $3, confirmed_at = NOW(), updated_at = NOW()
+         WHERE payment_ref = $1`,
+        [paymentRef, JSON.stringify(payload), signature || null]
       );
 
       await queryRunner.commitTransaction();
-      this.logger.log(`Wallet Top-up Success: User ${dto.passengerId} +${totalPoints} pts`);
-      
-      return { success: true, pointsAdded: totalPoints, balance: await this.getBalance(dto.passengerId) };
-
+      const balance = await this.getBalance(payment.passenger_id);
+      return {
+        success: true,
+        status: 'CONFIRMED',
+        paymentRef,
+        pointsAdded: totalPoints,
+        providerReady: this.isPaymentProviderReady(),
+        balance,
+      };
     } catch (err) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Top-up failed for User ${dto.passengerId}: ${err.message}`);
-      throw new InternalServerErrorException('การประมวลผลการชำระเงินล้มเหลว');
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`Webhook processing failed for ${paymentRef}: ${err.message}`);
+      throw new InternalServerErrorException('ไม่สามารถประมวลผลการชำระเงินได้');
     } finally {
       await queryRunner.release();
-      await this.releaseLock(dto.passengerId);
     }
   }
 
+  private async creditWalletFromPayment(
+    queryRunner: any,
+    passengerId: string,
+    amount: number,
+    bonus: number,
+    paymentRef: string,
+    paymentMethod: string,
+    payload: any,
+    signature: string | null,
+  ): Promise<number> {
+    const totalPoints = amount + bonus;
+    const txPayload = {
+      userId: passengerId,
+      type: 'TOPUP',
+      change: totalPoints,
+      paymentRef,
+    };
+    const walletSignature = signTransaction(txPayload, this.txSecret);
+
+    await queryRunner.query(
+      `INSERT INTO ${TABLE_WALLET} (passenger_id, point_balance, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (passenger_id)
+       DO UPDATE SET point_balance = ${TABLE_WALLET}.point_balance + EXCLUDED.point_balance,
+                     updated_at = NOW()`,
+      [passengerId, totalPoints]
+    );
+
+    await queryRunner.query(
+      `INSERT INTO ${TABLE_WALLET_TXN}
+       (passenger_id, type, point_change, amount_baht, reference_id, status, signature, note, created_at)
+       VALUES ($1, 'TOPUP', $2, $3, $4, 'SUCCESS', $5, $6, NOW())`,
+      [
+        passengerId,
+        totalPoints,
+        amount,
+        paymentRef,
+        walletSignature,
+        `Top-up via ${paymentMethod}${signature ? ' / webhook verified' : ''}`,
+      ]
+    );
+
+    if (payload) {
+      await queryRunner.query(
+        `UPDATE ${TABLE_PAYMENT_TXN}
+         SET provider_payload = $2, signature = COALESCE($3, signature), updated_at = NOW()
+         WHERE payment_ref = $1`,
+        [paymentRef, JSON.stringify(payload), signature]
+      );
+    }
+
+    return totalPoints;
+  }
+
   async deductForRide(passengerId: string, tripId: string, amount: number): Promise<boolean> {
+    if (amount <= 0) return true;
+
     const locked = await this.acquireLock(passengerId);
     if (!locked) return false;
 
@@ -140,22 +372,39 @@ export class CreditService {
     await queryRunner.startTransaction();
 
     try {
-      const balance = await this.getBalance(passengerId);
-      if (balance < amount) throw new Error('ยอดเงินคงเหลือไม่เพียงพอ');
+      const rows = await queryRunner.query(
+        `SELECT passenger_id, point_balance
+         FROM ${TABLE_WALLET}
+         WHERE passenger_id = $1
+         FOR UPDATE`,
+        [passengerId]
+      );
 
+      if (!rows.length) {
+        throw new BadRequestException('Wallet not found');
+      }
+
+      const currentBalance = Number(rows[0].point_balance);
+      if (currentBalance < amount) {
+        throw new BadRequestException('ยอดเงินคงเหลือไม่เพียงพอ');
+      }
+
+      const newBalance = currentBalance - amount;
       await queryRunner.query(
-        `UPDATE ${TABLE_WALLET} SET point_balance = point_balance - $1, updated_at = NOW() WHERE passenger_id = $2`,
-        [amount, passengerId]
+        `UPDATE ${TABLE_WALLET}
+         SET point_balance = $1, updated_at = NOW()
+         WHERE passenger_id = $2`,
+        [newBalance, passengerId]
       );
 
       const txPayload = { userId: passengerId, type: 'DEDUCT', change: -amount, tripId };
       const signature = signTransaction(txPayload, this.txSecret);
 
       await queryRunner.query(
-        `INSERT INTO ${TABLE_WALLET_TXN} 
-         (passenger_id, type, point_change, reference_id, signature, created_at)
-         VALUES ($1, 'DEDUCT', $2, $3, $4, NOW())`,
-        [passengerId, -amount, tripId, signature]
+        `INSERT INTO ${TABLE_WALLET_TXN}
+         (passenger_id, type, point_change, reference_id, trip_id, status, signature, note, created_at)
+         VALUES ($1, 'DEDUCT', $2, $3, $4, 'SUCCESS', $5, $6, NOW())`,
+        [passengerId, -amount, tripId, tripId, signature, 'Ride charge']
       );
 
       await queryRunner.commitTransaction();
@@ -169,34 +418,96 @@ export class CreditService {
     }
   }
 
+  async refundForRide(passengerId: string, tripId: string, amount: number, note = 'Ride cancellation refund'): Promise<boolean> {
+    if (amount <= 0) return true;
+
+    const locked = await this.acquireLock(passengerId);
+    if (!locked) return false;
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const txPayload = { userId: passengerId, type: 'REFUND', change: amount, tripId };
+      const signature = signTransaction(txPayload, this.txSecret);
+
+      await queryRunner.query(
+        `INSERT INTO ${TABLE_WALLET}
+         (passenger_id, point_balance, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (passenger_id)
+         DO UPDATE SET point_balance = ${TABLE_WALLET}.point_balance + EXCLUDED.point_balance,
+                       updated_at = NOW()`,
+        [passengerId, amount]
+      );
+
+      await queryRunner.query(
+        `INSERT INTO ${TABLE_WALLET_TXN}
+         (passenger_id, type, point_change, reference_id, trip_id, status, signature, note, created_at)
+         VALUES ($1, 'REFUND', $2, $3, $4, 'SUCCESS', $5, $6, NOW())`,
+        [passengerId, amount, tripId, tripId, signature, note]
+      );
+
+      await queryRunner.commitTransaction();
+      return true;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`Refund failed for passenger ${passengerId}: ${err.message}`);
+      return false;
+    } finally {
+      await queryRunner.release();
+      await this.releaseLock(passengerId);
+    }
+  }
+
+  async consumeFreeRide(passengerId: string, tripId: string): Promise<boolean> {
+    const result = await this.dataSource.query(
+      `UPDATE passengers
+       SET free_rides_remaining = GREATEST(free_rides_remaining - 1, 0),
+           updated_at = NOW()
+       WHERE id = $1 AND free_rides_remaining > 0
+       RETURNING free_rides_remaining`,
+      [passengerId]
+    );
+
+    if (!result.length) {
+      this.logger.warn(`Free ride was not available for passenger ${passengerId} on trip ${tripId}`);
+      return false;
+    }
+
+    return true;
+  }
+
   async addBonusPoints(passengerId: string, points: number, note: string = 'Referral Bonus'): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
-      // 1. Update Wallet
       await queryRunner.query(
         `INSERT INTO ${TABLE_WALLET} (passenger_id, point_balance, updated_at)
          VALUES ($1, $2, NOW())
-         ON CONFLICT (passenger_id) 
-         DO UPDATE SET point_balance = ${TABLE_WALLET}.point_balance + $2, updated_at = NOW()`,
+         ON CONFLICT (passenger_id)
+         DO UPDATE SET point_balance = ${TABLE_WALLET}.point_balance + EXCLUDED.point_balance,
+                       updated_at = NOW()`,
         [passengerId, points]
       );
-      // 2. Update Passenger Points Balance
+
       await queryRunner.query(
         `UPDATE passengers SET points_balance = points_balance + $1 WHERE id = $2`,
         [points, passengerId]
       );
-      // 3. Sign Transaction
+
       const txPayload = { userId: passengerId, type: 'BONUS', change: points, ts: Date.now() };
       const signature = signTransaction(txPayload, this.txSecret);
-      // 4. Log Transaction
+
       await queryRunner.query(
-        `INSERT INTO ${TABLE_WALLET_TXN} 
+        `INSERT INTO ${TABLE_WALLET_TXN}
          (passenger_id, type, point_change, reference_id, status, signature, note, created_at)
          VALUES ($1, 'BONUS', $2, $3, 'SUCCESS', $4, $5, NOW())`,
-        [passengerId, points, 'REF-' + Date.now(), signature, note]
+        [passengerId, points, `REF-${Date.now()}`, signature, note]
       );
+
       await queryRunner.commitTransaction();
       this.logger.log(`Wallet Bonus Points Success: User ${passengerId} +${points} pts`);
     } catch (err) {

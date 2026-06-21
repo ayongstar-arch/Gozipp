@@ -27,13 +27,17 @@ type AuthStep =
   | 'SETUP_PIN'
   | 'APP_SHELL';
 
+type OtpPurpose = 'REGISTER' | 'RESET_PIN';
+
 interface AuthState {
   user: UserProfile | null;
   authStep: AuthStep;
+  otpPurpose: OtpPurpose;
 
   // Actions
   setUser: (user: UserProfile | null) => void;
   setAuthStep: (step: AuthStep) => void;
+  setOtpPurpose: (purpose: OtpPurpose) => void;
   updatePointsBalance: (balance: number) => void;
   logout: () => void;
 }
@@ -43,9 +47,11 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       authStep: 'ONBOARDING',
+  otpPurpose: 'REGISTER',
 
       setUser: (user) => set({ user }),
       setAuthStep: (authStep) => set({ authStep }),
+      setOtpPurpose: (otpPurpose) => set({ otpPurpose }),
       updatePointsBalance: (balance) =>
         set((state) => ({
           user: state.user ? { ...state.user, pointsBalance: balance } : null,
@@ -54,6 +60,7 @@ export const useAuthStore = create<AuthState>()(
         set({
           user: null,
           authStep: 'LOGIN',
+          otpPurpose: 'REGISTER',
         }),
     }),
     {

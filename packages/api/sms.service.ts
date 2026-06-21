@@ -1,47 +1,50 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { Buffer } from 'buffer';
+import { normalizeThaiMobileNumber } from './common/phone.util';
 
 @Injectable()
 export class SmsService {
   private readonly logger = new Logger(SmsService.name);
-  private readonly apiKey = process.env.SMS_API_KEY;
-  private readonly apiSecret = process.env.SMS_API_SECRET;
-  private readonly senderId = process.env.SMS_SENDER_ID || 'MyWin'; // Must register with provider
+  private readonly apiKey =
+    process.env.THAIBULKSMS_APP_KEY ||
+    process.env.SMS_API_KEY;
+  private readonly apiSecret =
+    process.env.THAIBULKSMS_APP_SECRET ||
+    process.env.SMS_API_SECRET;
+  private readonly apiUrl = process.env.SMS_API_URL || 'https://api-v2.thaibulksms.com/sms';
   private readonly isProduction = process.env.NODE_ENV === 'production';
 
   async sendOtp(phoneNumber: string, otp: string): Promise<boolean> {
-    // 1. In Development/Test, just log it (Save money)
-    if (!this.isProduction || !this.apiKey) {
-      this.logger.log(`[DEV-MODE] SMS to ${phoneNumber}: Your OTP is ${otp}`);
+    const normalized = normalizeThaiMobileNumber(phoneNumber);
+    const recipient = normalized ? `66${normalized.slice(1)}` : phoneNumber;
+    const message = `รหัส OTP ของคุณคือ ${otp} ใช้ได้ภายใน 5 นาที ห้ามบอกรหัสนี้แก่ผู้อื่น`;
+
+    if (!this.isProduction || !this.apiKey || !this.apiSecret) {
+      this.logger.log(`[DEV-MODE] SMS to ${recipient}: ${message}`);
       return true;
     }
 
-    // 2. In Production, call Real API (Example: ThaiBulkSMS)
     try {
-      // Data format specific to ThaiBulkSMS API
       const payload = {
-        msisdn: phoneNumber,
-        message: `รหัส OTP ของคุณคือ ${otp} (ห้ามบอกใคร) - MyWin`,
-        sender: this.senderId,
+        msisdn: recipient,
+        message,
       };
 
       const auth = Buffer.from(`${this.apiKey}:${this.apiSecret}`).toString('base64');
 
-      await axios.post('https://api-v2.thaibulksms.com/sms', payload, {
+      await axios.post(this.apiUrl, payload, {
         headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json'
-        }
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
       });
 
-      this.logger.log(`SMS Sent to ${phoneNumber} successfully.`);
+      this.logger.log(`SMS sent to ${recipient} successfully.`);
       return true;
-
-    } catch (error) {
-      this.logger.error(`Failed to send SMS: ${error.message}`);
-      // Fallback: Log it so Admin can help manually if system fails
-      this.logger.warn(`[FALLBACK] OTP for ${phoneNumber} is ${otp}`);
+    } catch (error: any) {
+      this.logger.error(`Failed to send SMS: ${error?.message || error}`);
       return false;
     }
   }

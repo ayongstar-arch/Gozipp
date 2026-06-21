@@ -5,7 +5,7 @@ export class PassengerEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column({ unique: true, nullable: true })
   @Index()
   phone: string;
 

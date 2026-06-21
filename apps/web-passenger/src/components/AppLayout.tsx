@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/authStore';
 import { Home, Activity, Wallet, Clock, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const AppLayout: React.FC<{ children: React.ReactNode; hideNavigation?: boolean }> = ({ children, hideNavigation = false }) => {
   const { activeTab, setActiveTab, toastMessage } = useUIStore();
   const { user } = useAuthStore();
 
@@ -44,12 +44,12 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto pb-24 relative z-10 custom-scrollbar">
+      <main className={`flex-1 overflow-y-auto relative z-10 custom-scrollbar ${hideNavigation ? '' : 'pb-24'}`}>
         {children}
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#0B1120]/80 backdrop-blur-2xl border-t border-white/5 flex justify-around items-center p-3 pb-6 z-[1000]">
+      {!hideNavigation && <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#0B1120]/80 backdrop-blur-2xl border-t border-white/5 flex justify-around items-center p-3 pb-6 z-[1000]">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -77,7 +77,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </button>
           );
         })}
-      </nav>
+      </nav>}
     </div>
   );
 };

@@ -36,6 +36,16 @@ export class FairQueueService {
     return R * c;
   }
 
+  rankStationsByDistance(lat: number, lng: number): string[] {
+    return Object.entries(this.stations)
+      .map(([id, station]) => ({
+        id,
+        distance: this.calculateDistanceMeters(lat, lng, station.lat, station.lng),
+      }))
+      .sort((a, b) => a.distance - b.distance)
+      .map((station) => station.id);
+  }
+
   /**
    * Main entry point: Driver enters the geofence of a Win
    * Uses LUA script to ensure atomicity of checks and score calculation

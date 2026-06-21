@@ -191,6 +191,53 @@ export const useAuth = () => {
     }
   }, [setAuthStep, setIsLoading, setToken, setUser]);
 
+  const requestPinReset = useCallback(async (phoneNumber: string, role: 'PASSENGER' | 'DRIVER' = 'DRIVER') => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch('/api/v1/auth/pin-reset/request', {
+        method: 'POST',
+        body: JSON.stringify({ phoneNumber, role }),
+      });
+      setToastMessage('ส่งคำขอรีเซ็ต PIN ไปยังอุปกรณ์ที่เคยล็อกอินไว้แล้ว');
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setIsLoading, setToastMessage]);
+
+  const getPinResetRequests = useCallback(async (role: 'PASSENGER' | 'DRIVER' = 'DRIVER') => {
+    const data = await apiFetch('/api/v1/auth/pin-reset', {
+      method: 'GET',
+      headers: { 'x-user-role': role },
+    }, token);
+    return data.requests || [];
+  }, [token]);
+
+  const getPinResetRequest = useCallback(async (requestId: string) => {
+    return apiFetch(`/api/v1/auth/pin-reset/${requestId}`, { method: 'GET' });
+  }, []);
+
+  const approvePinReset = useCallback(async (requestId: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch(`/api/v1/auth/pin-reset/${requestId}/approve`, {
+        method: 'POST',
+      });
+      setToastMessage('อนุมัติคำขอรีเซ็ต PIN แล้ว');
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setIsLoading, setToastMessage]);
+
   // --- Refresh Access Token ---
   const refreshAccessToken = useCallback(async (): Promise<string | null> => {
     const { refreshToken } = useAuthStore.getState();
@@ -219,6 +266,10 @@ export const useAuth = () => {
     verifyOtp,
     setupPin,
     loginWithPin,
+    requestPinReset,
+    getPinResetRequests,
+    getPinResetRequest,
+    approvePinReset,
     refreshAccessToken,
     logout,
     error,

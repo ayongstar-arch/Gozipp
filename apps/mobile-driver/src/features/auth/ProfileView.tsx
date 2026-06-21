@@ -1,14 +1,35 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import ReferralView from '../passenger/ReferralView';
+import { useAuth } from '../../hooks/useAuth';
 
 const ProfileView: React.FC = () => {
   const { user, logout } = useAuthStore();
   const [showReferral, setShowReferral] = useState(false);
+  const { getPinResetRequests, approvePinReset, error } = useAuth();
+  const [requests, setRequests] = useState<any[]>([]);
+
+  const refreshRequests = async () => {
+    try {
+      const list = await getPinResetRequests('DRIVER');
+      setRequests(list);
+    } catch {
+      setRequests([]);
+    }
+  };
+
+  useEffect(() => {
+    refreshRequests();
+  }, []);
 
   if (showReferral) {
     return <ReferralView onClose={() => setShowReferral(false)} />;
   }
+
+  const handleApprove = async (requestId: string) => {
+    await approvePinReset(requestId);
+    await refreshRequests();
+  };
 
   const menuItems = [
     { label: 'ชวนเพื่อนรับแต้มสะสม', icon: '🎁', color: 'text-pink-400', onClick: () => setShowReferral(true) },
@@ -28,6 +49,38 @@ const ProfileView: React.FC = () => {
         </div>
         <h2 className="text-3xl font-black text-white tracking-tighter uppercase mb-1">{user?.name || 'GOZIPP User'}</h2>
         <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">{user?.phone || 'No phone verified'}</p>
+      </div>
+
+      <div className="mt-8 mb-8">
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-black uppercase tracking-tighter text-sm">คำขอรีเซ็ต PIN ที่รออนุมัติ</h3>
+            <button onClick={refreshRequests} className="text-amber-300 text-xs font-bold">รีเฟรช</button>
+          </div>
+          {requests.length === 0 ? (
+            <p className="text-slate-400 text-sm">ยังไม่มีคำขอรออนุมัติ</p>
+          ) : (
+            <div className="space-y-3">
+              {requests.map((req) => (
+                <div key={req.requestId} className="bg-slate-950/60 rounded-2xl p-4 border border-white/5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-white font-bold text-sm">#{String(req.requestId).slice(0, 8)}</div>
+                      <div className="text-slate-400 text-xs">หมดอายุใน {Math.max(0, Math.ceil((req.expiresAt - Date.now()) / 1000))} วินาที</div>
+                    </div>
+                    <button
+                      onClick={() => handleApprove(req.requestId)}
+                      className="bg-amber-400 text-slate-950 font-black px-4 py-2 rounded-xl text-xs uppercase"
+                    >
+                      อนุมัติ
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
+        </div>
       </div>
 
       {/* Menu Options */}

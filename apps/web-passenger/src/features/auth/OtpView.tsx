@@ -10,11 +10,13 @@ const OtpView: React.FC<{ phoneNumber: string, isRegistering: boolean, name?: st
   name 
 }) => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
+  const otpPurpose = useAuthStore((state) => state.otpPurpose);
   const { isLoading } = useUIStore();
-  const { verifyOtp, requestOtp, error, setError } = useAuth();
+  const { verifyOtp, requestOtp, resetPinWithOtp, error, setError } = useAuth();
   
   const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
   const [countdown, setCountdown] = useState(60);
+  const [newPin, setNewPin] = useState('');
 
   useEffect(() => {
     if (countdown > 0) {
@@ -37,6 +39,10 @@ const OtpView: React.FC<{ phoneNumber: string, isRegistering: boolean, name?: st
   const handleVerify = async () => {
     const code = otpCode.join('');
     if (code.length < 6) return;
+    if (otpPurpose === 'RESET_PIN') {
+      await resetPinWithOtp(phoneNumber, code, newPin);
+      return;
+    }
     await verifyOtp(phoneNumber, code, isRegistering, name);
   };
 
@@ -45,7 +51,7 @@ const OtpView: React.FC<{ phoneNumber: string, isRegistering: boolean, name?: st
       {/* Back Button */}
       <div className="absolute top-6 left-6 z-30">
         <button 
-          onClick={() => { setAuthStep(isRegistering ? 'REGISTER' : 'LOGIN'); setError(null); }}
+          onClick={() => { setAuthStep(otpPurpose === 'RESET_PIN' ? 'LOGIN_PIN' : 'REGISTER'); setError(null); }}
           className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
           aria-label="กลับ"
         >
@@ -92,9 +98,16 @@ const OtpView: React.FC<{ phoneNumber: string, isRegistering: boolean, name?: st
             transition={{ delay: 0.1 }}
             className="text-center mb-4"
           >
-            <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">ยืนยันรหัส OTP</h2>
+            <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">
+              {otpPurpose === 'RESET_PIN' ? 'ยืนยัน OTP เพื่อรีเซ็ต PIN' : 'ยืนยันรหัส OTP'}
+            </h2>
             <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
               <p>รหัสถูกส่งไปที่ <span className="text-[#A3FF3F]">{phoneNumber}</span></p>
+              <p className="text-gray-500">
+                {otpPurpose === 'RESET_PIN'
+                  ? 'ใช้สำหรับรีเซ็ต PIN ของบัญชีเดิม'
+                  : 'ใช้สำหรับการสมัครครั้งแรกและยืนยันเบอร์เท่านั้น'}
+              </p>
             </div>
           </motion.div>
 
@@ -135,9 +148,24 @@ const OtpView: React.FC<{ phoneNumber: string, isRegistering: boolean, name?: st
         transition={{ delay: 0.2 }}
         className="space-y-4 relative z-10"
       >
+        {otpPurpose === 'RESET_PIN' && (
+          <label className="block">
+            <span className="text-xs font-bold text-slate-400 ml-1">PIN ใหม่</span>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              className="w-full mt-1 bg-white/5 rounded-2xl border border-white/10 p-4 text-white text-center tracking-[0.4em] font-black outline-none focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F]"
+              placeholder="••••••"
+            />
+          </label>
+        )}
+
         <button
           onClick={handleVerify}
-          disabled={isLoading || otpCode.join('').length < 6}
+          disabled={isLoading || otpCode.join('').length < 6 || (otpPurpose === 'RESET_PIN' && newPin.length < 6)}
           className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-black py-5 rounded-2xl shadow-[0_0_30px_rgba(163,255,63,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 overflow-hidden text-lg"
         >
           <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
@@ -150,7 +178,7 @@ const OtpView: React.FC<{ phoneNumber: string, isRegistering: boolean, name?: st
           ) : (
             <button
               onClick={() => {
-                requestOtp(phoneNumber, isRegistering);
+                requestOtp(phoneNumber, otpPurpose !== 'RESET_PIN', name, otpPurpose);
                 setCountdown(60);
               }}
               className="text-[#A3FF3F] text-sm font-black uppercase tracking-widest hover:underline decoration-[#A3FF3F]/30 underline-offset-4"

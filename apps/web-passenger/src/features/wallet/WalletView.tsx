@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
-import { API_BASE_URL } from '@/constants';
+import { apiFetch } from '../../services/api';
 
 interface Transaction {
   id: string;
@@ -46,10 +46,7 @@ const WalletView: React.FC = () => {
   useEffect(() => {
     if (!user?.id) return;
     setIsLoading(true);
-    fetch(`${API_BASE_URL}/api/v1/credit/history`, {
-      credentials: 'include',
-    })
-      .then(r => r.json())
+    apiFetch('/api/v1/credit/history')
       .then(data => {
         if (Array.isArray(data)) setTransactions(data);
         else if (Array.isArray(data.transactions)) setTransactions(data.transactions);
@@ -61,16 +58,16 @@ const WalletView: React.FC = () => {
   const handleTopup = async (amount: number) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/credit/topup`, {
+      const data = await apiFetch('/api/v1/credit/topup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ amount, paymentMethod: 'PROMPTPAY' }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
       useAuthStore.getState().updatePointsBalance(data.balance);
-      setToastMessage(`✅ เติมเงินสำเร็จ +${data.pointsAdded} แต้ม`);
+      if (data.status === 'CONFIRMED') {
+        setToastMessage(`✅ เติมเงินสำเร็จ +${data.pointsAdded} แต้ม`);
+      } else {
+        setToastMessage(`⏳ สร้างรายการเติมเงินแล้ว รอชำระ: ${data.paymentRef}`);
+      }
       setShowTopup(false);
     } catch (err: any) {
       setToastMessage('❌ ' + err.message);

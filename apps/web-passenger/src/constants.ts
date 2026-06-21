@@ -51,6 +51,9 @@ export const SOCKET_URL =
   API_BASE_URL;
 
 export const IS_PRODUCTION = process.env?.NODE_ENV === 'production';
+export const USE_REAL_SOCKET = IS_PRODUCTION || process.env?.NEXT_PUBLIC_USE_REAL_SOCKET === 'true';
+export const ALLOW_REGISTRATION_WITHOUT_OTP =
+  process.env?.NEXT_PUBLIC_ALLOW_REGISTRATION_WITHOUT_OTP === 'true';
 
 // --- GAME / SIMULATION CONSTANTS ---
 export const MAX_DRIVERS = 20;

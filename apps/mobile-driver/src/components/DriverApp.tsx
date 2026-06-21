@@ -164,7 +164,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
                 return;
             }
 
-            // 2. If No PIN (or New User), Request OTP
+            // 2. First-time signup -> Request OTP
             const res = await fetch(`${API_BASE_URL}/driver/request-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -186,7 +186,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
 
     const verifyAndLogin = async () => {
         const otp = otpCode.join('');
-        if (otp.length < 4) {
+        if (otp.length < 6) {
             setAuthError('กรุณากรอกรหัส OTP ให้ครบ');
             return;
         }
@@ -995,7 +995,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
                 </div>
 
                 <button onClick={() => { setAuthStep('LOGIN'); setPhoneNumber(''); }} className="text-slate-400 text-sm mt-8">
-                    ลืมรหัส PIN / เปลี่ยนบัญชี
+                    เปลี่ยนเบอร์หรือกลับไปเริ่มใหม่
                 </button>
             </div>
         );
@@ -1028,7 +1028,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
             <div className="flex flex-col h-full bg-white text-slate-900 p-8 items-center justify-center font-sans">
                 <div className="mb-8 p-4 bg-emerald-50 rounded-full text-4xl">🔐</div>
                 <h2 className="text-2xl font-bold mb-2">ตั้งรหัส PIN ใหม่</h2>
-                <p className="text-slate-500 text-center mb-8 text-sm">กำหนดรหัส 6 หลักเพื่อเข้าใช้งานครั้งต่อไป<br />โดยไม่ต้องรอ OTP</p>
+                <p className="text-slate-500 text-center mb-8 text-sm">กำหนดรหัส 6 หลักเพื่อเข้าใช้งานครั้งต่อไป<br />โดยไม่ต้องใช้ OTP อีก</p>
 
                 <div className="flex gap-2 justify-center mb-8">
                     {pinCode.map((digit, i) => (
@@ -1070,9 +1070,10 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
                 <div className="w-24 h-24 bg-amber-50 rounded-full flex items-center justify-center text-5xl mb-6 animate-pulse text-amber-500 border border-amber-100">
                     ⏳
                 </div>
-                <h2 className="text-2xl font-bold mb-2">รอการตรวจสอบ</h2>
+                <h2 className="text-2xl font-bold mb-2">รออนุมัติจากอุปกรณ์ที่เคยล็อกอินไว้</h2>
                 <p className="text-slate-500 text-sm mb-8">
-                    ข้อมูลของคุณกำลังถูกตรวจสอบโดยระบบ<br />กรุณารอสักครู่...
+                    คำขอรีเซ็ต PIN ถูกส่งไปยังอุปกรณ์ที่เคยล็อกอินไว้แล้ว<br />
+                    กรุณาเปิดอุปกรณ์นั้นเพื่ออนุมัติ แล้วระบบจะพาคุณกลับมาตั้ง PIN ใหม่
                 </p>
 
                 <div className="bg-slate-50 p-6 rounded-2xl w-full text-left mb-6 border border-slate-100 shadow-sm">
@@ -1096,10 +1097,10 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
 
                 <div className="space-y-3 w-full">
                     <button onClick={() => { setAuthStep('SETUP_PIN'); setPinCode(['', '', '', '', '', '']); }} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-bold text-sm transition-colors shadow-lg">
-                        อนุมัติแล้ว (Simulation: Set PIN)
+                        ตั้ง PIN ใหม่
                     </button>
-                    <button onClick={() => setAuthStep('DASHBOARD')} className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 py-3 rounded-xl font-bold text-sm transition-colors">
-                        เข้าหน้า Dashboard (Skip PIN)
+                    <button onClick={() => setAuthStep('LOGIN')} className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 py-3 rounded-xl font-bold text-sm transition-colors">
+                        กลับไปหน้าเข้าใช้งาน
                     </button>
                 </div>
             </div>

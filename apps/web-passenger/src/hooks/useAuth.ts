@@ -1,59 +1,36 @@
 /**
- * useAuth.ts — Production Auth Hook
- * Handles: OTP request/verify, PIN setup, PIN login, logout
- * Connects to real backend endpoints: /api/v1/passenger/* and /api/v1/auth/*
+ * useAuth.ts — Passenger auth hook for production
+ * Flow: first-time registration uses OTP once, then all future access uses PIN.
  */
 import { useState, useCallback } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
-import { API_BASE_URL } from '@/constants';
-
-// Helper: Get or create persistent Device ID
-const getDeviceId = () => {
-  if (typeof window === 'undefined') return '';
-  let deviceId = localStorage.getItem('gozipp_device_id');
-  if (!deviceId) {
-    deviceId = crypto.randomUUID();
-    localStorage.setItem('gozipp_device_id', deviceId);
-  }
-  return deviceId;
-};
-
-// Internal helper: authenticated fetch with HttpOnly Cookies
-export const apiFetch = async (path: string, options: RequestInit = {}) => {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'X-Device-Id': getDeviceId(),
-    ...(options.headers as Record<string, string> || {}),
-  };
-  const res = await fetch(`${API_BASE_URL}${path}`, { 
-    ...options, 
-    headers,
-    credentials: 'include' // Important: Send HttpOnly cookies automatically
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
-  return data;
-};
+import { apiFetch } from '../services/api';
 
 export const useAuth = () => {
-  const { setAuthStep, setUser, user, logout: storeLogout } = useAuthStore();
+  const { setAuthStep, setUser, setOtpPurpose, user, logout: storeLogout } = useAuthStore();
   const { setIsLoading, setToastMessage } = useUIStore();
   const [error, setError] = useState<string | null>(null);
 
-  // --- STEP 1: Request OTP ---
+  // --- STEP 1: Request OTP for first-time registration only ---
   const requestOtp = useCallback(async (
     phoneNumber: string,
     isRegistering?: boolean,
-    name?: string
+    name?: string,
+    purpose: 'REGISTER' | 'RESET_PIN' = 'REGISTER'
   ): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
     try {
-      await apiFetch('/api/v1/passenger/otp', {
+      if (!isRegistering && purpose !== 'RESET_PIN') {
+        throw new Error('OTP ใช้เฉพาะการสมัครครั้งแรกเท่านั้น');
+      }
+
+      await apiFetch('/api/v1/auth/request-otp', {
         method: 'POST',
-        body: JSON.stringify({ phoneNumber }),
+        body: JSON.stringify({ phoneNumber, purpose }),
       });
+
       setUser({
         id: '',
         name: name || '',
@@ -63,6 +40,7 @@ export const useAuth = () => {
         pointsBalance: 0,
         freeRidesRemaining: 3,
       });
+      setOtpPurpose(purpose);
       setAuthStep('OTP');
       setToastMessage('OTP ถูกส่งไปยังเบอร์ของคุณแล้ว');
       return true;
@@ -72,9 +50,9 @@ export const useAuth = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [setAuthStep, setUser, setIsLoading, setToastMessage]);
+  }, [setAuthStep, setUser, setOtpPurpose, setIsLoading, setToastMessage]);
 
-  // --- STEP 2: Verify OTP (Login or Register) ---
+  // --- STEP 2: Verify OTP (first-time registration only) ---
   const verifyOtp = useCallback(async (
     phoneNumber: string,
     otp: string,
@@ -84,29 +62,20 @@ export const useAuth = () => {
     setIsLoading(true);
     setError(null);
     try {
-      let data: any;
-
-      if (isRegistering) {
-        // Registration flow: verify OTP + create account
-        data = await apiFetch('/api/v1/passenger/register', {
-          method: 'POST',
-          body: JSON.stringify({ phoneNumber, name: name || 'ผู้ใช้ใหม่' }),
-        });
-      } else {
-        // Login flow: verify OTP → check if user exists
-        data = await apiFetch('/api/v1/passenger/login', {
-          method: 'POST',
-          body: JSON.stringify({ phoneNumber, otp }),
-        });
-
-        if (!data.isRegistered) {
-          // User not registered yet, switch to register flow
-          setAuthStep('REGISTER');
-          return false;
-        }
+      if (!isRegistering) {
+        throw new Error('OTP ใช้เฉพาะการสมัครครั้งแรกเท่านั้น');
       }
 
-      // Save user (Tokens are saved automatically as HttpOnly cookies by the backend)
+      const data = await apiFetch('/api/v1/auth/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({
+          phoneNumber,
+          otp,
+          purpose: 'REGISTER',
+          name: name || 'ผู้ใช้งานใหม่',
+        }),
+      });
+
       if (data.success || data.user || data.passengerId) {
         setUser({
           id: data.passengerId || data.user?.id,
@@ -118,7 +87,6 @@ export const useAuth = () => {
           freeRidesRemaining: data.freeRidesRemaining ?? 3,
         });
 
-        // Check if PIN has been set up
         try {
           const statusData = await apiFetch('/api/v1/auth/check-status', {
             method: 'POST',
@@ -130,7 +98,6 @@ export const useAuth = () => {
             setAuthStep('SETUP_PIN');
           }
         } catch {
-          // If status check fails, go to app anyway
           setAuthStep('APP_SHELL');
         }
         return true;
@@ -159,7 +126,6 @@ export const useAuth = () => {
       });
 
       setToastMessage('ตั้ง PIN สำเร็จ!');
-      // Let PinView handle the transition so it can show the Biometric prompt
       return true;
     } catch (err: any) {
       setError(err.message);
@@ -167,7 +133,7 @@ export const useAuth = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [setAuthStep, setIsLoading, setToastMessage]);
+  }, [setIsLoading, setToastMessage]);
 
   // --- STEP 3 ALT: Login with PIN (returning user) ---
   const loginWithPin = useCallback(async (phoneNumber: string, pin: string): Promise<boolean> => {
@@ -195,7 +161,7 @@ export const useAuth = () => {
       return true;
     } catch (err: any) {
       if (err.message === 'REQUIRE_OTP' || err.message.includes('REQUIRE_OTP')) {
-        setToastMessage('ระบบตรวจพบความเสี่ยง กรุณายืนยันตัวตนใหม่ด้วย OTP');
+        setToastMessage('ระบบต้องการให้เริ่มยืนยันบัญชีใหม่อีกครั้ง');
         setAuthStep('LOGIN');
         return false;
       }
@@ -206,10 +172,53 @@ export const useAuth = () => {
     }
   }, [setAuthStep, setIsLoading, setUser, setToastMessage]);
 
+  const resetPinWithOtp = useCallback(async (
+    phoneNumber: string,
+    otp: string,
+    newPin: string
+  ): Promise<boolean> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      if (!/^\d{6}$/.test(newPin)) {
+        throw new Error('PIN ต้องเป็นตัวเลข 6 หลัก');
+      }
+      const data = await apiFetch('/api/v1/auth/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({
+          phoneNumber,
+          otp,
+          purpose: 'RESET_PIN',
+          newPin,
+        }),
+      });
+
+      if (data.success || data.passengerId || data.user) {
+        setUser({
+          id: data.passengerId || data.user?.id,
+          name: data.name || data.user?.name || '',
+          phone: phoneNumber,
+          email: data.user?.email || '',
+          avatarSeed: (data.passengerId || data.user?.id || 'user').slice(0, 8),
+          pointsBalance: data.pointsBalance ?? 0,
+          freeRidesRemaining: data.freeRidesRemaining ?? 0,
+        });
+        setAuthStep('APP_SHELL');
+        return true;
+      }
+
+      return false;
+    } catch (err: any) {
+      setError(err.message);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setAuthStep, setIsLoading, setUser]);
+
   // --- Refresh Access Token ---
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
     try {
-      // Backend reads refreshToken from cookie automatically
       await apiFetch('/api/v1/auth/refresh', {
         method: 'POST',
       });
@@ -241,22 +250,31 @@ export const useAuth = () => {
       }
       return false;
     } catch {
-      // Not authenticated, do nothing or logout
+      if (useAuthStore.getState().authStep === 'APP_SHELL') storeLogout();
       return false;
     }
-  }, [setUser, setAuthStep]);
+  }, [setUser, setAuthStep, storeLogout]);
 
   // --- Logout ---
-  const logout = useCallback(() => {
-    storeLogout();
-    setToastMessage('ออกจากระบบแล้ว');
-  }, [storeLogout, setToastMessage]);
+  const logout = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await apiFetch('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({}) });
+    } catch {
+      // Local logout must still complete if the network is unavailable.
+    } finally {
+      storeLogout();
+      setToastMessage('ออกจากระบบแล้ว');
+      setIsLoading(false);
+    }
+  }, [storeLogout, setToastMessage, setIsLoading]);
 
   return {
     requestOtp,
     verifyOtp,
     setupPin,
     loginWithPin,
+    resetPinWithOtp,
     refreshAccessToken,
     restoreSession,
     logout,

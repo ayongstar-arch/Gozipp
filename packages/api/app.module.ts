@@ -27,6 +27,7 @@ import { DriverController, TripController } from './driver.controller';
 import { DriverService } from './driver.service';
 
 import { PassengerController, RideController } from './passenger.controller';
+import { OtpController } from './otp.controller';
 import { PassengerService } from './passenger.service';
 
 import { AdminController } from './admin.controller';
@@ -39,6 +40,7 @@ import { CreditController } from './credit.controller';
 import { CreditService } from './credit.service';
 import { PromotionService } from './promotion.service';
 import { ChatService } from './chat.service';
+import { SosService } from './sos.service';
 import { AuthModule } from './auth/auth.module'; // NEW
 
 import { LoggingInterceptor, ResilienceInterceptor } from './common/interceptors';
@@ -109,6 +111,7 @@ import { AiService } from './ai.service';
     DriverController,
     TripController,
     PassengerController,
+    OtpController,
     RideController,
     AdminController,
     CreditController,
@@ -126,6 +129,7 @@ import { AiService } from './ai.service';
     CreditService,
     PromotionService,
     ChatService,
+    SosService,
     AuditLogService,
     S3Service,
     // Add Throttler Guard globally

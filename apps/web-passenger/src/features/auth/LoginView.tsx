@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../hooks/useAuth';
-import { API_BASE_URL } from '@/constants';
+import { apiFetch } from '../../services/api';
 import { motion } from 'framer-motion';
 
 const LoginView: React.FC = () => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
   const { isLoading, setToastMessage } = useUIStore();
-  const { requestOtp, error, setError } = useAuth();
+  const { error, setError } = useAuth();
   const [phone, setPhone] = useState('');
 
   const setUser = useAuthStore((state) => state.setUser);
@@ -43,32 +43,39 @@ const LoginView: React.FC = () => {
     
     try {
       useUIStore.getState().setIsLoading(true);
-      const statusRes = await fetch(`${API_BASE_URL}/api/v1/auth/check-status`, {
+      const statusData = await apiFetch('/api/v1/auth/check-status', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phoneNumber: rawPhone, role: 'PASSENGER' })
       });
-      const statusData = await statusRes.json();
       
       if (!statusData.isRegistered && !statusData.exists) {
-          // New user -> Go directly to register, bypassing OTP
+          setToastMessage('หมายเลขนี้ยังไม่เคยสมัครใช้งาน กรุณายืนยันเบอร์และตั้ง PIN ครั้งแรก');
+          setUser({ id: '', name: '', phone: rawPhone, email: '', avatarSeed: 'user', pointsBalance: 0, freeRidesRemaining: 0 });
           setAuthStep('REGISTER');
           useUIStore.getState().setIsLoading(false);
           return;
       }
-      
+
       if ((statusData.isRegistered || statusData.exists) && statusData.hasPin) {
           setUser({ id: '', name: '', phone: rawPhone, email: '', avatarSeed: 'user', pointsBalance: 0, freeRidesRemaining: 0 });
           setAuthStep('LOGIN_PIN');
           useUIStore.getState().setIsLoading(false);
           return;
       }
+
+      setToastMessage('บัญชีนี้ยังต้องยืนยันเบอร์และตั้ง PIN ก่อนใช้งาน');
+      setUser({ id: '', name: '', phone: rawPhone, email: '', avatarSeed: 'user', pointsBalance: 0, freeRidesRemaining: 0 });
+      setAuthStep('REGISTER');
+      useUIStore.getState().setIsLoading(false);
+      return;
     } catch (e) {
       console.error("Status check failed", e);
+      setToastMessage('ไม่สามารถตรวจสอบสถานะได้ กรุณายืนยันเบอร์และตั้ง PIN ครั้งแรก');
+      setUser({ id: '', name: '', phone: rawPhone, email: '', avatarSeed: 'user', pointsBalance: 0, freeRidesRemaining: 0 });
+      setAuthStep('REGISTER');
+      useUIStore.getState().setIsLoading(false);
+      return;
     }
-    
-    // Fallback: If user is registered but has no PIN, use OTP to verify them
-    await requestOtp(rawPhone, false);
   };
 
   return (
@@ -76,15 +83,17 @@ const LoginView: React.FC = () => {
       
       {/* Back Button */}
       <div className="absolute top-6 left-6 z-30">
-        <button 
+        <motion.button
+          whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)' }}
+          whileTap={{ scale: 0.95 }}
           onClick={() => setAuthStep('ONBOARDING')}
-          className="w-10 h-10 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
+          className="w-12 h-12 bg-white/5 border border-white/5 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-2xl shadow-sm"
           aria-label="กลับ"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
-        </button>
+        </motion.button>
       </div>
 
       {/* Main Container - Creates ONE stacking context for Background + Logo */}
@@ -125,8 +134,8 @@ const LoginView: React.FC = () => {
             transition={{ delay: 0.1 }}
             className="text-center mb-6"
           >
-            <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">ยินดีต้อนรับกลับ</h2>
-            <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
+            <h2 className="text-3xl font-extrabold text-white mb-2 tracking-tight">ยินดีต้อนรับกลับ</h2>
+            <div className="text-gray-400 font-medium text-sm space-y-0.5 leading-relaxed text-balance">
               <p>กรอกเบอร์โทรศัพท์ของคุณเพื่อเข้าสู่ระบบ</p>
             </div>
           </motion.div>
@@ -147,17 +156,17 @@ const LoginView: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="space-y-4"
+          className="space-y-5"
         >
           <label className="block relative">
-            <span className="absolute -top-3 left-4 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">
+            <span className="absolute -top-3 left-6 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">
               เบอร์โทรศัพท์
             </span>
             <input
               type="tel"
               inputMode="none"
               readOnly
-              className="w-full bg-white/5 border border-white/10 p-3 rounded-2xl text-2xl tracking-widest font-bold text-center text-[#A3FF3F] outline-none focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] transition-all backdrop-blur-md placeholder:text-gray-600"
+              className="w-full bg-white/5 border border-white/5 p-4 rounded-3xl text-3xl tracking-[0.2em] font-bold text-center text-[#A3FF3F] outline-none focus:border-[#A3FF3F] transition-all backdrop-blur-2xl placeholder:text-gray-700 shadow-inner"
               placeholder="08X-XXX-XXXX"
               value={phone}
               onClick={(e) => {
@@ -165,14 +174,16 @@ const LoginView: React.FC = () => {
               }}
             />
           </label>
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={handleLogin}
             disabled={isLoading || phone.replace(/\D/g, '').length < 10}
-            className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-extrabold py-3.5 rounded-2xl text-lg hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 disabled:hover:scale-100 overflow-hidden shadow-[0_0_20px_rgba(163,255,63,0.25)]"
+            className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-extrabold py-4 rounded-3xl text-lg transition-all disabled:opacity-50 overflow-hidden shadow-[0_0_20px_rgba(163,255,63,0.15)] hover:shadow-[0_0_30px_rgba(163,255,63,0.3)]"
           >
             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
             <span className="relative z-10">{isLoading ? 'กำลังดำเนินการ...' : 'ดำเนินการต่อ'}</span>
-          </button>
+          </motion.button>
         </motion.div>
 
         {/* Custom Numpad */}
@@ -180,34 +191,40 @@ const LoginView: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="grid grid-cols-3 gap-3 mt-6 relative z-10"
+          className="grid grid-cols-3 gap-3 mt-8 relative z-10"
         >
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.08)' }}
+              whileTap={{ scale: 0.95 }}
               key={num}
               onClick={() => handleNumpadPress(num.toString())}
-              className="bg-white/5 hover:bg-[#A3FF3F]/20 active:bg-[#A3FF3F]/40 border border-white/10 hover:border-[#A3FF3F]/30 text-white text-2xl font-semibold py-4 rounded-2xl transition-all backdrop-blur-md"
+              className="bg-white/5 border border-white/5 text-white text-3xl font-semibold py-5 rounded-3xl transition-colors backdrop-blur-2xl shadow-sm"
             >
               {num}
-            </button>
+            </motion.button>
           ))}
           <div className="col-start-2">
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.08)' }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => handleNumpadPress('0')}
-              className="w-full bg-white/5 hover:bg-[#A3FF3F]/20 active:bg-[#A3FF3F]/40 border border-white/10 hover:border-[#A3FF3F]/30 text-white text-2xl font-semibold py-4 rounded-2xl transition-all backdrop-blur-md"
+              className="w-full bg-white/5 border border-white/5 text-white text-3xl font-semibold py-5 rounded-3xl transition-colors backdrop-blur-2xl shadow-sm"
             >
               0
-            </button>
+            </motion.button>
           </div>
           <div className="col-start-3 flex justify-center items-center">
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05, backgroundColor: 'rgba(239,68,68,0.15)' }}
+              whileTap={{ scale: 0.95 }}
               onClick={handleNumpadDelete}
-              className="w-full bg-white/5 hover:bg-red-500/20 active:bg-red-500/40 border border-white/10 hover:border-red-500/30 text-white text-xl font-bold py-4 rounded-2xl transition-all backdrop-blur-md flex items-center justify-center"
+              className="w-full bg-white/5 border border-white/5 text-white py-5 rounded-3xl transition-colors backdrop-blur-2xl flex items-center justify-center shadow-sm"
             >
-              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" />
               </svg>
-            </button>
+            </motion.button>
           </div>
         </motion.div>
         </div>

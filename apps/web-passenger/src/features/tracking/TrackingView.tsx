@@ -3,55 +3,19 @@
  * Shows real-time driver location during an active trip
  */
 'use client';
-import React, { useEffect, useState, useRef } from 'react';
+import React from 'react';
 import dynamic from 'next/dynamic';
+import { useAuthStore } from '../../stores/authStore';
 import { useRideStore } from '../../stores/rideStore';
-import { API_BASE_URL, SOCKET_URL } from '@/constants';
-import { io, Socket } from 'socket.io-client';
+import { useRide } from '../../hooks/useRide';
+import SOSButton from '@/components/SOSButton';
 
 const LiveMapView = dynamic(() => import('@/components/LiveMapView'), { ssr: false });
 
-interface DriverLocation {
-  lat: number;
-  lng: number;
-  heading?: number;
-}
-
 const TrackingView: React.FC = () => {
-  const { activeDriver, myLocation, currentTripId } = useRideStore();
-  const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
-  const [ridePhase, setRidePhase] = useState<'DRIVER_COMING' | 'IN_PROGRESS' | 'COMPLETED'>('DRIVER_COMING');
-  const socketRef = useRef<Socket | null>(null);
-
-  useEffect(() => {
-    if (!currentTripId || !activeDriver) return;
-
-    const socket = io(SOCKET_URL, {
-      withCredentials: true,
-      transports: ['websocket'],
-    });
-    socketRef.current = socket;
-
-    // Join trip room for real-time updates
-    socket.emit('CHAT_JOIN_ROOM', { tripId: currentTripId });
-
-    // Listen for driver location updates
-    socket.on(`DRIVER_LOCATION_${activeDriver.id}`, (loc: DriverLocation) => {
-      setDriverLocation(loc);
-    });
-
-    socket.on('TRIP_STATUS_UPDATE', (data: { tripId: string; status: string }) => {
-      if (data.tripId !== currentTripId) return;
-      if (data.status === 'DRIVER_ARRIVED') setRidePhase('DRIVER_COMING');
-      if (data.status === 'IN_PROGRESS') setRidePhase('IN_PROGRESS');
-      if (data.status === 'COMPLETED') setRidePhase('COMPLETED');
-    });
-
-    return () => {
-      socket.emit('CHAT_LEAVE_ROOM', { tripId: currentTripId });
-      socket.disconnect();
-    };
-  }, [currentTripId, activeDriver?.id]);
+  const { activeDriver, myLocation, driverLocation, rideStatus, currentTripId } = useRideStore();
+  const { user } = useAuthStore();
+  useRide();
 
   if (!activeDriver) {
     return (
@@ -64,13 +28,13 @@ const TrackingView: React.FC = () => {
     );
   }
 
-  const phaseConfig = {
-    DRIVER_COMING: { label: 'คนขับกำลังเดินทางมา', icon: '🏍️', color: 'text-blue-600' },
-    IN_PROGRESS: { label: 'กำลังเดินทาง', icon: '🛵', color: 'text-green-600' },
-    COMPLETED: { label: 'ถึงจุดหมายแล้ว!', icon: '✅', color: 'text-emerald-600' },
+  const phaseConfig: Record<string, { label: string; icon: string; color: string }> = {
+    ACCEPTED: { label: 'คนขับกำลังเดินทางมารับคุณ', icon: '🏍️', color: 'text-blue-700' },
+    DRIVER_ARRIVED: { label: 'คนขับถึงจุดรับแล้ว', icon: '📍', color: 'text-amber-700' },
+    IN_PROGRESS: { label: 'กำลังเดินทางไปจุดหมาย', icon: '🛵', color: 'text-green-700' },
   };
 
-  const phase = phaseConfig[ridePhase];
+  const phase = phaseConfig[rideStatus || 'ACCEPTED'] || phaseConfig.ACCEPTED;
 
   return (
     <div className="flex flex-col h-full">
@@ -84,7 +48,7 @@ const TrackingView: React.FC = () => {
 
         {/* Phase badge */}
         <div className="absolute top-4 left-4 right-4 z-[400]">
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl px-4 py-3 shadow-lg flex items-center gap-3">
+          <div className="bg-white rounded-xl px-4 py-3 shadow-lg flex items-center gap-3" role="status" aria-live="polite">
             <span className="text-2xl">{phase.icon}</span>
             <span className={`font-black text-sm ${phase.color}`}>{phase.label}</span>
           </div>
@@ -92,7 +56,7 @@ const TrackingView: React.FC = () => {
       </div>
 
       {/* Driver Info Card */}
-      <div className="bg-white p-6 rounded-t-[32px] shadow-[0_-8px_30px_rgba(0,0,0,0.06)]">
+      <div className="bg-white p-6 rounded-t-2xl shadow-[0_-6px_8px_rgba(0,0,0,0.06)]">
         <div className="w-10 h-1 bg-slate-100 rounded-full mx-auto mb-5" />
 
         <div className="flex items-center gap-4 mb-6">
@@ -107,28 +71,29 @@ const TrackingView: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Messages */}
-        <div className="mb-5">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">ส่งข้อความด่วน</p>
-          <div className="flex gap-2 flex-wrap">
-            {['อยู่หน้าปากซอย 🛣️', 'รอใต้ตึก 🏢', 'รีบมาก 🔥'].map(msg => (
-              <button
-                key={msg}
-                className="text-[11px] font-bold bg-slate-50 text-slate-700 px-3 py-2 rounded-xl border border-slate-100 hover:bg-green-50 hover:border-green-200 transition-all"
-              >
-                {msg}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Call button */}
-        <a
-          href={`tel:${activeDriver.phone || ''}`}
-          className="w-full bg-green-500 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-green-600 transition-colors"
-        >
-          📞 โทรหาคนขับ
-        </a>
+        {activeDriver.phone ? (
+          <a
+            href={`tel:${activeDriver.phone}`}
+            className="w-full min-h-11 bg-green-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-3 hover:bg-green-700 transition-colors"
+          >
+            📞 โทรหาคนขับ
+          </a>
+        ) : (
+          <div className="w-full min-h-11 bg-slate-100 text-slate-500 font-medium py-3 rounded-xl flex items-center justify-center">
+            ยังไม่มีหมายเลขติดต่อคนขับ
+          </div>
+        )}
+
+        <div className="mt-4">
+          <SOSButton
+            userId={user?.id || 'unknown'}
+            userType="PASSENGER"
+            tripId={currentTripId || undefined}
+            currentLocation={myLocation}
+            disabled={!currentTripId}
+          />
+        </div>
       </div>
     </div>
   );

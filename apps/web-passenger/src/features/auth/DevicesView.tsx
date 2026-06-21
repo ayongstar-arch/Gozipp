@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { apiFetch } from '../../hooks/useAuth';
+import { apiFetch } from '../../services/api';
 import { useUIStore } from '../../stores/uiStore';
 import { motion } from 'framer-motion';
 
@@ -14,17 +14,26 @@ interface DeviceSession {
   ipAddress: string;
 }
 
+interface PinResetRequest {
+  requestId: string;
+  status: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
 interface DevicesViewProps {
   onClose: () => void;
 }
 
 const DevicesView: React.FC<DevicesViewProps> = ({ onClose }) => {
   const [sessions, setSessions] = useState<DeviceSession[]>([]);
+  const [pinResets, setPinResets] = useState<PinResetRequest[]>([]);
   const { setIsLoading, setToastMessage } = useUIStore();
   const currentDeviceId = typeof window !== 'undefined' ? localStorage.getItem('gozipp_device_id') : '';
 
   useEffect(() => {
     fetchSessions();
+    fetchPinResets();
   }, []);
 
   const fetchSessions = async () => {
@@ -39,6 +48,15 @@ const DevicesView: React.FC<DevicesViewProps> = ({ onClose }) => {
     }
   };
 
+  const fetchPinResets = async () => {
+    try {
+      const data = await apiFetch('/api/v1/auth/pin-reset');
+      setPinResets(data.requests || []);
+    } catch {
+      setPinResets([]);
+    }
+  };
+
   const handleRevoke = async (sessionId: string) => {
     setIsLoading(true);
     try {
@@ -47,6 +65,32 @@ const DevicesView: React.FC<DevicesViewProps> = ({ onClose }) => {
       fetchSessions(); // Refresh list
     } catch (err: any) {
       setToastMessage('เกิดข้อผิดพลาดในการออกจากระบบ');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRevokeOthers = async () => {
+    setIsLoading(true);
+    try {
+      await apiFetch('/api/v1/auth/sessions', { method: 'DELETE' });
+      setToastMessage('ออกจากระบบทุกเครื่องอื่นแล้ว');
+      fetchSessions();
+    } catch {
+      setToastMessage('ไม่สามารถออกจากระบบเครื่องอื่นได้');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleApproveReset = async (requestId: string) => {
+    setIsLoading(true);
+    try {
+      await apiFetch(`/api/v1/auth/pin-reset/${requestId}/approve`, { method: 'POST' });
+      setToastMessage('อนุมัติคำขอรีเซ็ต PIN แล้ว');
+      fetchPinResets();
+    } catch {
+      setToastMessage('ไม่สามารถอนุมัติคำขอรีเซ็ต PIN ได้');
     } finally {
       setIsLoading(false);
     }
@@ -66,6 +110,34 @@ const DevicesView: React.FC<DevicesViewProps> = ({ onClose }) => {
         </button>
         <h2 className="text-xl font-bold ml-4">อุปกรณ์ที่เข้าสู่ระบบ</h2>
       </div>
+
+      <div className="px-6 pt-4">
+        <button
+          onClick={handleRevokeOthers}
+          className="w-full rounded-2xl bg-white/5 border border-white/10 text-white font-bold py-3 hover:bg-white/10 transition-colors"
+        >
+          ออกจากระบบทุกเครื่องอื่น
+        </button>
+      </div>
+
+      {pinResets.length > 0 && (
+        <div className="px-6 pt-4">
+          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+            <h3 className="font-bold text-amber-300 mb-2">มีคำขอรีเซ็ต PIN รออนุมัติ</h3>
+            <div className="space-y-2">
+              {pinResets.map((req) => (
+                <button
+                  key={req.requestId}
+                  onClick={() => handleApproveReset(req.requestId)}
+                  className="w-full rounded-xl bg-white/10 text-white font-bold py-3 hover:bg-white/20 transition-colors"
+                >
+                  อนุมัติคำขอ {req.requestId.slice(0, 8)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
         <p className="text-gray-400 text-sm mb-2">

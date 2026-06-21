@@ -239,28 +239,74 @@ export class DriverService implements OnModuleInit {
 
     if (!acquired) throw new BadRequestException('งานนี้หมดอายุหรือมีคนรับไปแล้ว');
 
+    const trip = await this.tripRepo.findOne({ where: { id: dto.tripId } });
+    if (!trip || trip.status !== 'SEARCHING') {
+      await this.redis.del(lockKey);
+      throw new BadRequestException('งานนี้ไม่อยู่ในสถานะรอคนขับ');
+    }
+
     const passengerId = await this.redis.hget(`trip:${dto.tripId}`, 'passengerId');
     const tripFare = parseFloat(await this.redis.hget(`trip:${dto.tripId}`, 'fare') || '2');
-    const deductionSuccess = await this.creditService.deductForRide(passengerId, dto.tripId, tripFare);
+    const shouldCharge = tripFare > 0;
+    const deductionSuccess = shouldCharge ? await this.creditService.deductForRide(passengerId, dto.tripId, tripFare) : true;
 
     if (!deductionSuccess) {
       await this.redis.del(lockKey);
-      throw new BadRequestException('ผู้โดยสารมีแต้มไม่เพียงพอ');
+      throw new BadRequestException('Passenger balance is insufficient');
     }
 
-    await this.redis.hset(`trip:${dto.tripId}`, 'status', 'ACCEPTED', 'driverId', dto.driverId);
-    await this.redis.hset(`driver:${dto.driverId}:stats`, 'status', 'BUSY');
+    try {
+      await this.redis.hset(`trip:${dto.tripId}`, 'status', 'ACCEPTED', 'driverId', dto.driverId);
+      await this.redis.hset(`driver:${dto.driverId}:stats`, 'status', 'BUSY');
 
-    await this.driverRepo.update(dto.driverId, { current_status: 'BUSY' });
-    await this.tripRepo.update(dto.tripId, { driver_id: dto.driverId, status: 'ACCEPTED' });
+      await this.driverRepo.update(dto.driverId, { current_status: 'BUSY' });
+      await this.tripRepo.update(dto.tripId, { driver_id: dto.driverId, status: 'ACCEPTED' });
 
-    const winId = await this.redis.hget(`driver:${dto.driverId}:stats`, 'currentWin');
-    if (winId) {
-      await this.redis.zrem(`win:${winId}:queue`, dto.driverId);
-      await this.redis.hdel(`driver:${dto.driverId}:stats`, 'currentWin');
+      const winId = await this.redis.hget(`driver:${dto.driverId}:stats`, 'currentWin');
+      if (winId) {
+        await this.redis.zrem(`win:${winId}:queue`, dto.driverId);
+        await this.redis.hdel(`driver:${dto.driverId}:stats`, 'currentWin');
+      }
+
+      const driver = await this.driverRepo.findOne({ where: { id: dto.driverId } });
+      return {
+        success: true,
+        passengerId: trip.passenger_id,
+        driver: driver ? {
+          id: driver.id,
+          name: driver.name,
+          plate: driver.plate,
+          phone: driver.phone,
+          rating: Number(driver.rating),
+        } : null,
+      };
+    } catch (error) {
+      if (deductionSuccess && shouldCharge) {
+        await this.creditService.refundForRide(passengerId, dto.tripId, tripFare, 'Ride acceptance rolled back');
+      }
+      await this.redis.del(lockKey);
+      throw error;
     }
+  }
 
-    return { success: true };
+  async markDriverArrived(driverId: string, tripId: string) {
+    const trip = await this.tripRepo.findOne({ where: { id: tripId, driver_id: driverId } });
+    if (!trip || trip.status !== 'ACCEPTED') {
+      throw new BadRequestException('ไม่สามารถแจ้งถึงจุดรับในสถานะปัจจุบัน');
+    }
+    await this.tripRepo.update(tripId, { status: 'DRIVER_ARRIVED', arrived_at: new Date() });
+    await this.redis.hset(`trip:${tripId}`, 'status', 'DRIVER_ARRIVED');
+    return { success: true, status: 'DRIVER_ARRIVED' };
+  }
+
+  async startTrip(driverId: string, tripId: string) {
+    const trip = await this.tripRepo.findOne({ where: { id: tripId, driver_id: driverId } });
+    if (!trip || trip.status !== 'DRIVER_ARRIVED') {
+      throw new BadRequestException('ต้องแจ้งถึงจุดรับก่อนเริ่มเดินทาง');
+    }
+    await this.tripRepo.update(tripId, { status: 'IN_PROGRESS', started_at: new Date() });
+    await this.redis.hset(`trip:${tripId}`, 'status', 'IN_PROGRESS');
+    return { success: true, status: 'IN_PROGRESS' };
   }
 
   async rejectTrip(dto: TripActionDto) {
@@ -357,12 +403,20 @@ export class DriverService implements OnModuleInit {
   }
 
   async completeTrip(dto: TripActionDto) {
+    const trip = await this.tripRepo.findOne({ where: { id: dto.tripId, driver_id: dto.driverId } });
+    if (!trip || trip.status !== 'IN_PROGRESS') {
+      throw new BadRequestException('ไม่สามารถจบทริปก่อนเริ่มเดินทาง');
+    }
     await this.redis.hset(`trip:${dto.tripId}`, 'status', 'COMPLETED');
     await this.redis.hset(`driver:${dto.driverId}:stats`, 'status', 'IDLE');
 
     await this.tripRepo.update(dto.tripId, { status: 'COMPLETED', completed_at: new Date() });
     await this.driverRepo.update(dto.driverId, { current_status: 'IDLE' });
     await this.driverRepo.increment({ id: dto.driverId }, 'total_trips', 1);
+
+    if (Number(trip.fare) <= 0) {
+      await this.creditService.consumeFreeRide(trip.passenger_id, trip.id);
+    }
 
     return { success: true };
   }
@@ -374,5 +428,18 @@ export class DriverService implements OnModuleInit {
         status: In(['ACCEPTED', 'DRIVER_ARRIVED', 'IN_PROGRESS'])
       }
     });
+  }
+
+  async getPublicDriver(driverId: string | null | undefined) {
+    if (!driverId) return null;
+    const driver = await this.driverRepo.findOne({ where: { id: driverId } });
+    if (!driver) return null;
+    return {
+      id: driver.id,
+      name: driver.name,
+      plate: driver.plate,
+      phone: driver.phone,
+      rating: Number(driver.rating),
+    };
   }
 }

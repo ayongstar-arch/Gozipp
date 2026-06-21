@@ -58,6 +58,14 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -65,7 +73,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="th" className={`${notoThai.variable} ${inter.variable} ${prompt.variable} ${kanit.variable}`}>
-      <body className="bg-slate-950 text-slate-50 antialiased overflow-x-hidden">
+      <body className="bg-slate-950 text-slate-50 antialiased overflow-x-hidden min-h-screen overscroll-none touch-pan-y">
         <Providers>{children}</Providers>
       </body>
     </html>

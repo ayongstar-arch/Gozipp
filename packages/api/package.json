@@ -4,8 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "nest start --watch --config nest-cli.json",
-    "build": "nest build --config nest-cli.json",
-    "start": "node dist/backend/main"
+    "build": "tsc -p tsconfig.json",
+    "build:tsc": "tsc -p tsconfig.json",
+    "test:registration": "tsc -p tsconfig.json && node --test test/passenger-registration.test.cjs",
+    "test:trip-lifecycle": "tsc -p tsconfig.json && node --test test/trip-lifecycle.test.cjs",
+    "start": "node dist/main.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

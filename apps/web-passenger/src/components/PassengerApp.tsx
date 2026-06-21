@@ -47,7 +47,7 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
     const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
     const [authError, setAuthError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [isRegistering, setIsRegistering] = useState(false); // Track if OTP is for register vs login
+    const [isRegistering, setIsRegistering] = useState(false); // Track if OTP flow is for first-time registration
     const [otpCountdown, setOtpCountdown] = useState(0);
 
     // App State
@@ -331,6 +331,10 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
                     setIsLoading(false);
                     return;
                 }
+
+                setAuthStep('REGISTER');
+                setIsLoading(false);
+                return;
             }
 
             // 2. Request OTP
@@ -355,7 +359,7 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
 
     const verifyAndLogin = async () => {
         const otp = otpCode.join('');
-        if (otp.length < 4) {
+        if (otp.length < 6) {
             setAuthError('กรุณากรอกรหัส OTP ให้ครบ');
             return;
         }
@@ -372,7 +376,8 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         phoneNumber: phone,
-                        name: registerForm.name
+                        name: registerForm.name,
+                        otp
                     })
                 });
 
@@ -385,40 +390,11 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
 
                 setUserProfile(prev => ({ ...prev, name: data.name || registerForm.name, phone: phone }));
                 setBalance(0);
-                setAuthStep('APP_SHELL');
+                setPinCode(['', '', '', '', '', '']);
+                setAuthStep('SETUP_PIN');
             } else {
-                // Login with OTP
-                const res = await fetch(`${API_BASE_URL}/passenger/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phoneNumber: phone, otp: otp })
-                });
-
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.message || 'เข้าสู่ระบบไม่สำเร็จ');
-
-                if (!data.isRegistered) {
-                    // User not found - redirect to register
-                    setAuthError('ไม่พบบัญชี กรุณาลงทะเบียน');
-                    setAuthStep('REGISTER');
-                    return;
-                }
-
-                // Store token
-                if (data.token) localStorage.setItem('mywin_token', data.token);
-                if (data.passengerId) localStorage.setItem('mywin_passenger_id', data.passengerId);
-
-                setUserProfile(prev => ({ ...prev, name: data.name || prev.name, phone: phone }));
-                setBalance(data.pointsBalance || 0);
-
-                // Check PIN status for Passenger (assuming backend returns hasPin on login too, which we added to Driver mostly, but let's emulate)
-                // If backend for passenger login doesn't have hasPin yet, we might want to check or just default to SETUP_PIN if register
-                if (isRegistering) {
-                    setPinCode(['', '', '', '', '', '']);
-                    setAuthStep('SETUP_PIN');
-                } else {
-                    setAuthStep('APP_SHELL');
-                }
+                setAuthError('การยืนยัน OTP ใช้สำหรับสมัครครั้งแรกเท่านั้น');
+                setAuthStep('LOGIN');
             }
         } catch (err: any) {
             setAuthError(err.message || 'เกิดข้อผิดพลาด');
@@ -635,11 +611,11 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
                                 />
                             </label>
                             <button
-                                onClick={() => requestOtp(false)}
+                                onClick={() => setAuthStep('LOGIN_PIN')}
                                 disabled={isLoading}
                                 className="w-full bg-mywin-blue text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 text-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
                             >
-                                {isLoading ? 'กำลังส่ง OTP...' : 'เข้าสู่ระบบ'}
+                                {isLoading ? 'กำลังเตรียม PIN...' : 'เข้าสู่ระบบด้วย PIN'}
                             </button>
                         </div>
 
@@ -752,7 +728,7 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
                             <span className="text-slate-400 text-sm">ส่งรหัสใหม่ได้ใน {otpCountdown} วินาที</span>
                         ) : (
                             <button
-                                onClick={() => requestOtp(isRegistering)}
+                                onClick={() => requestOtp(true)}
                                 className="text-mywin-blue text-sm font-bold hover:underline"
                             >
                                 ส่งรหัสใหม่
@@ -760,7 +736,7 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
                         )}
                     </div>
 
-                    <button onClick={() => { setAuthStep(isRegistering ? 'REGISTER' : 'LOGIN'); setAuthError(''); }} className="w-full text-slate-400 text-sm mt-4">
+                    <button onClick={() => { setAuthStep('REGISTER'); setAuthError(''); }} className="w-full text-slate-400 text-sm mt-4">
                         ← แก้ไขเบอร์โทร
                     </button>
                 </div>

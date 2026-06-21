@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../hooks/useAuth';
@@ -12,9 +12,10 @@ interface PinViewProps {
 const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
   const { isLoading } = useUIStore();
-  const { setupPin, loginWithPin, error, setError } = useAuth();
+  const { setupPin, loginWithPin, requestPinReset, getPinResetRequest, error, setError } = useAuth();
   
   const [pin, setPin] = useState(['', '', '', '', '', '']);
+  const [requestId, setRequestId] = useState<string | null>(null);
 
   const handlePinChange = (index: number, value: string) => {
     if (isNaN(Number(value))) return;
@@ -37,6 +38,21 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
       await loginWithPin(phoneNumber, pinCode);
     }
   };
+
+  useEffect(() => {
+    if (mode !== 'LOGIN' || !requestId) return;
+    const timer = setInterval(async () => {
+      try {
+        const req = await getPinResetRequest(requestId);
+        if (req?.status === 'APPROVED') {
+          setAuthStep('SETUP_PIN');
+        }
+      } catch {
+        // Keep waiting until the trusted device approves or the request expires
+      }
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [mode, requestId, getPinResetRequest, setAuthStep]);
 
   return (
     <div className="flex flex-col h-full bg-slate-950 font-sans p-6 justify-center">
@@ -81,10 +97,17 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
 
       {mode === 'LOGIN' && (
         <button 
-          onClick={() => { setAuthStep('LOGIN'); setError(null); }} 
+          onClick={async () => {
+            if (!phoneNumber) return;
+            const result = await requestPinReset(phoneNumber, 'DRIVER');
+            if (result?.requestId) {
+              setRequestId(result.requestId);
+              setAuthStep('PENDING');
+            }
+          }}
           className="w-full text-slate-600 text-sm font-bold mt-12 hover:text-white transition-colors"
         >
-          Forgot PIN? Use OTP
+          ลืม PIN? ขออนุมัติจากอุปกรณ์เดิม
         </button>
       )}
     </div>

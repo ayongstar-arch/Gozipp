@@ -7,6 +7,7 @@ import axios from 'axios';
 import * as qs from 'querystring';
 import * as argon2 from 'argon2';
 import * as bcrypt from 'bcrypt';
+import Redis from 'ioredis';
 
 import { PassengerEntity } from '../entities/passenger.entity';
 import { DriverEntity } from '../entities/driver.entity';
@@ -14,6 +15,7 @@ import { RefreshTokenEntity } from '../entities/refresh-token.entity';
 import { AuditLogService } from '../common/audit-log.service';
 import { RiskEngineService } from './risk-engine.service';
 import * as crypto from 'crypto';
+import { normalizeThaiMobileNumber } from '../common/phone.util';
 
 export interface DeviceMetadata {
     ipAddress?: string;
@@ -26,6 +28,8 @@ export interface DeviceMetadata {
 
 @Injectable()
 export class AuthService {
+    private redis: Redis;
+
     constructor(
         @InjectRepository(PassengerEntity) private passengerRepo: Repository<PassengerEntity>,
         @InjectRepository(DriverEntity) private driverRepo: Repository<DriverEntity>,
@@ -34,7 +38,22 @@ export class AuthService {
         private configService: ConfigService,
         private auditLog: AuditLogService,
         private riskEngine: RiskEngineService,
-    ) { }
+    ) {
+        this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+    }
+
+    private async findUserById(userId: string, role: 'PASSENGER' | 'DRIVER') {
+        return role === 'PASSENGER'
+            ? this.passengerRepo.findOne({ where: { id: userId } })
+            : this.driverRepo.findOne({ where: { id: userId } });
+    }
+
+    private async findUserByPhone(phoneNumber: string, role: 'PASSENGER' | 'DRIVER') {
+        phoneNumber = normalizeThaiMobileNumber(phoneNumber) || phoneNumber;
+        return role === 'PASSENGER'
+            ? this.passengerRepo.findOne({ where: { phone: phoneNumber } })
+            : this.driverRepo.findOne({ where: { phone: phoneNumber } });
+    }
 
     // --- TOKEN MANAGEMENT ---
 
@@ -222,7 +241,7 @@ export class AuthService {
                 passenger = this.passengerRepo.create({
                     id: newId,
                     name: profile.firstName + (profile.lastName ? ' ' + profile.lastName : ''),
-                    phone: '', // Phone is unknown via Social
+                    phone: null, // Phone must be verified separately for social accounts
                     email: profile.email,
                     avatar_url: profile.picture,
                     auth_provider: provider,
@@ -330,7 +349,138 @@ export class AuthService {
         return { success: true };
     }
 
+    async createPinResetRequest(phoneNumber: string, role: 'PASSENGER' | 'DRIVER') {
+        const user = await this.findUserByPhone(phoneNumber, role);
+        if (!user) throw new BadRequestException('ไม่พบบัญชีผู้ใช้นี้');
+        if (!user.pin_hash) throw new BadRequestException('บัญชียังไม่ได้ตั้ง PIN');
+
+        const requestId = crypto.randomUUID();
+        const payload = {
+            requestId,
+            userId: user.id,
+            phoneNumber: user.phone,
+            role,
+            status: 'PENDING',
+            createdAt: Date.now(),
+            expiresAt: Date.now() + 10 * 60 * 1000,
+        };
+        await this.redis.set(`pin_reset_request:${requestId}`, JSON.stringify(payload), 'EX', 600);
+        return { success: true, requestId, expiresInSeconds: 600 };
+    }
+
+    async getPinResetRequest(requestId: string) {
+        const raw = await this.redis.get(`pin_reset_request:${requestId}`);
+        if (!raw) throw new BadRequestException('ไม่พบคำขอรีเซ็ต PIN');
+        return JSON.parse(raw);
+    }
+
+    async listPendingPinResetRequests(userId: string, role: 'PASSENGER' | 'DRIVER') {
+        const keys = await this.redis.keys('pin_reset_request:*');
+        const requests = [];
+        for (const key of keys) {
+            const raw = await this.redis.get(key);
+            if (!raw) continue;
+            const request = JSON.parse(raw);
+            if (request.userId === userId && request.role === role && request.status === 'PENDING') {
+                requests.push(request);
+            }
+        }
+        return { requests };
+    }
+
+    async approvePinResetRequest(requestId: string, userId: string, role: 'PASSENGER' | 'DRIVER') {
+        const raw = await this.redis.get(`pin_reset_request:${requestId}`);
+        if (!raw) throw new BadRequestException('ไม่พบคำขอรีเซ็ต PIN');
+        const request = JSON.parse(raw);
+        if (request.role !== role || request.userId !== userId) {
+            throw new BadRequestException('คำขอนี้ไม่ตรงกับบัญชีที่ล็อกอินอยู่');
+        }
+        request.status = 'APPROVED';
+        request.approvedAt = Date.now();
+        await this.redis.set(`pin_reset_request:${requestId}`, JSON.stringify(request), 'EX', 600);
+        await this.auditLog.log({
+            actorId: userId,
+            actorRole: role,
+            action: 'APPROVE_PIN_RESET',
+            metadata: { requestId },
+        });
+        return { success: true };
+    }
+
+    async completePinReset(requestId: string, newPin: string) {
+        const raw = await this.redis.get(`pin_reset_request:${requestId}`);
+        if (!raw) throw new BadRequestException('ไม่พบคำขอรีเซ็ต PIN');
+        const request = JSON.parse(raw);
+        if (request.status !== 'APPROVED') {
+            throw new BadRequestException('คำขอยังไม่ได้รับอนุมัติจากอุปกรณ์ที่เชื่อถือได้');
+        }
+        if (Date.now() > request.expiresAt) {
+            throw new BadRequestException('คำขอรีเซ็ต PIN หมดอายุแล้ว');
+        }
+
+        await this.setPin(request.userId, newPin, request.role);
+        request.status = 'COMPLETED';
+        request.completedAt = Date.now();
+        await this.redis.set(`pin_reset_request:${requestId}`, JSON.stringify(request), 'EX', 120);
+
+        return { success: true };
+    }
+
+    async changePin(userId: string, currentPin: string, nextPin: string, role: 'PASSENGER' | 'DRIVER') {
+        if (!/^\d{6}$/.test(currentPin) || !/^\d{6}$/.test(nextPin)) {
+            throw new BadRequestException('PIN must be 6 digits');
+        }
+        if (currentPin === nextPin) {
+            throw new BadRequestException('New PIN must be different from current PIN');
+        }
+
+        const cooldownKey = `pin_change_cooldown:${role}:${userId}`;
+        const failKey = `pin_change_fail:${role}:${userId}`;
+        const failCount = parseInt((await this.redis.get(failKey)) || '0', 10);
+        if (await this.redis.exists(cooldownKey)) {
+            throw new BadRequestException('Please wait before trying to change PIN again');
+        }
+
+        let user;
+        if (role === 'PASSENGER') {
+            user = await this.passengerRepo.findOne({ where: { id: userId } });
+        } else {
+            user = await this.driverRepo.findOne({ where: { id: userId } });
+        }
+        if (!user?.pin_hash) throw new BadRequestException('PIN not set');
+
+        const isValid = await argon2.verify(user.pin_hash, currentPin);
+        if (!isValid) {
+            const nextFailCount = failCount + 1;
+            await this.redis
+              .multi()
+              .set(failKey, String(nextFailCount), 'EX', 900)
+              .set(cooldownKey, '1', 'EX', nextFailCount >= 3 ? 900 : 60)
+              .exec();
+            throw new BadRequestException('Current PIN is incorrect');
+        }
+
+        const newHash = await argon2.hash(nextPin, { type: argon2.argon2id });
+        if (role === 'PASSENGER') {
+            await this.passengerRepo.update(userId, { pin_hash: newHash });
+        } else {
+            await this.driverRepo.update(userId, { pin_hash: newHash });
+        }
+
+        await this.redis.del(failKey);
+        await this.redis.del(cooldownKey);
+
+        await this.auditLog.log({
+            actorId: userId,
+            actorRole: role,
+            action: 'CHANGE_PIN',
+        });
+
+        return { success: true };
+    }
+
     async validatePinLogin(phoneNumber: string, pin: string, role: 'PASSENGER' | 'DRIVER', deviceMeta: DeviceMetadata = {}) {
+        phoneNumber = this.requirePhoneNumber(phoneNumber);
         let user;
         if (role === 'PASSENGER') {
             user = await this.passengerRepo.findOne({ where: { phone: phoneNumber } });
@@ -339,7 +489,7 @@ export class AuthService {
         }
 
         if (!user) throw new UnauthorizedException('User not found');
-        if (!user.pin_hash) throw new UnauthorizedException('PIN not set. Use OTP to login.');
+        if (!user.pin_hash) throw new UnauthorizedException('PIN not set. Please complete first-time registration.');
 
         let isValid = false;
         const isLegacyBcrypt = user.pin_hash.startsWith('$2b$') || user.pin_hash.startsWith('$2a$') || user.pin_hash.startsWith('$2y$');
@@ -378,7 +528,7 @@ export class AuthService {
                     metadata: { reason: risk.reason },
                     ipAddress: deviceMeta.ipAddress,
                 });
-                // Revoke all active sessions to force a complete re-auth (OTP)
+                // Revoke all active sessions to force a full re-authentication flow
                 await this.refreshRepo.update({ userId: user.id }, { isRevoked: true });
                 throw new UnauthorizedException('REQUIRE_OTP');
             }
@@ -393,12 +543,20 @@ export class AuthService {
             user: {
                 id: user.id,
                 name: user.name,
-                phone: user.phone
+                phone: user.phone,
+                ...(role === 'PASSENGER' ? {
+                    email: user.email,
+                    pointsBalance: user.points_balance,
+                    freeRidesRemaining: user.free_rides_remaining,
+                    avatarUrl: user.avatar_url,
+                    referralCode: user.referral_code,
+                } : {})
             }
         };
     }
 
     async checkUserStatus(phoneNumber: string, role: 'PASSENGER' | 'DRIVER') {
+        phoneNumber = this.requirePhoneNumber(phoneNumber);
         let user;
         if (role === 'PASSENGER') {
             user = await this.passengerRepo.findOne({ where: { phone: phoneNumber } });
@@ -408,6 +566,12 @@ export class AuthService {
 
         if (!user) return { exists: false };
         return { exists: true, hasPin: !!user.pin_hash };
+    }
+
+    private requirePhoneNumber(value: string): string {
+        const normalized = normalizeThaiMobileNumber(value);
+        if (!normalized) throw new BadRequestException('Invalid Thai mobile number');
+        return normalized;
     }
 
     // --- SESSION MANAGEMENT ---
@@ -452,5 +616,35 @@ export class AuthService {
         });
 
         return { success: true };
+    }
+
+    async revokeOtherSessions(userId: string, currentDeviceId?: string) {
+        const sessions = await this.refreshRepo.find({ where: { userId, isRevoked: false } });
+        const toRevoke = currentDeviceId
+          ? sessions.filter(session => session.deviceId !== currentDeviceId)
+          : sessions;
+
+        for (const session of toRevoke) {
+            session.isRevoked = true;
+            await this.refreshRepo.save(session);
+        }
+
+        await this.auditLog.log({
+            actorId: userId,
+            actorRole: sessions[0]?.userRole || 'PASSENGER',
+            action: 'REVOKE_OTHER_SESSIONS',
+            metadata: { currentDeviceId, revokedCount: toRevoke.length },
+        });
+
+        return { success: true, revokedCount: toRevoke.length };
+    }
+
+    async revokeRefreshToken(refreshToken?: string) {
+        if (!refreshToken?.includes(':')) return;
+        const [recordId, rawToken] = refreshToken.split(':');
+        const session = await this.refreshRepo.findOne({ where: { id: recordId } });
+        if (!session || !(await argon2.verify(session.tokenHash, rawToken))) return;
+        session.isRevoked = true;
+        await this.refreshRepo.save(session);
     }
 }
