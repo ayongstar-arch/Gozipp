@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: gozipp-api-staging
+    env: node
+    plan: starter
+    rootDir: packages/api
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    autoDeploy: true
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000

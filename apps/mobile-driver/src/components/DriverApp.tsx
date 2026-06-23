@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { useRideStore } from '../stores/rideStore';
+import { supabase } from '../lib/supabaseClient';
 import { Driver, Rider, Location } from '../types';
 import { APP_LOGO_PATH, APP_LOGO_DARK_PATH, MAP_CENTER, STATION_ZONES, FAIRNESS_WEIGHTS, API_BASE_URL } from '../constants';
 import { socket } from '../services/socket';
@@ -19,7 +21,9 @@ interface DriverAppProps {
 
 type AuthStep = 'LOGIN' | 'LOGIN_PIN' | 'OTP' | 'REGISTER' | 'PENDING' | 'SETUP_PIN' | 'DASHBOARD';
 
-const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
+const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, matchedRider: initialMatchedRider }) => {
+    const [driverData, setDriverData] = useState<Driver | undefined>(initialDriverData);
+    const [matchedRider, setMatchedRider] = useState<Rider | undefined>(initialMatchedRider);
     const [authStep, setAuthStep] = useState<AuthStep>('LOGIN');
     const [pinCode, setPinCode] = useState(['', '', '', '', '', '']); 
     const [showPerformance, setShowPerformance] = useState(false); // New: Performance View
@@ -390,13 +394,89 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
             }
         }
     }, []);
+    // Sync initial props
+    useEffect(() => {
+        if (initialDriverData) setDriverData(initialDriverData);
+    }, [initialDriverData]);
+
+    useEffect(() => {
+        if (initialMatchedRider) setMatchedRider(initialMatchedRider);
+    }, [initialMatchedRider]);
+
+    // Load active driver profile from database on mount if user exists
+    useEffect(() => {
+        const currentUser = useAuthStore.getState().user;
+        if (currentUser && authStep === 'DASHBOARD') {
+            const loadDriverProfile = async () => {
+                const { data: dbDriver } = await supabase
+                    .from('drivers')
+                    .select('*')
+                    .eq('id', currentUser.id)
+                    .maybeSingle();
+
+                if (dbDriver) {
+                    setDriverData({
+                        id: dbDriver.id,
+                        status: dbDriver.current_status === 'OFFLINE' ? undefined : dbDriver.current_status,
+                        location: MAP_CENTER,
+                        earnings: Number(dbDriver.total_earnings || 0),
+                        totalTrips: dbDriver.total_trips || 0,
+                        rating: Number(dbDriver.rating || 5),
+                        lastTripTime: Date.now(),
+                        joinedQueueTime: Date.now(),
+                    });
+                    
+                    if (dbDriver.station_id) {
+                        useRideStore.getState().setStationId(dbDriver.station_id);
+                    }
+                }
+            };
+            loadDriverProfile();
+        }
+    }, [authStep]);
+
+    // Subscribe to socket events for matching and status synchronization
+    useEffect(() => {
+        const handleRideOffer = (data: { tripId: string; rider: Rider }) => {
+            setMatchedRider(data.rider);
+            setCurrentTripId(data.tripId);
+            setHasNewJob(true);
+
+            if (window.navigator.vibrate) window.navigator.vibrate([200, 100, 200, 100, 500]);
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audio.play().catch(e => console.error("Audio play failed", e));
+        };
+
+        const handleRideCancel = () => {
+            setMatchedRider(undefined);
+            setHasNewJob(false);
+            setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
+            alert('❌ ทริปถูกยกเลิกโดยผู้โดยสาร');
+        };
+
+        const handleTripComplete = () => {
+            setMatchedRider(undefined);
+            setHasNewJob(false);
+            setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
+        };
+
+        socket.on('RIDE_OFFER', handleRideOffer);
+        socket.on('RIDE_CANCEL', handleRideCancel);
+        socket.on('TRIP_COMPLETE', handleTripComplete);
+
+        return () => {
+            socket.off('RIDE_OFFER', handleRideOffer);
+            socket.off('RIDE_CANCEL', handleRideCancel);
+            socket.off('TRIP_COMPLETE', handleTripComplete);
+        };
+    }, []);
 
     // --- GPS TRACKING ---
     useEffect(() => {
         if (isOnline) {
             const id = watchPosition((loc) => {
                 socket.emit('DRIVER_UPDATE_STATUS', {
-                    id: 'D-USER',
+                    id: driverData?.id || 'D-USER',
                     status: isBusy ? 'BUSY' : 'IDLE',
                     location: loc
                 });
@@ -411,7 +491,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
         return () => {
             if (gpsId !== null) clearWatch(gpsId);
         };
-    }, [isOnline, isBusy]);
+    }, [isOnline, isBusy, driverData?.id]);
 
     useEffect(() => {
         if (isBusy && matchedRider) {
@@ -428,33 +508,49 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
 
     const handleStartWork = () => {
         socket.emit('DRIVER_UPDATE_STATUS', {
-            id: 'D-USER',
+            id: driverData?.id || 'D-USER',
             status: 'IDLE',
             location: MAP_CENTER
         });
+        setDriverData(prev => ({
+            id: prev?.id || 'D-USER',
+            status: 'IDLE',
+            location: MAP_CENTER,
+            earnings: prev?.earnings || 120,
+            totalTrips: prev?.totalTrips || 5,
+            rating: prev?.rating || 4.8,
+            lastTripTime: Date.now(),
+            joinedQueueTime: Date.now(),
+        }));
     };
 
     const handleStopWork = () => {
-        socket.emit('DRIVER_UPDATE_STATUS', { id: 'D-USER', status: 'OFFLINE' });
+        socket.emit('DRIVER_UPDATE_STATUS', { id: driverData?.id || 'D-USER', status: 'OFFLINE' });
+        setDriverData(undefined);
     };
 
     const handleAcceptJob = () => {
         if (matchedRider) {
-            socket.emit('TRIP_ACCEPT', { driverId: 'D-USER', tripId: 'T-1' });
+            socket.emit('TRIP_ACCEPT', { driverId: driverData?.id || 'D-USER', tripId: matchedRider.id });
+            setHasNewJob(false);
+            setDriverData(prev => prev ? { ...prev, status: 'MATCHED' } : undefined);
         }
     };
 
     const handleRejectJob = () => {
         if (matchedRider) {
-            socket.emit('DRIVER_REJECT_JOB', { driverId: 'D-USER', riderId: matchedRider.id });
+            socket.emit('DRIVER_REJECT_JOB', { driverId: driverData?.id || 'D-USER', riderId: matchedRider.id });
             setHasNewJob(false);
+            setMatchedRider(undefined);
+            setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
         }
     };
 
     const handleCompleteJob = () => {
-        socket.emit('TRIP_COMPLETE', { driverId: 'D-USER' });
+        socket.emit('TRIP_COMPLETE', { driverId: driverData?.id || 'D-USER' });
+        setMatchedRider(undefined);
+        setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
     };
-
     const handleShareQR = async () => {
         const url = `${window.location.origin}/#passenger?ref=${driverData?.id || 'D-USER'}`;
         if (navigator.share) {

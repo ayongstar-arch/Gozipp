@@ -1,12 +1,11 @@
 /**
- * useRide.ts — Production Ride Hook
- * Manages ride request lifecycle via real backend + Socket.io
+ * useRide.ts — Production Ride Hook (Supabase Realtime Edition)
+ * Manages ride request lifecycle via Supabase database + Realtime Broadcast & Postgres Changes
  */
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRideStore } from '../stores/rideStore';
 import { useUIStore } from '../stores/uiStore';
-import { SOCKET_URL } from '@/constants';
-import { io, Socket } from 'socket.io-client';
+import { supabase } from '../lib/supabaseClient';
 import { apiFetch } from '../services/api';
 
 export interface RideEstimate {
@@ -34,85 +33,93 @@ export const useRide = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const socketRef = useRef<Socket | null>(null);
 
-  // Connect to Socket.io with auth token
+  // Setup Supabase Realtime subscriptions
   useEffect(() => {
-    const socket = io(SOCKET_URL, {
-      withCredentials: true,
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-    });
+    if (!currentTripId) return;
 
-    socketRef.current = socket;
+    console.log('[Supabase Realtime] Subscribing to trip:', currentTripId);
 
-    // Listen for ride events
-    socket.on('connect', () => {
-      console.log('[Socket] Connected:', socket.id);
-      if (currentTripId) socket.emit('TRIP_JOIN_ROOM', { tripId: currentTripId });
-    });
+    // 1. Listen for Database status changes on this specific trip
+    const tripChangesChannel = supabase
+      .channel(`trip-changes-${currentTripId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'trips',
+          filter: `id=eq.${currentTripId}`,
+        },
+        async (payload) => {
+          const newTrip = payload.new;
+          console.log('[Supabase Realtime] Trip updated:', newTrip);
 
-    socket.on('STATE_RESTORED', (data: { type: string; trip?: any }) => {
-      if (data.type !== 'ACTIVE_TRIP' || !data.trip) return;
-      const trip = data.trip;
-      setCurrentTripId(trip.id);
-      setRideStatus(trip.status);
-      setIsSearching(trip.status === 'SEARCHING');
-      if (trip.driver) setActiveDriver(trip.driver);
-      setEstimate({
-        tripId: trip.id,
-        fare: Number(trip.fare || 0),
-        distance: `${Number(trip.distance_km || 0).toFixed(1)} กม.`,
-        eta: trip.duration_mins ? `${trip.duration_mins} นาที` : '-',
+          setRideStatus(newTrip.status);
+          setIsSearching(newTrip.status === 'SEARCHING');
+
+          // If driver accepted the trip, fetch driver details
+          if (newTrip.status === 'ACCEPTED' && newTrip.driver_id) {
+            const { data: driver } = await supabase
+              .from('drivers')
+              .select('id, name, plate, phone, rating')
+              .eq('id', newTrip.driver_id)
+              .maybeSingle();
+
+            if (driver) {
+              setActiveDriver({
+                id: driver.id,
+                name: driver.name,
+                plate: driver.plate,
+                phone: driver.phone || '',
+                rating: Number(driver.rating || 5),
+              });
+              setToastMessage('🛵 คนขับรับงานแล้ว! กำลังเดินทางมา...');
+            }
+          }
+
+          if (newTrip.status === 'COMPLETED') {
+            setToastMessage('✅ ถึงจุดหมายแล้ว! ขอบคุณที่ใช้บริการ GOZIPP');
+            setTimeout(() => resetRide(), 3000);
+          }
+
+          if (newTrip.status === 'CANCELLED') {
+            setRideStatus('CANCELLED');
+            setIsSearching(false);
+            setActiveDriver(null);
+            setToastMessage('❌ คนขับยกเลิกการรับงาน กำลังหาคนขับใหม่...');
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log(`[Supabase Realtime] Status Updates status: ${status}`);
       });
-    });
 
-    socket.on('TRIP_STATUS_UPDATE', (data: { tripId: string; status: string }) => {
-      if (data.tripId !== currentTripId) return;
-      setRideStatus(data.status);
-      setIsSearching(data.status === 'SEARCHING');
-    });
+    // 2. Listen for Driver Location Broadcasts
+    const locationChannel = supabase
+      .channel(`trip-tracking-${currentTripId}`)
+      .on('broadcast', { event: 'location' }, (payload) => {
+        const data = payload.payload;
+        console.log('[Supabase Broadcast] Received location:', data);
+        if (data.tripId === currentTripId) {
+          setDriverLocation({
+            lat: data.lat,
+            lng: data.lng,
+            heading: data.heading,
+          });
+        }
+      })
+      .subscribe((status) => {
+        console.log(`[Supabase Realtime] Location Channel status: ${status}`);
+      });
 
-    socket.on('DRIVER_LOCATION_UPDATE', (data: { tripId: string; lat: number; lng: number; heading?: number }) => {
-      if (data.tripId === currentTripId) setDriverLocation(data);
-    });
-
-    socket.on('TRIP_ACCEPT', (data: { tripId: string; driver: ActiveDriver }) => {
-      if (data.tripId === currentTripId) {
-        setActiveDriver(data.driver);
-        setRideStatus('ACCEPTED');
-        setIsSearching(false);
-        setToastMessage('🛵 คนขับรับงานแล้ว! กำลังเดินทางมา...');
-      }
-    });
-
-    socket.on('TRIP_COMPLETE', (data: { tripId: string }) => {
-      if (data.tripId === currentTripId) {
-        setRideStatus('COMPLETED');
-        setToastMessage('✅ ถึงจุดหมายแล้ว! ขอบคุณที่ใช้บริการ GOZIPP');
-        setTimeout(() => resetRide(), 3000);
-      }
-    });
-
-    socket.on('RIDE_CANCEL', (data: { tripId: string; reason?: string }) => {
-      if (data.tripId === currentTripId) {
-        setRideStatus('CANCELLED');
-        setIsSearching(false);
-        setActiveDriver(null);
-        setToastMessage('❌ คนขับยกเลิกการรับงาน กำลังหาคนขับใหม่...');
-      }
-    });
-
-    socket.on('disconnect', () => {
-      console.log('[Socket] Disconnected');
-    });
-
+    // Clean up subscriptions on unmount/trip change
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      console.log('[Supabase Realtime] Unsubscribing from trip:', currentTripId);
+      supabase.removeChannel(tripChangesChannel);
+      supabase.removeChannel(locationChannel);
     };
-  }, [currentTripId, setActiveDriver, setCurrentTripId, setDriverLocation, setEstimate, setIsSearching, setRideStatus, setToastMessage, resetRide]);
+  }, [currentTripId, setActiveDriver, setIsSearching, setRideStatus, setDriverLocation, setToastMessage, resetRide]);
 
   // Request a ride
   const requestRide = useCallback(async (
@@ -123,7 +130,6 @@ export const useRide = () => {
     destLng: number,
     destAddress: string,
   ): Promise<boolean> => {
-
     setIsLoading(true);
     setError(null);
 
@@ -150,11 +156,6 @@ export const useRide = () => {
       setIsSearching(true);
       setRideStatus('SEARCHING');
 
-      // Emit via Socket.io for real-time dispatch
-      if (socketRef.current?.connected) {
-        socketRef.current.emit('TRIP_JOIN_ROOM', { tripId: data.tripId });
-      }
-
       return true;
     } catch (err: any) {
       setError(err.message);
@@ -163,7 +164,7 @@ export const useRide = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [setCurrentTripId, setIsSearching, setToastMessage]);
+  }, [setCurrentTripId, setIsSearching, setEstimate, setRideStatus, setToastMessage]);
 
   // Cancel a ride
   const cancelRide = useCallback(async (): Promise<void> => {
@@ -173,41 +174,43 @@ export const useRide = () => {
       await apiFetch(`/api/v1/passenger/ride/${currentTripId}/cancel`, {
         method: 'POST',
       });
-    } catch {
-      // Silently fail on cancel
-    }
-
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('RIDE_CANCEL', { tripId: currentTripId });
+    } catch (err) {
+      console.error('Failed to call cancel API:', err);
     }
 
     resetRide();
     setRideStatus(null);
     setEstimate(null);
     setToastMessage('ยกเลิกการค้นหาแล้ว');
-  }, [currentTripId, resetRide, setToastMessage]);
+  }, [currentTripId, resetRide, setToastMessage, setEstimate, setRideStatus]);
 
-  // Poll ride status (fallback if socket misses event)
+  // Poll ride status (fallback query using Supabase SDK)
   const pollRideStatus = useCallback(async (): Promise<void> => {
     if (!currentTripId) return;
     try {
-      const data = await apiFetch(`/api/v1/passenger/ride/${currentTripId}/status`);
-      if (data.status) {
-        setRideStatus(data.status);
-        if (['TIMEOUT_NO_DRIVER', 'CANCELLED'].includes(data.status)) {
+      const { data: trip } = await supabase
+        .from('trips')
+        .select('status')
+        .eq('id', currentTripId)
+        .maybeSingle();
+
+      if (trip?.status) {
+        setRideStatus(trip.status);
+        if (['TIMEOUT_NO_DRIVER', 'CANCELLED'].includes(trip.status)) {
           setIsSearching(false);
-          setToastMessage(data.status === 'TIMEOUT_NO_DRIVER' ? 'ยังไม่พบคนขับในขณะนี้ กรุณาลองใหม่อีกครั้ง' : 'ทริปถูกยกเลิกแล้ว');
+          setToastMessage(trip.status === 'TIMEOUT_NO_DRIVER' ? 'ยังไม่พบคนขับในขณะนี้ กรุณาลองใหม่อีกครั้ง' : 'ทริปถูกยกเลิกแล้ว');
           resetRide();
         }
       }
-    } catch {
-      // Ignore poll errors
+    } catch (err) {
+      console.error('Failed to poll ride status:', err);
     }
   }, [currentTripId, resetRide, setIsSearching, setRideStatus, setToastMessage]);
 
+  // Setup periodic polling fallback
   useEffect(() => {
     if (!currentTripId || rideStatus !== 'SEARCHING') return;
-    const timer = window.setInterval(() => void pollRideStatus(), 5000);
+    const timer = window.setInterval(() => void pollRideStatus(), 7000);
     return () => window.clearInterval(timer);
   }, [currentTripId, rideStatus, pollRideStatus]);
 

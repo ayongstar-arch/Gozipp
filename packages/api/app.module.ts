@@ -32,6 +32,7 @@ import { PassengerService } from './passenger.service';
 
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { HealthController } from './health.controller';
 import { UploadController } from './common/upload.controller';
 import { S3Service } from './common/s3.service';
 import { AuditLogService } from './common/audit-log.service';
@@ -114,6 +115,7 @@ import { AiService } from './ai.service';
     OtpController,
     RideController,
     AdminController,
+    HealthController,
     CreditController,
     UploadController // NEW
   ],
