@@ -98,7 +98,7 @@ export default function RoleSelectionSection() {
                 <ul className="space-y-4 mb-8">
                   {[
                     'เข้าคิวยุติธรรม',
-                    'ไม่มี GP ระยะแรก',
+                    'ไม่มี GP',
                     'เพิ่มโอกาสรับงาน',
                     'ระบบชุมชนวิน'
                   ].map((text, i) => (

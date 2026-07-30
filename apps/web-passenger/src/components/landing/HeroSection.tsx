@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { CheckCircle2, ChevronRight, Gift, Percent, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Gift, Percent } from 'lucide-react';
 import Link from 'next/link';
 
 export default function HeroSection() {
@@ -91,15 +91,6 @@ export default function HeroSection() {
                 </div>
                 <span className="text-xs text-gray-400 font-medium">เพิ่มโอกาสรับงาน</span>
               </Link>
-            </motion.div>
-            
-            <motion.div variants={itemVariants} className="flex items-center gap-2 mt-2">
-              <div className="w-[22px] h-[22px] rounded-full bg-[#1A3317] flex items-center justify-center">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#A3FF3F]" />
-              </div>
-              <p className="text-[15px] font-kanit font-medium tracking-wide">
-                <span className="text-white">ไม่มี GP</span> <span className="text-gray-400">ระยะแรก</span>
-              </p>
             </motion.div>
 
 
