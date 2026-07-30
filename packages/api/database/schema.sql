@@ -96,6 +96,7 @@ CREATE TABLE passengers (
   points_balance   NUMERIC(10, 2) NOT NULL DEFAULT 0,
   total_rides      INTEGER NOT NULL DEFAULT 0,
   free_rides_remaining INTEGER NOT NULL DEFAULT 3,
+  community_points_balance INTEGER NOT NULL DEFAULT 0,
 
   -- Referral
   referral_code    VARCHAR(50),    -- Driver referral code used at registration

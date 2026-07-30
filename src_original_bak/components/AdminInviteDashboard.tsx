@@ -4,6 +4,9 @@ import { InviteCode, InviteType } from '../../backend/dtos';
 interface Station {
     id: string;
     name: string;
+    province: string;
+    district: string;
+    subDistrict: string;
     area: string;
     createdAt: string;
 }
@@ -12,9 +15,9 @@ const AdminInviteDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'CODES' | 'STATIONS' | 'QR_POSTERS'>('CODES');
   const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([]);
   const [stations, setStations] = useState<Station[]>([
-      { id: 'WIN-CENTRAL-01', name: 'วินตลาดกลาง (Central)', area: 'เขตพระนคร', createdAt: '2024-01-01' },
-      { id: 'WIN-TECH-PARK', name: 'วินหน้าตึก Tech Park', area: 'เขตห้วยขวาง', createdAt: '2024-02-15' },
-      { id: 'WIN-SUBURB-A', name: 'วินหมู่บ้าน A (Suburb)', area: 'เขตบางนา', createdAt: '2024-03-10' },
+      { id: 'WIN-CENTRAL-01', name: 'วินตลาดกลาง (Central)', province: 'กรุงเทพมหานคร', district: 'พระนคร', subDistrict: 'ศาลเจ้าพ่อเสือ', area: 'เขตพระนคร', createdAt: '2024-01-01' },
+      { id: 'WIN-TECH-PARK', name: 'วินหน้าตึก Tech Park', province: 'กรุงเทพมหานคร', district: 'ห้วยขวาง', subDistrict: 'ห้วยขวาง', area: 'เขตห้วยขวาง', createdAt: '2024-02-15' },
+      { id: 'WIN-SUBURB-A', name: 'วินหมู่บ้าน A (Suburb)', province: 'สมุทรปราการ', district: 'เมืองสมุทรปราการ', subDistrict: 'สำโรงเหนือ', area: 'บางนา-สำโรง', createdAt: '2024-03-10' },
   ]);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -30,8 +33,8 @@ const AdminInviteDashboard: React.FC = () => {
     note: ''
   });
 
-  // Station Form State
-  const [newStation, setNewStation] = useState({ name: '', area: '' });
+  // Hierarchical Station Form State (Province -> District -> SubDistrict -> Win Name)
+  const [newStation, setNewStation] = useState({ name: '', province: 'กรุงเทพมหานคร', district: '', subDistrict: '', area: '' });
 
   const fetchCodes = () => {
      // Mock API Call

@@ -140,6 +140,7 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
 
     // UI Feedback
     const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [showReferralModal, setShowReferralModal] = useState(false);
 
     // Derived State for Free Rides
     const rideHistoryCount = history.filter(h => h.type === 'RIDE').length;
@@ -206,53 +207,75 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
         slogan: "รวดเร็ว ปลอดภัย ไปกับเรา"
     };
 
-    // --- ROBUST TRANSACTION LISTENER ---
+    // Dynamic System Fee Config (Set by Admin, Default 2 Points)
+    const [systemFeePoints, setSystemFeePoints] = useState<number>(2);
+    const [reservedPoints, setReservedPoints] = useState<number>(0);
+
+    // Load dynamic Admin System Fee config
     useEffect(() => {
-        // 1. Listener: When a Driver Accepts the Job -> Show Driver Info (En Route)
-        const handleTripAccept = (data: { driverId: string, tripId: string }) => {
+        const fetchAdminConfig = async () => {
+            try {
+                // Fetch dynamic fee set by Admin (or fallback to 2)
+                const adminFee = localStorage.getItem('mywin_admin_system_fee');
+                if (adminFee !== null) {
+                    setSystemFeePoints(Number(adminFee));
+                }
+            } catch (e) {
+                console.error("Failed to fetch admin system fee config", e);
+            }
+        };
+        fetchAdminConfig();
+    }, []);
+
+    // Socket listeners for Real-time Trip Flow & Point Reserve State Machine
+    useEffect(() => {
+        // 1. Listener: When Driver Accepts Job -> Reserve Points (Hold State)
+        const handleTripAccept = (data: { driverId: string, driverName?: string, plate?: string }) => {
             setIsSearching(false);
-            // Simulate fetching driver details
             setActiveDriver({
                 id: data.driverId,
-                name: 'สมชาย ใจดี',
-                plate: '1กข-9999',
+                name: data.driverName || 'พี่วินพาร์ทเนอร์',
+                plate: data.plate || 'กข-1234',
                 phone: '081-234-5678'
             });
-            setToastMessage(`🎉 คนขับรับงานแล้ว!`);
-            setTimeout(() => setToastMessage(null), 3000);
+            // Reserve Points State Machine: Hold Fee Points
+            const feeToReserve = isFreeRideEligible ? 0 : systemFeePoints;
+            setReservedPoints(feeToReserve);
+            setToastMessage(`🎉 คนขับรับงานแล้ว! (สำรองค่าบริการระบบ ${feeToReserve} แต้ม)`);
+            setTimeout(() => setToastMessage(null), 3500);
         };
 
-        // 2. Listener: When Driver Cancels/Rejects -> Reset State
+        // 2. Listener: When Driver Cancels/Rejects -> Release Reserved Points
         const onDriverJobReject = (data: { driverId: string, riderId: string }) => {
             if (activeDriver) {
                 setActiveDriver(null);
-                setToastMessage(`⚠️ คนขับยกเลิกงาน`);
+                setReservedPoints(0); // Release Reserve
+                setToastMessage(`⚠️ คนขับยกเลิกงาน (คืนแต้มสำรอง ${reservedPoints} แต้ม)`);
                 setTimeout(() => setToastMessage(null), 4000);
             }
         };
 
-        // 3. Listener: Trip Completed -> Deduct Points & Show Rating
+        // 3. Listener: Trip Completed -> Commit Deduct Reserved Points & Show Rating
         const handleTripComplete = (data: { driverId: string }) => {
-            setProcessedTripIds(prev => {
-                // Idempotency check handled here if needed, or loosely allow for simulation
-                return prev;
-            });
+            setProcessedTripIds(prev => prev);
 
-            // Deduct logic moved to completion
+            // Commit Deduct Logic upon completion
             setHistory(prevHistory => {
                 const ridesCount = prevHistory.filter(h => h.type === 'RIDE').length;
                 const isFree = ridesCount < MAX_FREE_RIDES;
 
                 let amountDeducted = 0;
-                let txnTitle = 'ค่าโดยสาร (หักอัตโนมัติ)';
+                let txnTitle = `ค่าบริการระบบ (${systemFeePoints} แต้ม)`;
 
                 if (!isFree) {
-                    setBalance(b => b - RIDE_POINT_COST);
-                    amountDeducted = -RIDE_POINT_COST;
+                    setBalance(b => Math.max(0, b - systemFeePoints));
+                    amountDeducted = -systemFeePoints;
                 } else {
-                    txnTitle = `ค่าโดยสาร (ฟรีครั้งที่ ${ridesCount + 1}/${MAX_FREE_RIDES})`;
+                    txnTitle = `ค่าบริการระบบ (ฟรีครั้งที่ ${ridesCount + 1}/${MAX_FREE_RIDES})`;
                     amountDeducted = 0;
                 }
+
+                setReservedPoints(0); // Release/Commit Reserve
 
                 const now = new Date();
                 const newTxn = {
@@ -268,17 +291,17 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
                         plate: activeDriver?.plate || 'รถจักรยานยนต์',
                         pickup: 'ตำแหน่งปัจจุบัน',
                         destination: STATION_ZONES.find(s => s.id === stationId)?.name || 'วิน',
-                        status: 'COMPLETED'
+                        status: 'COMPLETED',
+                        paymentMode: 'จ่ายเงินสดให้คนขับโดยตรง'
                     }
                 };
                 return [newTxn, ...prevHistory];
             });
 
-            setActiveDriver(null); // Clear active driver
+            setActiveDriver(null);
             setPendingRating({ driverId: data.driverId });
             setRatingScore(0);
 
-            // PERSIST PENDING RATING: In case user closes app immediately
             localStorage.setItem('mywin_pending_rating', JSON.stringify({
                 driverId: data.driverId,
                 timestamp: Date.now()
@@ -445,11 +468,12 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
     };
 
     const handleRequestRide = () => {
-        // 1. Pre-validation (Client Side)
-        const canAfford = balance >= RIDE_POINT_COST || isFreeRideEligible;
+        // 1. Pre-validation (Client Side against Admin Configured System Fee)
+        const requiredFee = isFreeRideEligible ? 0 : systemFeePoints;
+        const canAfford = balance >= requiredFee;
 
         if (!canAfford) {
-            alert(`แต้มของคุณไม่เพียงพอ (ต้องการ ${RIDE_POINT_COST} แต้มสำหรับค่าบริการ GOZIPP) กรุณาเติมเงินก่อนเรียก`);
+            alert(`แต้มของคุณไม่เพียงพอ (ต้องการอย่างน้อย ${systemFeePoints} แต้มสำหรับค่าบริการระบบ MyWin) กรุณาเติมเงินก่อนเรียก`);
             setShowTopupModal(true);
             return;
         }
@@ -1701,6 +1725,23 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
                     </div>
                 </section>
 
+                {/* Community & Referral */}
+                <section>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 ml-1">ชุมชนและโปรโมชั่น</h3>
+                    <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+                        <div className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setShowReferralModal(true)}>
+                            <div className="flex items-center gap-3">
+                                <span className="text-lg">🎁</span>
+                                <div>
+                                    <div className="text-sm font-bold text-slate-700">แนะนำเพื่อนรับแต้มฟรี</div>
+                                    <div className="text-xs text-slate-400">สแกน QR แนะนำ, แลกของรางวัล</div>
+                                </div>
+                            </div>
+                            <div className="text-slate-300">→</div>
+                        </div>
+                    </div>
+                </section>
+
                 {/* Preferences */}
                 <section>
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 ml-1">การตั้งค่า</h3>
@@ -1872,6 +1913,44 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
                 counterpartName={activeDriver?.name || 'คนขับ'}
                 counterpartAvatar={activeDriver ? `https://api.dicebear.com/7.x/avataaars/svg?seed=Driver${activeDriver.id}` : undefined}
             />
+            {/* Referral Modal */}
+            {showReferralModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex flex-col justify-end">
+                    <div className="bg-slate-50 rounded-t-3xl w-full max-h-[85vh] flex flex-col shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-mywin-green to-mywin-blue"></div>
+                        <div className="p-4 flex justify-between items-center border-b border-slate-100 bg-white">
+                            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <span className="text-xl">🎁</span> แนะนำเพื่อนรับแต้ม
+                            </h2>
+                            <button onClick={() => setShowReferralModal(false)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold hover:bg-slate-200 transition-colors">✕</button>
+                        </div>
+                        <div className="p-6 overflow-y-auto pb-safe">
+                            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center mb-6">
+                                <h3 className="text-slate-500 text-sm font-bold mb-4">แต้มสะสมปัจจุบันของคุณ</h3>
+                                <div className="text-4xl font-bold text-mywin-blue mb-1">{(userProfile as any).communityPoints || 0}</div>
+                                <div className="text-xs text-slate-400 uppercase tracking-wide">Community Points</div>
+                            </div>
+                            <div className="bg-gradient-to-br from-mywin-green to-teal-500 rounded-2xl p-6 text-center text-white shadow-lg relative overflow-hidden mb-6">
+                                <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/20 rounded-full blur-2xl"></div>
+                                <h3 className="text-lg font-bold mb-2 relative z-10">สแกนเพื่อรับแต้มฟรี!</h3>
+                                <p className="text-white/80 text-sm mb-6 relative z-10">เมื่อเพื่อนของคุณเรียกรถสำเร็จครั้งแรก คุณจะได้รับแต้มสะสม</p>
+                                <div className="bg-white p-4 rounded-xl mx-auto w-48 h-48 flex flex-col items-center justify-center shadow-inner relative z-10">
+                                    <div className="w-full h-full border-4 border-dashed border-slate-200 rounded-lg flex items-center justify-center">
+                                        <div className="text-center">
+                                            <div className="text-4xl mb-2">📱</div>
+                                            <div className="text-xs text-slate-400 font-bold">QR CODE</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-6 relative z-10">
+                                    <div className="text-xs text-white/80 mb-1">รหัสแนะนำของคุณ</div>
+                                    <div className="text-xl font-bold tracking-widest bg-black/20 py-2 px-4 rounded-lg inline-block">{userProfile.phone?.substring(0, 6) || 'P-12345'}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

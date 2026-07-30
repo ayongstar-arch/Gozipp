@@ -3,11 +3,14 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { normalizeThaiMobileNumber } from '@/lib/sms';
 import { issueTokens } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-for-dev-only-change-this';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { phoneNumber, otp, purpose = 'REGISTER', name = 'ผู้ใช้งานใหม่', referralCode, newPin } = body;
+    const { phoneNumber, otp, purpose = 'REGISTER', name = 'ผู้ใช้งานใหม่', referralCode, newPin, role = 'PASSENGER' } = body;
 
     const normalized = normalizeThaiMobileNumber(phoneNumber);
     if (!normalized) {
@@ -26,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Verify OTP
     const isTestMode = (otp === '123456' || otp === '1234') && 
-      (process.env.ALLOW_TEST_OTP === 'true' || process.env.NODE_ENV !== 'production');
+      process.env.ALLOW_TEST_OTP === 'true' && process.env.NODE_ENV !== 'production';
 
     if (!isTestMode) {
       const { data: storedOtp, error: otpError } = await supabaseAdmin
@@ -144,7 +147,58 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Default purpose: REGISTER
+    let isRegistered = true;
+    let isApproved = false;
+    let onboardingStep = 1;
+    let hasPin = false;
+    let passenger: any;
+
+    if (role === 'DRIVER') {
+      const { data: existingDriver, error: selectDriverError } = await supabaseAdmin
+        .from('drivers')
+        .select('*')
+        .eq('phone', normalized)
+        .maybeSingle();
+
+      if (selectDriverError) console.error('Error fetching driver:', selectDriverError);
+
+      if (!existingDriver) {
+        // Return without issuing tokens, let the driver-register endpoint handle creation
+        return NextResponse.json({
+          success: true,
+          isRegistered: false,
+          registrationToken: jwt.sign(
+            { phone: normalized, role: 'DRIVER', purpose: 'DRIVER_REGISTER' },
+            JWT_SECRET,
+            { expiresIn: '10m' }
+          )
+        });
+      }
+
+      isRegistered = true;
+      isApproved = existingDriver.approval_status === 'APPROVED';
+      onboardingStep = existingDriver.current_onboarding_step || 1;
+      hasPin = !!existingDriver.pin_hash;
+
+      const tokens = await issueTokens(existingDriver.id, 'DRIVER', {
+        ipAddress: req.headers.get('x-forwarded-for') || undefined,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'เข้าสู่ระบบสำเร็จ',
+        ...tokens,
+        token: tokens.accessToken,
+        user: existingDriver,
+        isRegistered,
+        isApproved,
+        onboardingStep,
+        hasPin,
+        purpose: 'LOGIN'
+      });
+    }
+
+    // Default purpose: REGISTER (Passenger logic)
     // Check if passenger already exists
     const { data: existingPassenger, error: selectPassError } = await supabaseAdmin
       .from('passengers')
@@ -155,6 +209,8 @@ export async function POST(req: NextRequest) {
     if (selectPassError) {
       console.error('Error fetching passenger:', selectPassError);
     }
+
+    passenger = existingPassenger;
 
     if (existingPassenger?.pin_hash) {
       return NextResponse.json(
@@ -175,8 +231,6 @@ export async function POST(req: NextRequest) {
         inviterId = inviter.id;
       }
     }
-
-    let passenger = existingPassenger;
 
     if (passenger) {
       // Update existing record

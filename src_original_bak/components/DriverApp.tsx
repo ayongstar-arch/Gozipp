@@ -414,16 +414,33 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
         };
     }, [isOnline, isBusy]);
 
+    const [nearDestination, setNearDestination] = useState(false);
+
     useEffect(() => {
         if (isBusy && matchedRider) {
             setHasNewJob(true);
             if (window.navigator.vibrate) window.navigator.vibrate([200, 100, 200, 100, 500]);
-
-            // TRIGGER NOTIFICATION IF BACKGROUNDED
             triggerBackgroundAlert("งานใหม่เข้า! 🛵", "มีผู้โดยสารเรียกรถ คลิกเพื่อรับงานทันที");
 
+            // Geofence Arrival Reminder Simulation (Trigger reminder after 10 seconds of ride or when close)
+            const arrivalTimer = setTimeout(() => {
+                setNearDestination(true);
+                setToastMessage("📍 ถึงจุดหมายแล้ว อย่าลืมกด 'จบงาน' เพื่อรับเงินและกลับเข้าคิว");
+            }, 12000);
+
+            // Safety Auto-complete Timeout (Safeguard if driver completely forgets to tap complete)
+            const autoSolveTimer = setTimeout(() => {
+                console.log("[SAFETY] Auto-completing trip due to safety timeout");
+                handleCompleteJob();
+            }, 1800000); // 30 minutes safety limit
+
+            return () => {
+                clearTimeout(arrivalTimer);
+                clearTimeout(autoSolveTimer);
+            };
         } else {
             setHasNewJob(false);
+            setNearDestination(false);
         }
     }, [isBusy, matchedRider]);
 
@@ -452,27 +469,33 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData, matchedRider }) => {
         }
     };
 
+    // --- DRIVER 2.0 COMMUNITY PLATFORM STATES ---
+    const [showFullscreenQr, setShowFullscreenQr] = useState(false);
+    const [showPassengerVerify, setShowPassengerVerify] = useState(false);
+    const [passengerOtpInput, setPassengerOtpInput] = useState(['', '', '', '']);
+    const [verifyMode, setVerifyMode] = useState<'OTP' | 'QR' | 'MANUAL'>('OTP');
+    const [isPassengerVerified, setIsPassengerVerified] = useState(false);
+
+    // Community Points State (Non-monetary points for vests, helmets, raincoats, fuel coupons)
+    const [communityPoints, setCommunityPoints] = useState(150);
+    const [showCommunityRewards, setShowCommunityRewards] = useState(false);
+
+    const handleVerifyPassenger = () => {
+        setIsPassengerVerified(true);
+        setShowPassengerVerify(false);
+        setToastMessage('✅ ยืนยันตัวตนผู้โดยสารสำเร็จ ออกเดินทางได้');
+        setTimeout(() => setToastMessage(null), 3000);
+    };
+
     const handleCompleteJob = () => {
+        // Direct cash receipt confirmation by driver - No fare calculation
+        setIsPassengerVerified(false);
+        setCommunityPoints(prev => prev + 10); // Reward 10 community points per completed safe ride
         socket.emit('TRIP_COMPLETE', { driverId: 'D-USER' });
     };
 
     const handleShareQR = async () => {
-        const url = `${window.location.origin}/#passenger?ref=${driverData?.id || 'D-USER'}`;
-        if (navigator.share) {
-            try {
-                await navigator.share({
-                    title: 'GOZIPP – แอปเรียกวินคนไทย',
-                    text: 'เรียกวินง่ายๆ รวดเร็ว ปลอดภัย สแกนเลย!',
-                    url: url
-                });
-            } catch (err) {
-                console.log('Share canceled');
-            }
-        } else {
-            // Fallback: Copy to clipboard
-            navigator.clipboard.writeText(url);
-            alert('คัดลอกลิงก์แล้ว: ' + url);
-        }
+        setShowFullscreenQr(true); // Single tap to show Fullscreen QR
     };
 
     // --- VIEWS ---

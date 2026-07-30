@@ -5,7 +5,14 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 if (!supabaseUrl) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL is required in production');
+  }
   console.warn('Warning: SUPABASE_URL environment variable is missing.');
+}
+
+if (process.env.NODE_ENV === 'production' && !supabaseServiceKey) {
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY is required in production');
 }
 
 // Client for general public/anonymous operations

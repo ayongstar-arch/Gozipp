@@ -130,14 +130,22 @@ PHONE_INPUT → OTP_VERIFY → PERSONAL_INFO → AUTO_LOGIN
 
 ---
 
-## 🛵 4. ระบบเรียกรถ (Ride Request)
+## 🛵 4. ระบบเรียกรถและโมเดลธุรกิจ (Ride Request & Dynamic Fee Model)
 
-### 4.1 ขั้นตอนการเรียกรถ
+### 4.1 แนวคิดโมเดลการชำระเงิน (Cash Payment & Admin-Configurable Fee Model)
+- **ค่าโดยสาร:** ผู้โดยสารจ่ายเงินสด (หรือสแกน PromptPay ส่วนตัว) ให้คนขับโดยตรงตามราคาประเมิน/ป้ายวิน
+- **ค่าบริการระบบ (Admin Configurable System Fee):** 
+  - กำหนดตัวเลขค่าบริการบริการระบบ (แต้ม) จาก **ระบบหลังบ้าน Admin (Admin Dashboard)**
+  - รองรับการปรับเปลี่ยนตาม **โปรโมชัน/ช่วงเวลา** (เช่น ค่าบริการปกติ 2 แต้ม, ช่วงโปรโมชัน 1 แต้ม หรือ นั่งฟรี 0 แต้ม)
+- **เงื่อนไขเรียกรถ:** ผู้โดยสารต้องมียอดแต้มคงเหลืออย่างน้อยเท่ากับค่าบริการ ณ ขณะนั้น (`Wallet Balance ≥ dynamicSystemFeePoints`)
+
+### 4.2 ขั้นตอนการเรียกรถ & สถานะแต้ม (Point Reservation Flow)
 ```
-SELECT_PICKUP → SELECT_DESTINATION → CONFIRM_FARE → SEARCHING → MATCHED → EN_ROUTE → COMPLETED
+SELECT_PICKUP → SELECT_DESTINATION → FETCH_SYSTEM_FEE (e.g. 2 Pts) → CHECK_BALANCE (≥ Fee) 
+     → SEARCHING → MATCHED (Reserve Fee Pts) → EN_ROUTE → COMPLETED (Deduct Fee Pts)
 ```
 
-### 4.2 Request Ride API
+### 4.3 Request Ride API
 ```typescript
 // API: POST /ride/request
 // Body: {
@@ -150,30 +158,42 @@ SELECT_PICKUP → SELECT_DESTINATION → CONFIRM_FARE → SEARCHING → MATCHED 
 // Response: {
 //   tripId: string;
 //   status: 'SEARCHING';
-//   fare: number;         // จำนวนแต้มที่ต้องจ่าย
+//   estimatedCashFare: number; // ราคาเงินสดประเมินจ่ายให้คนขับ (เช่น 35 บาท)
+//   systemFeePoints: number;    // ค่าบริการระบบไดนามิกจาก Admin Config (เช่น 2 แต้ม หรือ 1 แต้มตามโปรโมชัน)
+//   promoCodeApplied?: string;  // รหัสโปรโมชันที่ปรับลดแต้มค่าบริการ (ถ้ามี)
 //   distance: '2.5 km';
 //   eta: '8 mins';
 // }
 ```
 
-### 4.3 Ride Status Flow
+### 4.4 Ride Status & Point Reserve State Machine
 ```
-SEARCHING → MATCHED → EN_ROUTE → ARRIVED → IN_PROGRESS → COMPLETED
+SEARCHING → MATCHED (Reserve Fee Pts) → EN_ROUTE → ARRIVED → IN_PROGRESS → COMPLETED (Commit Deduct Fee Pts)
      ↓          ↓
-  TIMEOUT   CANCELLED
+  TIMEOUT    CANCELLED (Release Fee Pts)
 ```
 
-### 4.4 Fare Calculation (คำนวณค่าโดยสาร)
+**State Machine ของการสำรองแต้ม (Dynamic Fee):**
+```
+[Available Balance] ──(Match Driver)──> [Reserve N Points (Admin Config Fee)]
+         │                                               │
+    (Cancel Trip)                                  (Trip Complete)
+         │                                               │
+         ▼                                               ▼
+[Release Back to Available]                   [Commit Deduct N Points]
+```
+
+### 4.5 Fare Calculation (คำนวณราคาประเมินเงินสด)
 ```typescript
-// สูตรคำนวณ:
-estimatedFare = 20 + (distanceKm * 5);  // 20 บาทฐาน + 5 บาท/กม.
-pointsRequired = Math.ceil(estimatedFare);
+// สูตรคำนวณราคาเงินสดประเมิน (สำหรับแสดงผู้โดยสารเตรียมเงินสดจ่ายคนขับ):
+estimatedCashFare = 20 + (distanceKm * 5);  // 20 บาทฐาน + 5 บาท/กม.
+systemFeePoints = 2;                        // หักจาก Wallet ชัวร์เมื่อจบ Trip
 
 // ตัวอย่าง:
-// ระยะทาง 3 กม. = 20 + (3 * 5) = 35 แต้ม
+// ระยะทาง 3 กม. = จ่ายเงินสดคนขับ 35 บาท + ตัดใน Wallet 2 แต้ม
 ```
 
-### 4.5 Service Radius
+### 4.6 Service Radius
 ```typescript
 const SERVICE_RADIUS_KM = 2.0;  // รัศมีให้บริการ 2 กม. จากวิน
 // ป้องกันการแย่งพื้นที่ระหว่างวิน
@@ -188,6 +208,7 @@ const SERVICE_RADIUS_KM = 2.0;  // รัศมีให้บริการ 2 
 // รับข้อมูลเมื่อคนขับรับงาน
 socket.on('TRIP_ACCEPTED', (data) => {
   // data: { driverId, tripId, driverName, plate, phone, rating }
+  // ระบบทำการ Reserve 2 Points ใน Wallet อัตโนมัติ
   setMatchedDriver(data);
   setRideStatus('MATCHED');
 });
@@ -199,7 +220,7 @@ socket.on('DRIVER_JOB_REJECT', (data) => {
 
 // รับข้อมูลเมื่อถึงจุดหมาย
 socket.on('TRIP_COMPLETED', (data) => {
-  // หักแต้ม → แสดงหน้า Rating
+  // หักแต้ม Reserved 2 แต้มสำเร็จ → แสดงหน้า Rating & ยอดเงินสดที่ต้องจ่ายคนขับ
 });
 ```
 
@@ -245,17 +266,18 @@ socket.on('TRIP_COMPLETED', (data) => {
 
 ---
 
-## 💰 8. ระบบ Wallet & Points (กระเป๋าเงิน)
+## 💰 8. ระบบ Wallet & Points (กระเป๋าเงิน & ระบบสำรองแต้ม)
 
-### 8.1 Points System
+### 8.1 Points System & Reservation Rules
 ```typescript
 // 1 Point = 1 บาท
-// RIDE_POINT_COST = 2;  // ค่าบริการขั้นต่ำ 2 แต้ม
+// RIDE_POINT_COST = 2;  // ค่าบริการระบบต่อครั้ง
 
-// แสดง:
-// - ยอดแต้มคงเหลือ
-// - ประวัติการใช้แต้ม
-// - ปุ่มเติมเงิน
+// สถานะ Transaction Ledger:
+// RESERVED  : สำรองแต้มไว้เมื่อ Match คนขับสำเร็จ (-2 Reserved)
+// COMPLETED : จบการเดินทาง หักแต้มถาวร (-2 Final)
+// CANCELLED : ยกเลิกทริป คืนแต้มสำรองกลับสู่ Available (+2 Release)
+// TOPUP     : เติมแต้มผ่าน PromptPay
 ```
 
 ### 8.2 TopupModal (เติมเงิน)
@@ -401,10 +423,10 @@ export class PassengerEntity {
   provider_id: string;           // ID จาก OAuth Provider
 
   @Column({ nullable: true })
-  email: string;                 // อีเมล
-
-  @Column({ nullable: true })
   avatar_url: string;            // รูป Avatar จาก OAuth
+
+  @Column({ type: 'int', default: 0 })
+  community_points_balance: number; // แต้มสะสมจากกิจกรรมชุมชน (ชวนเพื่อน ฯลฯ) สำหรับแลกของรางวัล
 
   @CreateDateColumn()
   created_at: Date;
@@ -500,6 +522,33 @@ const MAX_FREE_RIDES = 3;            // เที่ยวฟรีสำหร�
 const SERVICE_RADIUS_KM = 2.0;       // รัศมีให้บริการ
 const OTP_EXPIRE_SECONDS = 300;      // OTP หมดอายุ 5 นาที
 const RIDE_TIMEOUT_MS = 60000;       // Timeout หาคนขับ 60 วินาที
+```
+
+---
+
+## 🤝 18. ระบบแนะนำเพื่อนสำหรับผู้โดยสาร (Passenger Referral & Promotion System)
+
+### 18.1 แนวคิดระบบสะสมแต้มชุมชน (Community Points for Passengers)
+ผู้โดยสารไม่ได้เป็นเพียงผู้ใช้งาน แต่เป็น **"ผู้ขยายชุมชน"** 
+เมื่อผู้โดยสารชวนเพื่อนมาใช้งาน จะได้รับแต้ม Community Points ซึ่งสามารถนำไปแลกรับของรางวัล หรือสิทธิประโยชน์ใน Reward Marketplace แบบเดียวกับฝั่งคนขับ
+
+### 18.2 ขั้นตอนการแนะนำเพื่อน (Referral Flow)
+```typescript
+// 1. ผู้โดยสาร (Referrer) เปิดแอป แท็บ Profile 
+// 2. กด "แนะนำเพื่อน (Invite Friends)" ระบบแสดง QR Code ส่วนตัว
+// 3. ผู้ใช้งานใหม่ (Referee) สแกน QR Code เพื่อเข้าสู่หน้าสมัคร
+// 4. ระบบกรอก referral_code ให้อัตโนมัติ (เช่น P-12345)
+// 5. เมื่อ Referee ทำการ "เรียกรถและเดินทางจบครั้งแรก (First Trip Completed)"
+// 6. ระบบมอบแต้มโบนัส (เช่น +10 แต้ม) ให้กับ Referrer โดยอัตโนมัติ
+```
+
+### 18.3 Reward Marketplace & Promotions
+```typescript
+// ผู้โดยสารสามารถนำ Community Points ไปแลกใน Reward Marketplace ได้:
+// - แลกรับของพรีเมียม (เสื้อ, ร่ม, ของที่ระลึกจากชุมชน)
+// - แลกคูปองส่วนลดจากร้านค้าในชุมชน/จังหวัดที่ Admin ดีลไว้
+// - แลกส่วนลดค่าโดยสารแบบรายครั้ง (Promo Code Redemption)
+// * Admin สามารถเปิด/ปิด แคมเปญ หรือปรับปรุงแคตตาล็อกของรางวัลแบบ Manual ได้
 ```
 
 ---

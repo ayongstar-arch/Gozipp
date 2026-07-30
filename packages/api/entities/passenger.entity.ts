@@ -44,6 +44,9 @@ export class PassengerEntity {
   @Column({ default: 3 })
   free_rides_remaining: number;
 
+  @Column({ type: 'int', default: 0 })
+  community_points_balance: number;
+
   // Referral
   @Column({ nullable: true })
   referral_code: string;

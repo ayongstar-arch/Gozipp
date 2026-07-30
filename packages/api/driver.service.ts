@@ -8,6 +8,7 @@ import { SmsService } from './sms.service'; // ADDED
 import { CreditService } from './credit.service';
 import { DriverOnlineDto, TripActionDto, DriverRegisterDto, CreateInviteCodeDto, InviteCode } from './dtos';
 import { DriverEntity } from './entities/driver.entity';
+import { PassengerEntity } from './entities/passenger.entity';
 import { TripEntity } from './entities/trip.entity';
 import { DriverDocumentEntity } from './entities/driver-document.entity';
 import { DriverPreferenceEntity } from './entities/driver-preference.entity';
@@ -28,6 +29,8 @@ export class DriverService implements OnModuleInit {
   constructor(
     @InjectRepository(DriverEntity)
     private driverRepo: Repository<DriverEntity>,
+    @InjectRepository(PassengerEntity)
+    private passengerRepo: Repository<PassengerEntity>,
     @InjectRepository(TripEntity)
     private tripRepo: Repository<TripEntity>,
     @InjectRepository(DriverDocumentEntity)
@@ -413,6 +416,18 @@ export class DriverService implements OnModuleInit {
     await this.tripRepo.update(dto.tripId, { status: 'COMPLETED', completed_at: new Date() });
     await this.driverRepo.update(dto.driverId, { current_status: 'IDLE' });
     await this.driverRepo.increment({ id: dto.driverId }, 'total_trips', 1);
+
+    // Passenger Referral Logic (Award points on first trip)
+    const passenger = await this.passengerRepo.findOne({ where: { id: trip.passenger_id } });
+    if (passenger) {
+      await this.passengerRepo.increment({ id: trip.passenger_id }, 'total_rides', 1);
+      
+      if (passenger.total_rides === 0 && passenger.referred_by_id) {
+        const REWARD_POINTS = 10; // Configure this from Campaign Center
+        await this.passengerRepo.increment({ id: passenger.referred_by_id }, 'community_points_balance', REWARD_POINTS);
+        this.logger.log(`Awarded ${REWARD_POINTS} community points to referrer ${passenger.referred_by_id} for new passenger ${passenger.id}`);
+      }
+    }
 
     if (Number(trip.fare) <= 0) {
       await this.creditService.consumeFreeRide(trip.passenger_id, trip.id);

@@ -54,6 +54,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     const [authError, setAuthError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [otpCountdown, setOtpCountdown] = useState(0);
+    const [registrationToken, setRegistrationToken] = useState('');
 
     const [hasNewJob, setHasNewJob] = useState(false);
     const [gpsId, setGpsId] = useState<number | null>(null);
@@ -103,7 +104,8 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
     // --- PRIVACY CALL FEATURE ---
     const handlePrivacyCall = async () => {
-        const driverId = useAuthStore.getState().user?.id || 'D-USER';
+        const driverId = useAuthStore.getState().user?.id;
+        if (!driverId) return;
         const riderId = matchedRider?.id;
         if (!riderId) {
             alert('ไม่มีผู้โดยสาร active');
@@ -169,10 +171,10 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             }
 
             // 2. First-time signup -> Request OTP
-            const res = await fetch(`${API_BASE_URL}/driver/request-otp`, {
+            const res = await fetch(`${API_BASE_URL}/api/v1/auth/request-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phoneNumber })
+                body: JSON.stringify({ phoneNumber, purpose: 'REGISTER', role: 'DRIVER' })
             });
 
             const data = await res.json();
@@ -199,10 +201,10 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         setAuthError('');
 
         try {
-            const res = await fetch(`${API_BASE_URL}/driver/login`, {
+            const res = await fetch(`${API_BASE_URL}/api/v1/auth/verify-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phoneNumber, pin: otp })
+                body: JSON.stringify({ phoneNumber, otp, purpose: 'REGISTER', role: 'DRIVER' })
             });
 
             const data = await res.json();
@@ -210,6 +212,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
             if (!data.isRegistered) {
                 setPhoneNumber(phoneNumber);
+                setRegistrationToken(data.registrationToken || '');
                 setAuthStep('REGISTER');
                 return;
             }
@@ -279,7 +282,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
         try {
             // 1. Register Initial Record
-            const res = await fetch(`${API_BASE_URL}/driver/register`, {
+            const res = await fetch(`${API_BASE_URL}/api/v1/auth/driver-register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -287,7 +290,8 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                     fullName: regForm.name,
                     licensePlate: 'TBD',
                     inviteCode: 'WIN888', // Default for now
-                    profilePicUrl: regForm.profilePic
+                    profilePicUrl: regForm.profilePic,
+                    registrationToken
                 })
             });
 
@@ -344,7 +348,8 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             });
         }
         // Redirect to real LINE OAuth flow
-        const driverId = useAuthStore.getState().user?.id || 'D-USER';
+        const driverId = useAuthStore.getState().user?.id;
+        if (!driverId) return;
         window.location.href = `${API_BASE_URL}/auth/line-notify?driverId=${driverId}&role=DRIVER`;
     };
 
@@ -476,7 +481,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         if (isOnline) {
             const id = watchPosition((loc) => {
                 socket.emit('DRIVER_UPDATE_STATUS', {
-                    id: driverData?.id || 'D-USER',
+                    id: driverData?.id,
                     status: isBusy ? 'BUSY' : 'IDLE',
                     location: loc
                 });
@@ -508,12 +513,12 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
     const handleStartWork = () => {
         socket.emit('DRIVER_UPDATE_STATUS', {
-            id: driverData?.id || 'D-USER',
+            id: driverData?.id,
             status: 'IDLE',
             location: MAP_CENTER
         });
         setDriverData(prev => ({
-            id: prev?.id || 'D-USER',
+            id: prev?.id,
             status: 'IDLE',
             location: MAP_CENTER,
             earnings: prev?.earnings || 120,
@@ -525,13 +530,13 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     };
 
     const handleStopWork = () => {
-        socket.emit('DRIVER_UPDATE_STATUS', { id: driverData?.id || 'D-USER', status: 'OFFLINE' });
+        socket.emit('DRIVER_UPDATE_STATUS', { id: driverData?.id, status: 'OFFLINE' });
         setDriverData(undefined);
     };
 
     const handleAcceptJob = () => {
         if (matchedRider) {
-            socket.emit('TRIP_ACCEPT', { driverId: driverData?.id || 'D-USER', tripId: matchedRider.id });
+            socket.emit('TRIP_ACCEPT', { driverId: driverData?.id, tripId: matchedRider.id });
             setHasNewJob(false);
             setDriverData(prev => prev ? { ...prev, status: 'MATCHED' } : undefined);
         }
@@ -539,7 +544,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
     const handleRejectJob = () => {
         if (matchedRider) {
-            socket.emit('DRIVER_REJECT_JOB', { driverId: driverData?.id || 'D-USER', riderId: matchedRider.id });
+            socket.emit('DRIVER_REJECT_JOB', { driverId: driverData?.id, riderId: matchedRider.id });
             setHasNewJob(false);
             setMatchedRider(undefined);
             setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
@@ -547,12 +552,12 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     };
 
     const handleCompleteJob = () => {
-        socket.emit('TRIP_COMPLETE', { driverId: driverData?.id || 'D-USER' });
+        socket.emit('TRIP_COMPLETE', { driverId: driverData?.id });
         setMatchedRider(undefined);
         setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
     };
     const handleShareQR = async () => {
-        const url = `${window.location.origin}/#passenger?ref=${driverData?.id || 'D-USER'}`;
+        const url = `${window.location.origin}/#passenger?ref=${driverData?.id || ''}`;
         if (navigator.share) {
             try {
                 await navigator.share({
@@ -1104,7 +1109,8 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             if (pin.length < 6) return;
             setIsLoading(true);
             try {
-                const userId = useAuthStore.getState().user?.id || 'D-USER'; // Should exist by now
+                const userId = useAuthStore.getState().user?.id;
+                if (!userId) throw new Error('ไม่พบข้อมูลผู้ใช้งาน');
                 const res = await fetch(`${API_BASE_URL}/auth/set-pin`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1520,7 +1526,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                         <div className="bg-white p-2 rounded-xl border-2 border-slate-100 shadow-inner inline-block mb-4">
                             {/* QR Code pointing to Passenger App with Referral ID */}
                             <img
-                                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + '/#passenger?ref=' + (driverData?.id || 'D-USER'))}`}
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + '/#passenger?ref=' + (driverData?.id || ''))}`}
                                 className="w-48 h-48"
                                 alt="Passenger QR"
                             />
@@ -1528,7 +1534,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-6">
                             <div className="text-[10px] text-slate-400 uppercase font-bold">รหัสแนะนำของคุณ</div>
-                            <div className="text-2xl font-mono font-bold text-slate-800 tracking-widest">{driverData?.id || 'D-USER'}</div>
+                            <div className="text-2xl font-mono font-bold text-slate-800 tracking-widest">{driverData?.id || '—'}</div>
                         </div>
 
                         <button onClick={handleShareQR} className="w-full bg-[#06C755] text-white font-bold py-3 rounded-xl shadow-lg hover:bg-[#05b54d] transition-colors flex items-center justify-center gap-2">

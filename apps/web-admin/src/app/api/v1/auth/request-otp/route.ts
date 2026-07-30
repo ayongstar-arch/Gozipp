@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Generate random 6-digit OTP
     let otp = '';
-    const allowTestOtp = process.env.ALLOW_TEST_OTP === 'true' || process.env.NODE_ENV !== 'production';
+    const allowTestOtp = process.env.ALLOW_TEST_OTP === 'true' && process.env.NODE_ENV !== 'production';
     
     // Test mode bypass for specific numbers or standard fallback
     if (allowTestOtp && (normalized === '0899999999' || normalized === '0812345678')) {

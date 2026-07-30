@@ -3,7 +3,6 @@ import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../hooks/useAuth';
 import { motion } from 'framer-motion';
-import { ALLOW_REGISTRATION_WITHOUT_OTP } from '@/constants';
 
 const RegisterView: React.FC = () => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
@@ -24,11 +23,7 @@ const RegisterView: React.FC = () => {
       return setError('กรุณากรอกเบอร์โทรศัพท์มือถือไทย 10 หลัก');
     }
 
-    if (ALLOW_REGISTRATION_WITHOUT_OTP) {
-      await verifyOtp(phoneNumber, '', true, name);
-    } else {
-      await requestOtp(phoneNumber, true, name);
-    }
+    await requestOtp(phoneNumber, true, name);
   };
 
   return (

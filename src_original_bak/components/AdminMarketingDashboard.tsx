@@ -2,14 +2,42 @@
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 
-const DEFAULT_PROMPT = "A high-resolution photograph of the MyWin app logo, exactly as shown in Logo mywin.png, displayed prominently on the screen of a modern smartphone. The orange square icon with the white motorcycle graphic and the dark blue 'MyWin' text are centered against a clean, white app interface background. The smartphone is held in a hand, showing the realistic context of the logo in use.";
+const DEFAULT_PROMPT = "A high-resolution photograph of the MyWin app logo displayed on a smartphone screen, showcasing motorcycle taxi community service.";
+
+interface ReferralStat {
+    driverId: string;
+    driverName: string;
+    winName: string;
+    qrScans: number;
+    passengersInvited: number;
+    firstRidesCompleted: number;
+    communityPointsEarned: number;
+}
 
 const AdminMarketingDashboard: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'GROWTH' | 'REFERRAL_ANALYTICS' | 'REWARD_MARKETPLACE' | 'CAMPAIGNS' | 'AI_POSTER'>('GROWTH');
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasApiKey, setHasApiKey] = useState(false);
+
+  // Community Growth Stats
+  const [referralTree, setReferralTree] = useState<ReferralStat[]>([
+      { driverId: 'D-1001', driverName: 'พี่สมชาย ใจดี', winName: 'วินตลาดกลาง', qrScans: 142, passengersInvited: 38, firstRidesCompleted: 29, communityPointsEarned: 1450 },
+      { driverId: 'D-1002', driverName: 'พี่วิชัย มีสุข', winName: 'วินหน้าตึก Tech Park', qrScans: 98, passengersInvited: 24, firstRidesCompleted: 19, communityPointsEarned: 950 },
+      { driverId: 'D-1003', driverName: 'พี่ประเสริฐ ยิ้มสู้', winName: 'วินหมู่บ้าน A', qrScans: 76, passengersInvited: 18, firstRidesCompleted: 15, communityPointsEarned: 750 }
+  ]);
+
+  // Reward Marketplace Catalog (Vests, Helmets, Raincoats, Vouchers, Insurance)
+  const [rewardsCatalog, setRewardsCatalog] = useState([
+      { id: 'R1', title: 'เสื้อวินมอเตอร์ไซค์สะท้อนแสง', category: 'VEST', pointsCost: 500, stock: 45, icon: '🥼' },
+      { id: 'R2', title: 'หมวกกันน็อกมาตรฐาน มอก.', category: 'HELMET', pointsCost: 800, stock: 30, icon: '🪖' },
+      { id: 'R3', title: 'เสื้อกันฝนเกรดพรีเมียม', category: 'RAINCOAT', pointsCost: 350, stock: 60, icon: '🧥' },
+      { id: 'R4', title: 'คูปองน้ำมัน ปตท. 500 บาท', category: 'FUEL_VOUCHER', pointsCost: 1000, stock: 20, icon: '⛽' },
+      { id: 'R5', title: 'ประกันอุบัติเหตุคุ้มครอง 1 ปี', category: 'INSURANCE', pointsCost: 1200, stock: 50, icon: '🛡️' },
+      { id: 'R6', title: 'คูปองร้านค้าชุมชน 100 บาท', category: 'GIFT_VOUCHER', pointsCost: 200, stock: 100, icon: '🎟️' }
+  ]);
 
   useEffect(() => {
     checkApiKey();
@@ -97,32 +125,64 @@ const AdminMarketingDashboard: React.FC = () => {
 
   return (
     <div className="flex-1 bg-slate-950 p-6 flex flex-col h-full overflow-hidden font-sans text-slate-200">
-      <header className="mb-6">
-        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <span>🎨</span> Marketing Asset Generator
+      <header className="mb-6 border-b border-slate-800 pb-4">
+        <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-4">
+            <span>🚀</span> Community Growth & Campaign Center
         </h2>
-        <p className="text-slate-500 text-sm">สร้างรูปภาพโฆษณาด้วย AI (Gemini Imagen)</p>
+        <div className="flex gap-2">
+            <button onClick={() => setActiveTab('GROWTH')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'GROWTH' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}>Overview</button>
+            <button onClick={() => setActiveTab('CAMPAIGNS')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'CAMPAIGNS' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}>Passenger Promotions</button>
+            <button onClick={() => setActiveTab('REWARD_MARKETPLACE')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'REWARD_MARKETPLACE' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}>Reward Marketplace</button>
+            <button onClick={() => setActiveTab('AI_POSTER')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'AI_POSTER' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}>AI Marketing Assets</button>
+        </div>
       </header>
 
-      {!hasApiKey ? (
-          <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/50">
-              <div className="text-4xl mb-4">🔑</div>
-              <h3 className="text-xl font-bold text-white mb-2">Authentication Required</h3>
-              <p className="text-slate-400 mb-6 max-w-md text-center">
-                  ในการใช้งานโมเดลสร้างภาพคุณภาพสูง (Gemini 3 Pro Image), จำเป็นต้องใช้ API Key จากบัญชีที่มีสิทธิ์เข้าถึง (Paid/Preview)
-              </p>
-              <button 
-                onClick={handleSelectKey}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg"
-              >
-                  Select API Key / Login
-              </button>
-              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="mt-4 text-xs text-slate-500 hover:underline">
-                  เรียนรู้เพิ่มเติมเกี่ยวกับ Billing
-              </a>
+      {activeTab === 'CAMPAIGNS' && (
+          <div className="flex-1 bg-slate-900 rounded-xl border border-slate-800 p-6">
+              <h3 className="text-lg font-bold text-white mb-4">ตั้งค่าแคมเปญแนะนำเพื่อน (Passenger Referral Engine)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                      <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">แจกแต้มให้ผู้แนะนำ (Referrer Reward)</label>
+                      <div className="flex items-center gap-2">
+                          <input type="number" defaultValue={10} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:border-indigo-500 outline-none" />
+                          <span className="text-slate-400 font-bold">Points</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-2">แต้มนี้จะถูกโอนให้ผู้แนะนำเมื่อเพื่อนทำการเรียกรถสำเร็จในครั้งแรก</p>
+                  </div>
+                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+                      <div>
+                          <div className="font-bold text-white">สถานะแคมเปญ (Active)</div>
+                          <div className="text-xs text-slate-500">เปิดใช้งานระบบชวนเพื่อนสำหรับผู้โดยสาร</div>
+                      </div>
+                      <div className="w-12 h-6 bg-emerald-500 rounded-full relative cursor-pointer">
+                          <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full"></div>
+                      </div>
+                  </div>
+              </div>
           </div>
-      ) : (
-          <div className="flex flex-col lg:flex-row gap-6 h-full overflow-hidden">
+      )}
+
+      {activeTab === 'AI_POSTER' && (
+        <>
+          {!hasApiKey ? (
+              <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/50">
+                  <div className="text-4xl mb-4">🔑</div>
+                  <h3 className="text-xl font-bold text-white mb-2">Authentication Required</h3>
+                  <p className="text-slate-400 mb-6 max-w-md text-center">
+                      ในการใช้งานโมเดลสร้างภาพคุณภาพสูง (Gemini 3 Pro Image), จำเป็นต้องใช้ API Key จากบัญชีที่มีสิทธิ์เข้าถึง (Paid/Preview)
+                  </p>
+                  <button 
+                    onClick={handleSelectKey}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg"
+                  >
+                      Select API Key / Login
+                  </button>
+                  <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="mt-4 text-xs text-slate-500 hover:underline">
+                      เรียนรู้เพิ่มเติมเกี่ยวกับ Billing
+                  </a>
+              </div>
+          ) : (
+              <div className="flex flex-col lg:flex-row gap-6 h-full overflow-hidden">
               {/* Controls */}
               <div className="w-full lg:w-1/3 flex flex-col gap-4">
                   <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex-1 flex flex-col">
@@ -187,6 +247,8 @@ const AdminMarketingDashboard: React.FC = () => {
                   )}
               </div>
           </div>
+          )}
+        </>
       )}
     </div>
   );

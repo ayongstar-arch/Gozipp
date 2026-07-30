@@ -103,7 +103,11 @@ class SupabaseSocketService extends EventEmitter implements ISocketService {
 
   private async handleEmit(event: string, args: any[]): Promise<void> {
     const data = args[0];
-    const driverId = useAuthStore.getState().user?.id || 'b0000000-0000-0000-0000-000000000001';
+    const driverId = useAuthStore.getState().user?.id;
+    if (!driverId) {
+      console.warn(`[Supabase Socket] Skip ${event}: driver session is missing`);
+      return;
+    }
 
     if (event === 'DRIVER_UPDATE_STATUS') {
       const status = data?.status; // 'IDLE', 'BUSY', 'OFFLINE'
@@ -152,7 +156,7 @@ class SupabaseSocketService extends EventEmitter implements ISocketService {
     
     else if (event === 'TRIP_ACCEPT') {
       const tripId = data?.tripId === 'T-1' ? useRideStore.getState().currentTripId : data?.tripId;
-      const acceptDriverId = data?.driverId === 'D-USER' || data?.driverId === 'D-SIM' ? driverId : data?.driverId;
+      const acceptDriverId = data?.driverId || driverId;
 
       console.log(`[Supabase Socket] Accept Trip: ${tripId} by driver: ${acceptDriverId}`);
 
@@ -231,12 +235,12 @@ class SupabaseSocketService extends EventEmitter implements ISocketService {
 
       const newTrip = {
         id: tripId && tripId.startsWith('T-') && tripId.length > 10 ? undefined : tripId,
-        passenger_id: 'a0000000-0000-0000-0000-000000000001',
+        passenger_id: data?.passengerId || null,
         station_id: targetWinId || 'WIN-CENTRAL-01',
         pickup_location: `SRID=4326;POINT(${pickupLng} ${pickupLat})`,
-        pickup_address: 'จุดรับผู้โดยสาร (จำลอง)',
+        pickup_address: 'จุดรับผู้โดยสาร',
         dest_location: `SRID=4326;POINT(${pickupLng + 0.01} ${pickupLat + 0.01})`,
-        dest_address: 'จุดส่งผู้โดยสาร (จำลอง)',
+        dest_address: 'จุดส่งผู้โดยสาร',
         fare: 20.00,
         status: 'SEARCHING',
         passenger_note: message || ''
@@ -266,7 +270,7 @@ class SupabaseSocketService extends EventEmitter implements ISocketService {
           .from('chat_messages')
           .insert({
             trip_id: tripId,
-            sender_id: senderId === 'driver' || senderId === 'D-USER' ? driverId : senderId,
+            sender_id: senderId === 'driver' ? driverId : senderId,
             sender_type: senderType || 'DRIVER',
             content: content
           });

@@ -1,36 +1,46 @@
-# Product
+# 🛵 GOZIPP Platform 2.0 - Product Vision & Specifications
 
-## Register
+## 📋 ภาพรวมผลิตภัณฑ์ (Product Overview)
 
-product
+GOZIPP (MyWin) คือ **แพลตฟอร์มวินมอเตอร์ไซค์ชุมชนระดับประเทศ (Community Motorcycle Taxi Operations Platform)** ออกแบบมาเพื่อเชื่อมต่อผู้โดยสารและพี่วินมอเตอร์ไซค์ประจำวินในประเทศไทยอย่างเป็นธรรม ชัดเจน ปลอดภัย และยั่งยืน
 
-## Users
+---
 
-ผู้โดยสารในประเทศไทยที่ต้องการเรียกวินมอเตอร์ไซค์จากโทรศัพท์ โดยมักใช้งานระหว่างเดินทาง กลางแจ้ง หรือในสถานการณ์ที่ต้องตัดสินใจเร็ว ผู้ใช้ต้องระบุตำแหน่ง เลือกจุดหมาย เรียกรถ ติดตามคนขับ สื่อสาร และจัดการค่าโดยสารได้โดยไม่ต้องเรียนรู้ระบบที่ซับซ้อน
+## 🛑 Fundamental Business Rules (ข้อบังคับเด็ดขาด)
 
-## Product Purpose
+1. **ผู้โดยสารจ่ายค่าโดยสารเป็นเงินสด (หรือ PromptPay ส่วนตัว) ให้คนขับโดยตรง 100%**
+2. **ระบบไม่เคยรับชำระเงินค่าโดยสาร และไม่คิดคอมมิชชันจากคนขับ**
+3. **ไม่มี Wallet หรือระบบถอนเงินฝั่งคนขับ** (หน้าจอคนขับไม่มีตัวเลขเงินหรือรายได้)
+4. **คนขับสะสม Community Points** เพื่อแลกสวัสดิการชุมชน (เสื้อวิน, หมวกกันน็อก, เสื้อกันฝน, คูปองน้ำมัน)
+5. **ผู้โดยสารจ่ายเฉพาะค่าบริการระบบ (System Fee Points)** ซึ่งหักผ่านกลไก Point Reservation (`Reserve -> Commit Deduct / Release`)
+6. **แอดมินกำหนดค่าธรรมเนียมบริการระบบแบบไดนามิกได้จากหลังบ้าน** (Admin Platform Service Configuration)
 
-GOZIPP ช่วยให้การเรียกวินมอเตอร์ไซค์รวดเร็ว ตรวจสอบได้ และปลอดภัย ตั้งแต่การเข้าสู่ระบบด้วยเบอร์โทร/PIN การค้นหาคนขับแบบเป็นธรรม การติดตามการเดินทาง ไปจนถึงการชำระเงิน ประวัติ และความช่วยเหลือฉุกเฉิน ความสำเร็จหมายถึงผู้โดยสารเรียกรถสำเร็จด้วยขั้นตอนน้อย เข้าใจสถานะปัจจุบันเสมอ และเชื่อมั่นว่าข้อมูลกับการเดินทางได้รับการดูแล
+---
 
-## Brand Personality
+## 🏛️ สถาปัตยกรรมระบบ 3 ส่วนหลัก (Core Architecture)
 
-รวดเร็ว ไว้ใจได้ เป็นกันเอง น้ำเสียงเป็นภาษาไทยธรรมชาติ กระชับ และให้ความมั่นใจโดยไม่สร้างความกดดัน
+### 1. แอปพลิเคชันผู้โดยสาร (Passenger App 2.0)
+- **โมเดลชำระเงิน:** แสดงราคาประเมินเงินสดสำหรับจ่ายคนขับ + ตัดค่าบริการระบบ (แต้ม) จาก Wallet
+- **Point Reservation Flow:** สำรองแต้มทันทีเมื่อ Match คนขับ (`Reserved`) -> หักถาวรเมื่อจบงาน (`Commit Deduct`) -> คืนแต้มหากยกเลิก (`Release`)
+- **การใช้งานใกล้นิ้ว:** Bottom Navigation 5 แท็บหลัก, WCAG 2.2 AA Touch Targets
 
-## Anti-references
+### 2. แอปพลิเคชันคนขับ (Driver App 2.0)
+- **Outdoor High-Contrast One-Hand UX:** ดีไซน์ความคมชัดสูง ปุ่มกดใหญ่พิเศษสำหรับมือเดียวกลางแจ้ง
+- **Fair Queue Engine:** จัดลำดับคิวด้วย `Fairness Score` (เวลารอคอย 50%, งานวันนี้ 30%, Rating 20%) ไร้การกดแย่งงาน
+- **Passenger Verification:** ยืนยันตัวตนผู้โดยสาร 4 รูปแบบ (OTP 4 หลัก, QR Scan, PIN Match, Manual Confirm)
+- **Fullscreen Referral QR:** ปุ่มกดแตะเดียวแสดง QR เต็มจอสำหรับให้ผู้โดยสารสแกนสมัครแล้วผูกรหัสคนขับทันที
 
-- ไม่ดูเหมือน prototype หรือ simulation ที่เต็มไปด้วยข้อมูล mock และปุ่มที่ยังทำงานไม่จริง
-- ไม่เป็น super-app ที่รก มีตัวเลือกมากเกินจำเป็น หรือบังคับให้ผู้ใช้ค้นหางานหลัก
-- ไม่ใช้ glassmorphism, glow, motion และ emoji เป็นการตกแต่งจนรบกวนการใช้งาน
-- ไม่สร้าง affordance แปลกใหม่แทนรูปแบบมือถือมาตรฐานโดยไม่มีเหตุผล
-
-## Design Principles
-
-1. งานหลักต้องอยู่ใกล้นิ้วและทำเสร็จได้ในขั้นตอนน้อย
-2. สถานะการเดินทางและผลของทุกการกระทำต้องชัดเจนเสมอ
-3. ความปลอดภัยและความน่าเชื่อถือสำคัญกว่าความหวือหวา
-4. ใช้ข้อมูลจริงจากระบบเป็นแหล่งความจริงเดียว ไม่สร้าง state คู่ขนานใน UI
-5. ออกแบบสำหรับสภาพใช้งานจริงบนมือถือ รวมถึงสัญญาณช้า GPS ไม่พร้อม และการกลับเข้าแอประหว่างทริป
-
-## Accessibility & Inclusion
-
-เป้าหมาย WCAG 2.2 ระดับ AA รองรับ keyboard และ screen reader, touch target อย่างน้อย 44×44px, contrast ที่อ่านได้กลางแจ้ง, reduced motion, ข้อความไทยที่ตรงไปตรงมา และไม่ใช้สีหรือ animation เพียงอย่างเดียวในการสื่อสถานะ
+### 3. ระบบผู้ดูแลระบบ (Admin Dashboard Enterprise Edition - 10 Modules)
+- **สิทธิ์ RBAC 7 บทบาท:** `SUPER_ADMIN`, `REGIONAL_ADMIN` (รายจังหวัด/ภาค), `WIN_LEADER`, `MARKETING`, `SAFETY`, `SUPPORT`, `AUDITOR` (Read-Only)
+- **ลำดับชั้นพื้นที่ 5 ระดับ:** `จังหวัด -> อำเภอ -> ตำบล -> วิน -> คนขับ`
+- **10 โมดูลหลัก:**
+  1. Executive Dashboard (Metrics Bar + Live Map)
+  2. Station & Win Management (5-Level Hierarchy)
+  3. Driver Management & Approval Workflow (`PENDING` -> `APPROVED` -> `ACTIVE` / `Suspend` / `Blacklist`)
+  4. Fair Queue Center & Queue Override Audit (`Reason` -> `Approval` -> `Audit Log`)
+  5. Community Growth Center (Referral Analytics & QR Scan Tracking)
+  6. Campaign & Reward Center (Reward Marketplace Catalog & Rule Engine)
+  7. Safety & Incident Center (SOS Live GPS & Event Timeline)
+  8. Analytics & Reporting (Driver Performance & Passenger Analytics)
+  9. Audit & Compliance Center (Read-only Audit Log)
+  10. System Configuration & Targeted Notification Center

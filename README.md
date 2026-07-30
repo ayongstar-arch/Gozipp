@@ -1,20 +1,33 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 🛵 GOZIPP (MyWin) - Community Motorcycle Taxi Platform 2.0
 
-# Run and deploy your AI Studio app
+GOZIPP (MyWin) คือแพลตฟอร์มบริหารจัดการและบริการเรียกรถวินมอเตอร์ไซค์ชุมชนระดับประเทศ (Community Motorcycle Taxi Operations Platform) สำหรับประเทศไทย
 
-This contains everything you need to run your app locally.
+---
 
-View your app in AI Studio: https://ai.studio/apps/drive/15BbNN4OhG-3U_G9znMqCDUaohf3-rGoM
+## 📚 เอกสารวิเคราะห์และสเปกระบบ (Documentation Index)
 
-## Run Locally
+- 📘 [วิเคราะห์โครงสร้าง UX/UI และภาพรวมระบบ (UX/UI Analysis)](file:///C:/Users/acer/.gemini/antigravity/brain/f869d8cc-6af9-443a-8435-935a5ec5843f/ux_ui_workflow_analysis.md)
+- 🚗 [ข้อกำหนดระบบฝั่งผู้โดยสาร (Passenger Features Spec)](file:///c:/Users/acer/Videos/Project/Gozipp/PASSENGER_FEATURES_SPEC.md)
+- 🛵 [วิเคราะห์ข้อกำหนดระบบฝั่งคนขับ (Driver 2.0 Spec & Workflow)](file:///C:/Users/acer/.gemini/antigravity/brain/f869d8cc-6af9-443a-8435-935a5ec5843f/driver_features_workflow_analysis.md)
+- 🏢 [วิเคราะห์ข้อกำหนดระบบผู้ดูแลระบบ (Admin Enterprise Spec & Workflow)](file:///C:/Users/acer/.gemini/antigravity/brain/f869d8cc-6af9-443a-8435-935a5ec5843f/admin_features_workflow_analysis.md)
+- 🎯 [วิสัยทัศน์ผลิตภัณฑ์ (Product Vision & Core Rules)](file:///c:/Users/acer/Videos/Project/Gozipp/PRODUCT.md)
+- 📝 [สรุปผลการปรับปรุงและการทดสอบ (Walkthrough)](file:///C:/Users/acer/.gemini/antigravity/brain/f869d8cc-6af9-443a-8435-935a5ec5843f/walkthrough.md)
 
-**Prerequisites:**  Node.js
+---
 
+## 🛠️ วิธีการรันโครงการ (Running Locally)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+**ความต้องการของระบบ:** Node.js v20+
+
+1. ติดตั้ง Dependencies:
+   ```bash
+   npm install
+   ```
+2. รันแอปพลิเคชัน:
+   ```bash
+   npm run dev
+   ```
+3. ตรวจสอบประเภทโค้ด (Type Check):
+   ```bash
+   npx tsc --noEmit
+   ```

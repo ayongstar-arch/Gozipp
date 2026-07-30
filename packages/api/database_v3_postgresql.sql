@@ -40,6 +40,7 @@ CREATE TABLE passengers (
     balance INTEGER DEFAULT 0,
     referral_code VARCHAR(20),
     pin_hash TEXT,
+    community_points_balance INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

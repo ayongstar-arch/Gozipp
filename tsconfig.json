@@ -42,6 +42,12 @@
     "node_modules",
     "backend",
     "flutter",
-    "App.tsx"
+    "App.tsx",
+    "temp.tsx",
+    "DriverApp.orig.tsx",
+    "src_original_bak",
+    "apps",
+    "packages",
+    ".next"
   ]
 }

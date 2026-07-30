@@ -2,7 +2,13 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { supabaseAdmin } from './supabase';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-for-dev-only-change-this';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET is required in production');
+  }
+}
 
 export interface DeviceMetadata {
   ipAddress?: string;
@@ -23,7 +29,7 @@ export async function issueTokens(
   deviceMeta: DeviceMetadata = {}
 ): Promise<{ accessToken: string; refreshToken: string }> {
   // 1. Generate Access Token
-  const accessToken = jwt.sign({ sub: userId, role }, JWT_SECRET, {
+  const accessToken = jwt.sign({ sub: userId, role }, JWT_SECRET || 'fallback-secret-for-dev-only-change-this', {
     expiresIn: '1h',
   });
 

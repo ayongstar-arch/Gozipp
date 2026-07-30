@@ -16,7 +16,7 @@ interface PromotionRule {
   stats: {
     usersCount: number;
     totalPointsGiven: number;
-    estimatedRevenueGenerated: number;
+    estimatedCommunityValue: number;
   };
 }
 
