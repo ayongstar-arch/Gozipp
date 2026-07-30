@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { CheckCircle2, ChevronRight, Gift, Percent } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Gift, Percent, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 
 export default function HeroSection() {
@@ -93,7 +93,12 @@ export default function HeroSection() {
               </Link>
             </motion.div>
 
-
+            <motion.div variants={itemVariants} className="flex items-center gap-3 pt-2">
+              <div className="w-8 h-8 rounded-full bg-[#1e3a1e] flex items-center justify-center border border-[#A3FF3F]/20">
+                <ShieldCheck className="w-4 h-4 text-[#A3FF3F]" />
+              </div>
+              <span className="text-white font-kanit font-medium text-base tracking-wide" style={{ textShadow: '1px 0px 1px rgba(0,255,255,0.5), -1px 0px 1px rgba(255,0,0,0.5)' }}>ไม่มี GP ระยะแรก</span>
+            </motion.div>
           </motion.div>
 
           {/* Right Content - Mockup (Isometric) */}
