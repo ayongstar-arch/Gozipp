@@ -93,9 +93,7 @@ export default function HeroSection() {
               </Link>
             </motion.div>
 
-            <motion.div variants={itemVariants}>
-              <p className="text-sm text-gray-500 font-kanit mt-2">ใช้ฟรี! ไม่มีค่าใช้จ่ายในการใช้งาน</p>
-            </motion.div>
+
           </motion.div>
 
           {/* Right Content - Mockup (Isometric) */}
