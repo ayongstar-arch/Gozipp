@@ -92,13 +92,17 @@ export default function HeroSection() {
                 <span className="text-xs text-gray-400 font-medium">เพิ่มโอกาสรับงาน</span>
               </Link>
             </motion.div>
-
-            <motion.div variants={itemVariants} className="flex items-center gap-3 pt-2">
-              <div className="w-8 h-8 rounded-full bg-[#1e3a1e] flex items-center justify-center border border-[#A3FF3F]/20">
-                <ShieldCheck className="w-4 h-4 text-[#A3FF3F]" />
+            
+            <motion.div variants={itemVariants} className="flex items-center gap-2 mt-2">
+              <div className="w-[22px] h-[22px] rounded-full bg-[#1A3317] flex items-center justify-center">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#A3FF3F]" />
               </div>
-              <span className="text-white font-kanit font-medium text-base tracking-wide" style={{ textShadow: '1px 0px 1px rgba(0,255,255,0.5), -1px 0px 1px rgba(255,0,0,0.5)' }}>ไม่มี GP ระยะแรก</span>
+              <p className="text-[15px] font-kanit font-medium tracking-wide">
+                <span className="text-white">ไม่มี GP</span> <span className="text-gray-400">ระยะแรก</span>
+              </p>
             </motion.div>
+
+
           </motion.div>
 
           {/* Right Content - Mockup (Isometric) */}
