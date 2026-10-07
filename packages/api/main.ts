@@ -20,6 +20,7 @@ function validateProductionEnvironment() {
   if ((process.env.OTP_PROVIDER || 'firebase') !== 'firebase') {
     required.push('THAIBULKSMS_APP_KEY', 'THAIBULKSMS_APP_SECRET');
   }
+  console.log('ENV_KEYS_AVAILABLE:', Object.keys(process.env).join(', '));
   const missing = required.filter((key) => !process.env[key]?.trim());
   if (missing.length) {
     throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
