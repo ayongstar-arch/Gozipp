@@ -1,9 +1,0 @@
-[build]
-builder = "NIXPACKS"
-installCommand = "npm install --legacy-peer-deps"
-buildCommand = "npm run build -w @gozipp/api"
-
-[deploy]
-startCommand = "npm run start -w @gozipp/api"
-restartPolicyType = "ON_FAILURE"
-
