@@ -5,6 +5,9 @@ import { normalizeThaiMobileNumber } from './common/phone.util';
 
 @Injectable()
 export class SmsService {
+  // DEPRECATED fallback: Firebase Phone Auth is the MASTER OTP provider.
+  // This service is kept only for the legacy ThaiBulkSMS flow
+  // (PassengerService.requestOtp) and dev-mode logging.
   private readonly logger = new Logger(SmsService.name);
   private readonly apiKey =
     process.env.THAIBULKSMS_APP_KEY ||

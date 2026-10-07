@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
+import { safeStorageName } from './file-validation';
 
 @Injectable()
 export class S3Service {
@@ -33,9 +34,17 @@ export class S3Service {
     }
   }
 
-  async uploadFile(file: Express.Multer.File, folder: string = 'uploads'): Promise<string> {
-    const fileName = `${Date.now()}-${file.originalname.replace(/\s/g, '-')}`;
-    const key = `${folder}/${fileName}`;
+  /**
+   * Stores a PRE-VALIDATED file (see file-validation.sniffFile).
+   * `contentType`/`ext` must come from magic bytes, never from the client.
+   * Storage names are server-generated UUIDs — the client filename never
+   * touches disk (blocks path traversal via `originalname`).
+   */
+  async uploadFile(file: Express.Multer.File, folder: string = 'uploads', contentType = 'application/octet-stream', ext = 'bin'): Promise<string> {
+    const fileName = safeStorageName(ext);
+    // Defense in depth: folder is code-controlled, but strip separators anyway.
+    const safeFolder = folder.replace(/[^a-zA-Z0-9_-]/g, '');
+    const key = `${safeFolder}/${fileName}`;
 
     if (this.s3Client && this.bucketName) {
       try {
@@ -43,7 +52,7 @@ export class S3Service {
           Bucket: this.bucketName,
           Key: key,
           Body: file.buffer,
-          ContentType: file.mimetype,
+          ContentType: contentType,
           // ACL: 'public-read', // Depends on bucket policy
         });
 
@@ -55,16 +64,23 @@ export class S3Service {
       }
     } else {
       // Local Fallback
-      const uploadDir = join(process.cwd(), 'uploads', folder);
+      const uploadDir = join(process.cwd(), 'uploads', safeFolder);
       if (!existsSync(uploadDir)) {
         mkdirSync(uploadDir, { recursive: true });
       }
 
       const filePath = join(uploadDir, fileName);
       writeFileSync(filePath, file.buffer);
-      
-      this.logger.log(`File saved locally: /uploads/${folder}/${fileName}`);
-      return `/uploads/${folder}/${fileName}`;
+
+      this.logger.log(`File saved locally: /uploads/${safeFolder}/${fileName}`);
+      return `/uploads/${safeFolder}/${fileName}`;
     }
+  }
+
+  /** Absolute local path for the authenticated file-serving endpoint. Returns null for non-local (S3) keys. */
+  resolveLocalPath(storedKey: string): string | null {
+    const m = /^\/uploads\/([a-zA-Z0-9_-]+)\/([0-9a-f-]{36}\.(jpg|png|gif|webp|pdf))$/.exec(storedKey);
+    if (!m) return null;
+    return join(process.cwd(), 'uploads', m[1], m[2]);
   }
 }

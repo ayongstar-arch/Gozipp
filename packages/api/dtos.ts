@@ -227,12 +227,40 @@ export class PassengerRegisterDto {
   @IsOptional()
   referralCode?: string; // Optional driver referral
 }
+export class FirebaseVerifyDto {
+  @IsString()
+  @IsNotEmpty()
+  idToken: string;
+
+  @Transform(({ value }) => normalizeThaiMobileNumber(value) ?? value)
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^0[689]\d{8}$/, { message: 'phoneNumber must be a valid Thai mobile number' })
+  phoneNumber: string;
+
+  @IsString()
+  @IsOptional()
+  @Length(2, 200)
+  name?: string;
+
+  @IsEnum(['PASSENGER', 'DRIVER'])
+  @IsOptional()
+  role?: 'PASSENGER' | 'DRIVER';
+
+  @IsString()
+  @IsOptional()
+  referralCode?: string;
+
+  // Back-compat: web clients send purpose; ignored by Firebase flow.
+  @IsString()
+  @IsOptional()
+  purpose?: string;
+}
 
 export class RideRequestDto {
   @IsString()
   @IsNotEmpty()
   passengerId: string;
-
   @IsNumber()
   pickupLat: number;
 

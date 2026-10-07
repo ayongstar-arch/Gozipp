@@ -2,6 +2,7 @@ import { Controller, Post, Get, Body, Query, Req, UseGuards } from '@nestjs/comm
 import { AdminService } from './admin.service';
 import { PromotionService } from './promotion.service';
 import { DriverService } from './driver.service';
+import { AuthService } from './auth/auth.service';
 import { OverrideQueueDto, DateRangeDto, DailyCloseDto, CreateInviteCodeDto } from './dtos';
 import { AuthGuard, RolesGuard } from './common/guards';
 import { Roles } from './common/decorators';
@@ -15,6 +16,7 @@ export class AdminController {
     private readonly promotionService: PromotionService,
     private readonly driverService: DriverService,
     private readonly auditLogService: AuditLogService,
+    private readonly authService: AuthService,
   ) { }
 
   @Get('queue')
@@ -269,6 +271,28 @@ export class AdminController {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
     });
+  }
+
+  /**
+   * POST /admin/pin-recovery/issue
+   * Admin-assisted PIN recovery for users who lost phone/SIM access.
+   * Admin verifies identity OFFLINE, issues a single-use ticket (shown ONCE),
+   * and hands it to the user. Admin never sees or sets the PIN itself.
+   */
+  @Post('pin-recovery/issue')
+  @Roles('ADMIN')
+  async issuePinRecovery(
+    @Body() body: { phoneNumber: string, role: 'PASSENGER' | 'DRIVER' },
+    @Req() req: any,
+  ) {
+    const role = body.role === 'DRIVER' ? 'DRIVER' : 'PASSENGER';
+    return this.authService.issuePinRecovery(
+      req.user?.sub || req.user?.id,
+      req.user?.role || (req.user?.roles?.[0] || 'ADMIN'),
+      body.phoneNumber,
+      role,
+      req.ip,
+    );
   }
 }
 

@@ -20,6 +20,7 @@ import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { DriverDocumentEntity } from './entities/driver-document.entity';
 import { DriverPreferenceEntity } from './entities/driver-preference.entity';
 import { DriverTrainingStatusEntity } from './entities/driver-training-status.entity';
+import { AdminEntity } from './entities/admin.entity';
 
 import { AppGateway } from './app.gateway';
 
@@ -83,10 +84,9 @@ import { AiService } from './ai.service';
       rootPath: join((process as any).cwd(), 'client_build'),
       exclude: ['/api/(.*)'],
     }),
-    ServeStaticModule.forRoot({
-      rootPath: join((process as any).cwd(), 'uploads'),
-      serveRoot: '/uploads',
-    }),
+    // NOTE: /uploads is intentionally NOT statically served. Files are served
+    // only via authenticated GET /api/v1/upload/file/:folder/:name (see UploadController),
+    // which validates the key shape and forces non-executable content headers.
 
     // 5. Database — PostgreSQL + PostGIS
     TypeOrmModule.forRoot({
@@ -96,7 +96,7 @@ import { AiService } from './ai.service';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || '',
       database: process.env.DB_NAME || 'gozipp_db',
-      entities: [DriverEntity, TripEntity, ChatMessageEntity, PassengerEntity, AuditLogEntity, RefreshTokenEntity, DriverDocumentEntity, DriverPreferenceEntity, DriverTrainingStatusEntity, __dirname + '/**/*.entity{.ts,.js}'],
+      entities: [DriverEntity, TripEntity, ChatMessageEntity, PassengerEntity, AuditLogEntity, RefreshTokenEntity, DriverDocumentEntity, DriverPreferenceEntity, DriverTrainingStatusEntity, AdminEntity, __dirname + '/**/*.entity{.ts,.js}'],
       // CRITICAL FOR PRODUCTION: Disable synchronize to prevent data loss
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
@@ -106,7 +106,7 @@ import { AiService } from './ai.service';
       autoLoadEntities: true,
     }),
 
-    TypeOrmModule.forFeature([DriverEntity, TripEntity, ChatMessageEntity, PassengerEntity, AuditLogEntity, RefreshTokenEntity, DriverDocumentEntity, DriverPreferenceEntity, DriverTrainingStatusEntity]),
+    TypeOrmModule.forFeature([DriverEntity, TripEntity, ChatMessageEntity, PassengerEntity, AuditLogEntity, RefreshTokenEntity, DriverDocumentEntity, DriverPreferenceEntity, DriverTrainingStatusEntity, AdminEntity]),
   ],
   controllers: [
     DriverController,

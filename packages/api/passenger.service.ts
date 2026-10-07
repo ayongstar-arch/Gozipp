@@ -11,6 +11,7 @@ import { PassengerEntity } from './entities/passenger.entity';
 import { TripEntity } from './entities/trip.entity';
 import { AuthService, DeviceMetadata } from './auth/auth.service';
 import { normalizeThaiMobileNumber } from './common/phone.util';
+import { hashPin } from './common/pin-crypto';
 import { randomInt } from 'crypto';
 
 type OtpPurpose = 'REGISTER' | 'RESET_PIN';
@@ -47,7 +48,12 @@ export class PassengerService implements OnModuleInit {
     }
   }
 
-  // --- AUTHENTICATION ---
+  // --- AUTHENTICATION (DEPRECATED fallback: Firebase is MASTER) ---
+
+  /**
+   * @deprecated Use Firebase Phone Auth (POST /auth/firebase-verify) instead.
+   * Kept only as fallback when OTP_PROVIDER=thaibulksms.
+   */
 
   async requestOtp(phoneNumber: string, purpose: OtpPurpose = 'REGISTER') {
     phoneNumber = this.requirePhoneNumber(phoneNumber);
@@ -230,7 +236,7 @@ export class PassengerService implements OnModuleInit {
       throw new BadRequestException('PIN ต้องเป็นตัวเลข 6 หลัก');
     }
 
-    const hash = await argon2.hash(newPin, { type: argon2.argon2id });
+    const hash = await hashPin(newPin);
     await this.passengerRepo.update(existing.id, { pin_hash: hash });
     const tokens = await this.authService.issueTokens(existing.id, 'PASSENGER', deviceMeta);
 

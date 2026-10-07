@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Driver, Rider, Location } from '../types';
 import { APP_LOGO_PATH, APP_LOGO_DARK_PATH, MAP_CENTER, STATION_ZONES, FAIRNESS_WEIGHTS, API_BASE_URL } from '../constants';
 import { socket } from '../services/socket';
+import { useFirebasePhoneAuth } from '../hooks/useFirebasePhoneAuth';
 import { watchPosition, clearWatch } from '../services/geolocation';
 import { calculateFairnessScore } from '../services/scheduler';
 import InstallPwaPrompt from './InstallPwaPrompt';
@@ -20,6 +21,36 @@ interface DriverAppProps {
 }
 
 type AuthStep = 'LOGIN' | 'LOGIN_PIN' | 'OTP' | 'REGISTER' | 'PENDING' | 'SETUP_PIN' | 'DASHBOARD';
+
+// Real dispatch payload from backend RIDE_OFFER { trip, expiresInSeconds }.
+// getTripForDispatch(): { id, passengerId, passengerName, status, pickup{lat,lng,address}, destination{lat,lng,address}, fare, distanceKm, requestedAt }
+interface DriverJob {
+    tripId: string;
+    passengerId: string;
+    passengerName: string;
+    pickup: { lat: number; lng: number; address: string };
+    destination: { lat: number; lng: number; address: string };
+    distanceKm: number;
+    fare: number;
+    message?: string;
+}
+
+type TripPhase = 'TO_PICKUP' | 'TO_DEST';
+
+// Free Google Maps navigation (Maps URLs scheme — no API key, no billing).
+const buildGoogleMapsUrl = (lat: number, lng: number): string =>
+    `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+
+const haversineKm = (aLat: number, aLng: number, bLat: number, bLng: number): number => {
+    const R = 6371;
+    const dLat = (bLat - aLat) * Math.PI / 180;
+    const dLng = (bLng - aLng) * Math.PI / 180;
+    const s = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * Math.PI / 180) * Math.cos(bLat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+};
+
+const formatDist = (km: number): string =>
+    km < 1 ? `${Math.round(km * 1000)} เมตร` : `${km.toFixed(1)} กม.`;
 
 const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, matchedRider: initialMatchedRider }) => {
     const [driverData, setDriverData] = useState<Driver | undefined>(initialDriverData);
@@ -55,6 +86,14 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     const [isLoading, setIsLoading] = useState(false);
     const [otpCountdown, setOtpCountdown] = useState(0);
     const [registrationToken, setRegistrationToken] = useState('');
+
+    // Active job (real dispatch data) + trip phase for navigation
+    const [activeJob, setActiveJob] = useState<DriverJob | null>(null);
+    const [tripPhase, setTripPhase] = useState<TripPhase>('TO_PICKUP');
+
+    // Admin ticket recovery (lost phone/SIM)
+    const [recoveryTicket, setRecoveryTicket] = useState('');
+    const [showRecovery, setShowRecovery] = useState(false);
 
     const [hasNewJob, setHasNewJob] = useState(false);
     const [gpsId, setGpsId] = useState<number | null>(null);
@@ -144,10 +183,22 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         }
     }, [otpCountdown]);
 
-    // --- API FUNCTIONS ---
+    // --- Firebase OTP (MASTER) ---
+    const {
+        sendOtp: sendFirebaseOtp,
+        verifyOtp: confirmFirebaseOtp,
+        initRecaptcha: initFirebaseRecaptcha,
+    } = useFirebasePhoneAuth();
+
+    useEffect(() => {
+        initFirebaseRecaptcha('driver-send-otp-btn');
+    }, [initFirebaseRecaptcha]);
+
+    // --- API FUNCTIONS (Firebase OTP = MASTER) ---
     const requestOtp = async () => {
-        if (!phoneNumber || phoneNumber.length < 9) {
-            setAuthError('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง');
+        const phone = phoneNumber.replace(/\D/g, '');
+        if (!/^0[689]\d{8}$/.test(phone)) {
+            setAuthError('กรุณากรอกเบอร์โทรศัพท์มือถือไทย 10 หลัก');
             return;
         }
 
@@ -156,30 +207,27 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
         try {
             // 1. Check if user already has a PIN
-            const statusRes = await fetch(`${API_BASE_URL}/auth/check-status`, {
+            const statusRes = await fetch(`${API_BASE_URL}/api/v1/auth/check-status`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phoneNumber, role: 'DRIVER' })
+                credentials: 'include',
+                body: JSON.stringify({ phoneNumber: phone, role: 'DRIVER' })
             });
             const statusData = await statusRes.json();
 
             if (statusData.exists && statusData.hasPin) {
                 // User has PIN -> Go to PIN Login
+                setPhoneNumber(phone);
                 setAuthStep('LOGIN_PIN');
                 setIsLoading(false);
                 return;
             }
 
-            // 2. First-time signup -> Request OTP
-            const res = await fetch(`${API_BASE_URL}/api/v1/auth/request-otp`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phoneNumber, purpose: 'REGISTER', role: 'DRIVER' })
-            });
+            // 2. First-time signup -> Send OTP via Firebase (MASTER)
+            const sent = await sendFirebaseOtp(phone);
+            if (!sent) throw new Error('ไม่สามารถส่ง OTP ได้ กรุณาลองใหม่อีกครั้ง');
 
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'ส่ง OTP ไม่สำเร็จ');
-
+            setPhoneNumber(phone);
             setOtpCode(['', '', '', '', '', '']);
             setOtpCountdown(60);
             setAuthStep('OTP');
@@ -201,35 +249,32 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         setAuthError('');
 
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/auth/verify-otp`, {
+            // 1. Verify OTP with Firebase (MASTER) -> ID token
+            const idToken = await confirmFirebaseOtp(otp);
+            if (!idToken) throw new Error('ยืนยัน OTP ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+
+            // 2. Exchange Firebase token for Gozipp session (HttpOnly cookies)
+            const res = await fetch('/api/v1/auth/firebase-verify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phoneNumber, otp, purpose: 'REGISTER', role: 'DRIVER' })
+                credentials: 'include',
+                body: JSON.stringify({ idToken, phoneNumber, role: 'DRIVER' })
             });
 
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'เข้าสู่ระบบไม่สำเร็จ');
 
-            if (!data.isRegistered) {
-                setPhoneNumber(phoneNumber);
-                setRegistrationToken(data.registrationToken || '');
+            try { localStorage.setItem('gozipp_driver_id', data.driverId || ''); } catch { /* noop */ }
+            setRegistrationToken(data.driverId || '');
+
+            // New / unapproved driver -> onboarding flow
+            if (data.approvalStatus === 'PENDING' || data.approvalStatus === 'PENDING_REVIEW') {
                 setAuthStep('REGISTER');
+                setRegStep(1);
                 return;
             }
 
-            if (!data.isApproved) {
-                if (data.onboardingStep < 5) {
-                    setAuthStep('REGISTER');
-                    setRegStep(data.onboardingStep + 1);
-                } else {
-                    setAuthStep('REGISTER');
-                    setRegStep(6); // Review status
-                }
-                return;
-            }
-
-            // PIN Setup Flow: If user logged in via OTP for the first time and has no PIN,
-            // redirect to SETUP_PIN screen so they can set a permanent PIN.
+            // PIN Setup Flow: first Firebase login without PIN -> set permanent PIN.
             if (data.hasPin === false) {
                 setAuthStep('SETUP_PIN');
             } else {
@@ -250,8 +295,9 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             formData.append('type', type);
             formData.append('driverId', useAuthStore.getState().user?.id || 'temp');
 
-            const res = await fetch(`${API_BASE_URL}/upload/onboarding`, {
+            const res = await fetch(`${API_BASE_URL}/api/v1/upload/onboarding`, {
                 method: 'POST',
+                credentials: 'include',
                 body: formData
             });
 
@@ -442,9 +488,48 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
     // Subscribe to socket events for matching and status synchronization
     useEffect(() => {
-        const handleRideOffer = (data: { tripId: string; rider: Rider }) => {
-            setMatchedRider(data.rider);
-            setCurrentTripId(data.tripId);
+        // Real backend payload: { trip: { id, passengerId, passengerName, pickup{}, destination{}, fare, distanceKm }, expiresInSeconds }
+        const handleRideOffer = (data: any) => {
+            const trip = data?.trip;
+            if (trip?.id && trip?.pickup) {
+                const job: DriverJob = {
+                    tripId: trip.id,
+                    passengerId: trip.passengerId || '',
+                    passengerName: trip.passengerName || 'ผู้โดยสาร',
+                    pickup: {
+                        lat: Number(trip.pickup.lat),
+                        lng: Number(trip.pickup.lng),
+                        address: trip.pickup.address || 'จุดรับ (ดูหมุดบนแผนที่)',
+                    },
+                    destination: {
+                        lat: Number(trip.destination?.lat),
+                        lng: Number(trip.destination?.lng),
+                        address: trip.destination?.address || 'จุดหมาย (ดูหมุดบนแผนที่)',
+                    },
+                    distanceKm: Number(trip.distanceKm) || 0,
+                    fare: Number(trip.fare) || 0,
+                    message: trip.message,
+                };
+                setActiveJob(job);
+                // Keep legacy matchedRider in sync so map/chat keep working with real coords
+                setMatchedRider({
+                    id: job.tripId,
+                    location: { lat: job.pickup.lat, lng: job.pickup.lng },
+                    destination: { lat: job.destination.lat, lng: job.destination.lng },
+                    requestTime: Date.now(),
+                    waitTime: 0,
+                    status: 'MATCHED',
+                    priorityScore: 0,
+                    message: job.message,
+                } as Rider);
+                setCurrentTripId(job.tripId);
+            } else if (data?.rider) {
+                // Legacy fallback payload shape
+                setMatchedRider(data.rider);
+                setCurrentTripId(data.tripId);
+                setActiveJob(null);
+            }
+            setTripPhase('TO_PICKUP');
             setHasNewJob(true);
 
             if (window.navigator.vibrate) window.navigator.vibrate([200, 100, 200, 100, 500]);
@@ -454,6 +539,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
         const handleRideCancel = () => {
             setMatchedRider(undefined);
+            setActiveJob(null);
             setHasNewJob(false);
             setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
             alert('❌ ทริปถูกยกเลิกโดยผู้โดยสาร');
@@ -461,18 +547,25 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
         const handleTripComplete = () => {
             setMatchedRider(undefined);
+            setActiveJob(null);
             setHasNewJob(false);
             setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
+        };
+
+        const handleTripError = (data: { message?: string }) => {
+            setAuthError(data?.message || 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์');
         };
 
         socket.on('RIDE_OFFER', handleRideOffer);
         socket.on('RIDE_CANCEL', handleRideCancel);
         socket.on('TRIP_COMPLETE', handleTripComplete);
+        socket.on('TRIP_ERROR', handleTripError);
 
         return () => {
             socket.off('RIDE_OFFER', handleRideOffer);
             socket.off('RIDE_CANCEL', handleRideCancel);
             socket.off('TRIP_COMPLETE', handleTripComplete);
+            socket.off('TRIP_ERROR', handleTripError);
         };
     }, []);
 
@@ -534,26 +627,43 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         setDriverData(undefined);
     };
 
+    // --- TRIP ACTIONS (match backend socket protocol: TRIP_* with { tripId }) ---
+    // Backend identifies the driver from JWT, tripId must be the real trip id.
+    const activeTripId = activeJob?.tripId || currentTripId || matchedRider?.id;
+
     const handleAcceptJob = () => {
-        if (matchedRider) {
-            socket.emit('TRIP_ACCEPT', { driverId: driverData?.id, tripId: matchedRider.id });
-            setHasNewJob(false);
-            setDriverData(prev => prev ? { ...prev, status: 'MATCHED' } : undefined);
+        if (!activeTripId) {
+            setAuthError('ไม่พบข้อมูลทริป กรุณารอรับงานใหม่');
+            return;
         }
+        socket.emit('TRIP_ACCEPT', { driverId: driverData?.id, tripId: activeTripId });
+        setHasNewJob(false);
+        setTripPhase('TO_PICKUP');
+        setDriverData(prev => prev ? { ...prev, status: 'MATCHED' } : undefined);
     };
 
     const handleRejectJob = () => {
-        if (matchedRider) {
-            socket.emit('DRIVER_REJECT_JOB', { driverId: driverData?.id, riderId: matchedRider.id });
-            setHasNewJob(false);
-            setMatchedRider(undefined);
-            setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
-        }
+        if (activeTripId) socket.emit('TRIP_REJECT', { tripId: activeTripId });
+        setHasNewJob(false);
+        setMatchedRider(undefined);
+        setActiveJob(null);
+        setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
+    };
+
+    const handleArrivedPickup = () => {
+        if (activeTripId) socket.emit('TRIP_DRIVER_ARRIVED', { tripId: activeTripId });
+        setTripPhase('TO_DEST');
+    };
+
+    const handleStartTrip = () => {
+        if (activeTripId) socket.emit('TRIP_START', { tripId: activeTripId });
+        setTripPhase('TO_DEST');
     };
 
     const handleCompleteJob = () => {
-        socket.emit('TRIP_COMPLETE', { driverId: driverData?.id });
+        if (activeTripId) socket.emit('TRIP_COMPLETE', { tripId: activeTripId });
         setMatchedRider(undefined);
+        setActiveJob(null);
         setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
     };
     const handleShareQR = async () => {
@@ -625,6 +735,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                             />
                         </div>
                         <button
+                            id="driver-send-otp-btn"
                             onClick={requestOtp}
                             disabled={isLoading}
                             className="w-full bg-emerald-500 hover:bg-emerald-400 text-white py-5 rounded-[1.5rem] font-black text-xl shadow-2xl shadow-emerald-900/40 active:scale-95 transition-all disabled:opacity-50"
@@ -640,7 +751,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                     </div>
                     {/* Social Login */}
                     <div className="flex flex-col gap-3 mt-12 w-full max-w-xs">
-                        <button onClick={() => window.location.href = `${API_BASE_URL}/auth/line?type=DRIVER`} className="w-full bg-[#06C755] hover:bg-[#00B900] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-green-950/20 active:scale-95">
+                        <button onClick={() => window.location.href = `${API_BASE_URL}/api/v1/auth/line?type=DRIVER`} className="w-full bg-[#06C755] hover:bg-[#00B900] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-green-950/20 active:scale-95">
                             <span className="text-xl">💬</span> LINE Login
                         </button>
                     </div>
@@ -1044,9 +1155,10 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             if (pin.length < 6) return;
             setIsLoading(true);
             try {
-                const res = await fetch(`${API_BASE_URL}/auth/login-pin`, {
+                const res = await fetch(`${API_BASE_URL}/api/v1/auth/login-pin`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ phoneNumber, pin, role: 'DRIVER' })
                 });
                 const data = await res.json();
@@ -1098,6 +1210,63 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                 <button onClick={() => { setAuthStep('LOGIN'); setPhoneNumber(''); }} className="text-slate-400 text-sm mt-8">
                     เปลี่ยนเบอร์หรือกลับไปเริ่มใหม่
                 </button>
+
+                {!showRecovery ? (
+                    <button onClick={() => { setShowRecovery(true); setAuthError(''); }} className="text-slate-500 text-xs mt-4 hover:text-emerald-400 transition-colors">
+                        มีรหัสกู้จากแอดมิน (กรณีเปลี่ยนเบอร์/ซิมหาย)
+                    </button>
+                ) : (
+                    <div className="w-full max-w-xs mt-6 bg-slate-800/80 border border-slate-700 rounded-2xl p-4 space-y-3">
+                        <p className="text-slate-400 text-xs text-center leading-relaxed">
+                            กรอกรหัสกู้ 8 หลักที่แอดมินให้ แล้วตั้ง PIN ใหม่ในช่องด้านบน
+                        </p>
+                        <input
+                            type="text"
+                            placeholder="รหัสกู้ 8 หลัก"
+                            value={recoveryTicket}
+                            onChange={e => setRecoveryTicket(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+                            className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-center text-lg font-black tracking-[0.3em] text-white outline-none focus:border-emerald-500 placeholder:text-slate-600 placeholder:tracking-normal placeholder:text-sm"
+                        />
+                        <div className="flex gap-2">
+                            <button onClick={() => { setShowRecovery(false); setRecoveryTicket(''); setAuthError(''); }} className="flex-1 text-slate-500 text-sm py-3">
+                                ยกเลิก
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    const newPin = pinCode.join('');
+                                    if (recoveryTicket.length < 8 || newPin.length < 6) {
+                                        setAuthError('กรอกรหัสกู้ 8 หลักและตั้ง PIN 6 หลัก');
+                                        return;
+                                    }
+                                    setIsLoading(true);
+                                    try {
+                                        const res = await fetch(`${API_BASE_URL}/api/v1/auth/pin-recovery/redeem`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            credentials: 'include',
+                                            body: JSON.stringify({ phoneNumber, role: 'DRIVER', ticket: recoveryTicket, newPin })
+                                        });
+                                        const data = await res.json();
+                                        if (!res.ok) throw new Error(data.message || 'ใช้รหัสกู้ไม่สำเร็จ');
+                                        setShowRecovery(false);
+                                        setRecoveryTicket('');
+                                        setPinCode(['', '', '', '', '', '']);
+                                        setAuthError('');
+                                        alert('ตั้ง PIN ใหม่สำเร็จ กรุณาเข้าสู่ระบบด้วย PIN');
+                                    } catch (err: any) {
+                                        setAuthError(err.message);
+                                    } finally {
+                                        setIsLoading(false);
+                                    }
+                                }}
+                                disabled={isLoading}
+                                className="flex-[2] bg-emerald-500 text-white font-bold py-3 rounded-xl disabled:opacity-50 text-sm"
+                            >
+                                ใช้รหัสกู้ตั้ง PIN ใหม่
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -1109,12 +1278,12 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             if (pin.length < 6) return;
             setIsLoading(true);
             try {
-                const userId = useAuthStore.getState().user?.id;
-                if (!userId) throw new Error('ไม่พบข้อมูลผู้ใช้งาน');
-                const res = await fetch(`${API_BASE_URL}/auth/set-pin`, {
+                // Identity comes from the HttpOnly session cookie (Firebase verify).
+                const res = await fetch(`${API_BASE_URL}/api/v1/auth/set-pin`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, pin, role: 'DRIVER' })
+                    credentials: 'include',
+                    body: JSON.stringify({ pin, role: 'DRIVER' })
                 });
                 if (!res.ok) throw new Error('ตั้งค่า PIN ไม่สำเร็จ');
 
@@ -1221,26 +1390,52 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                                 🔔
                             </div>
                             <div className="text-emerald-400 font-bold text-3xl mb-2 tracking-wide">งานใหม่!</div>
-                            <div className="text-slate-400 text-sm mb-8">ผู้โดยสารอยู่ห่างออกไป 150 เมตร</div>
+                            <div className="text-slate-400 text-sm mb-8">
+                                {(() => {
+                                    if (driverData?.location && activeJob) {
+                                        return `ผู้โดยสารอยู่ห่างออกไป ${formatDist(haversineKm(driverData.location.lat, driverData.location.lng, activeJob.pickup.lat, activeJob.pickup.lng))}`;
+                                    }
+                                    if (activeJob) return `ระยะทางทริป ~${formatDist(activeJob.distanceKm)}`;
+                                    return 'มีผู้โดยสารเรียกรถ';
+                                })()}
+                            </div>
 
-                            {/* Job Details Card */}
+                            {/* Job Details Card (real dispatch data) */}
                             <div className="w-full bg-slate-800 rounded-3xl p-6 border border-slate-700 shadow-2xl mb-8">
                                 <div className="flex items-start gap-4 mb-6 text-left">
                                     <div className="w-12 h-12 rounded-full bg-blue-900/30 flex items-center justify-center text-blue-400 text-2xl shrink-0">📍</div>
                                     <div>
                                         <div className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">รับที่ (Pickup)</div>
-                                        <div className="font-bold text-xl text-white leading-tight">หน้า 7-Eleven ปากซอย 5</div>
-                                        <div className="text-xs text-slate-400 mt-1">ใกล้จุดจอดวิน</div>
+                                        <div className="font-bold text-xl text-white leading-tight">{activeJob?.pickup.address || 'ดูหมุดบนแผนที่'}</div>
+                                        <div className="text-xs text-slate-400 mt-1">ผู้โดยสาร: {activeJob?.passengerName || 'คุณลูกค้า'}</div>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-4 mb-6 text-left">
+                                    <div className="w-12 h-12 rounded-full bg-violet-900/30 flex items-center justify-center text-violet-400 text-2xl shrink-0">🏁</div>
+                                    <div>
+                                        <div className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">ส่งที่ (Destination)</div>
+                                        <div className="font-bold text-lg text-white leading-tight">{activeJob?.destination.address || 'ดูหมุดบนแผนที่'}</div>
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-4 text-left">
                                     <div className="w-12 h-12 rounded-full bg-purple-900/30 flex items-center justify-center text-purple-400 text-2xl shrink-0">💬</div>
                                     <div>
                                         <div className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">ข้อความ</div>
-                                        <div className="text-sm text-white italic">"รีบหน่อยนะครับ มีสัมภาระ"</div>
+                                        <div className="text-sm text-white italic">{activeJob?.message ? `"${activeJob.message}"` : '"เงินสด / โอน"'}</div>
                                     </div>
                                 </div>
                             </div>
+
+                            {activeJob && (
+                                <a
+                                    href={buildGoogleMapsUrl(activeJob.pickup.lat, activeJob.pickup.lng)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="w-full mb-3 bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-bold text-lg text-white transition-colors flex items-center justify-center gap-2"
+                                >
+                                    🧭 เปิดนำทางไปจุดรับ (ฟรี)
+                                </a>
+                            )}
 
                             {/* Action Buttons */}
                             <div className="w-full space-y-3">
@@ -1262,15 +1457,39 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                 ) : (
                     // IN RIDE / NAVIGATION
                     <div className="flex flex-col h-full">
-                        {/* Top Status Bar */}
+                        {/* Top Status Bar (phase-aware) */}
                         <div className="bg-emerald-600 p-6 rounded-b-[2rem] shadow-lg z-10 relative overflow-hidden">
                             <div className="absolute top-0 right-0 p-4 opacity-20 text-8xl rotate-12 -mr-4 -mt-4">🛵</div>
                             <div className="relative z-10">
-                                <h2 className="text-2xl font-bold mb-1">กำลังรับผู้โดยสาร</h2>
+                                <h2 className="text-2xl font-bold mb-1">
+                                    {tripPhase === 'TO_PICKUP' ? 'กำลังไปรับผู้โดยสาร' : 'กำลังไปส่งผู้โดยสาร'}
+                                </h2>
                                 <div className="flex items-center gap-2 text-emerald-100 text-sm">
                                     <span className="bg-white/20 px-2 py-0.5 rounded text-xs">Navigation</span>
-                                    <span>อีก 2 นาที • 150 เมตร</span>
+                                    <span>
+                                        {(() => {
+                                            const target = tripPhase === 'TO_PICKUP' ? activeJob?.pickup : activeJob?.destination;
+                                            if (driverData?.location && target) {
+                                                return `อีก ~${formatDist(haversineKm(driverData.location.lat, driverData.location.lng, target.lat, target.lng))}`;
+                                            }
+                                            return activeJob ? `ระยะทางทริป ~${formatDist(activeJob.distanceKm)}` : '';
+                                        })()}
+                                    </span>
                                 </div>
+                                {(() => {
+                                    const target = tripPhase === 'TO_PICKUP' ? activeJob?.pickup : activeJob?.destination;
+                                    if (!target) return null;
+                                    return (
+                                        <a
+                                            href={buildGoogleMapsUrl(target.lat, target.lng)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="mt-3 inline-flex items-center gap-2 bg-white text-emerald-700 font-black px-5 py-3 rounded-2xl text-base shadow-lg active:scale-95 transition-transform"
+                                        >
+                                            🧭 นำทางด้วย Google Maps (ฟรี)
+                                        </a>
+                                    );
+                                })()}
                             </div>
                         </div>
 
@@ -1290,7 +1509,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center text-lg">👤</div>
                                         <div>
-                                            <div className="font-bold text-sm">คุณลูกค้า</div>
+                                            <div className="font-bold text-sm">{activeJob?.passengerName || 'คุณลูกค้า'}</div>
                                             <div className="text-xs text-emerald-400">{matchedRider?.message || 'เงินสด / โอน'}</div>
                                         </div>
                                     </div>
@@ -1312,7 +1531,14 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
                                 <div className="flex gap-2">
                                     <button onClick={handleRejectJob} className="flex-1 bg-slate-800 hover:bg-red-900/50 py-4 rounded-xl font-bold text-red-400 text-sm transition-colors border border-slate-700">ยกเลิก</button>
-                                    <button onClick={handleCompleteJob} className="flex-[2] bg-slate-100 hover:bg-white text-slate-900 py-4 rounded-xl font-bold text-lg shadow-lg transition-colors">ส่งถึงที่หมาย (จบงาน)</button>
+                                    {tripPhase === 'TO_PICKUP' ? (
+                                        <>
+                                            <button onClick={handleArrivedPickup} className="flex-[2] bg-amber-400 hover:bg-amber-300 text-slate-900 py-4 rounded-xl font-bold text-base shadow-lg transition-colors">ถึงจุดรับแล้ว</button>
+                                            <button onClick={handleStartTrip} className="flex-[2] bg-slate-100 hover:bg-white text-slate-900 py-4 rounded-xl font-bold text-base shadow-lg transition-colors">รับผู้โดยสารแล้ว ออกเดินทาง</button>
+                                        </>
+                                    ) : (
+                                        <button onClick={handleCompleteJob} className="flex-[2] bg-slate-100 hover:bg-white text-slate-900 py-4 rounded-xl font-bold text-lg shadow-lg transition-colors">ส่งถึงที่หมาย (จบงาน)</button>
+                                    )}
                                 </div>
                             </div>
                         </div>

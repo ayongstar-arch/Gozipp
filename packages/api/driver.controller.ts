@@ -1,6 +1,4 @@
-import { Controller, Post, Get, Body, Query, UseGuards, Res } from '@nestjs/common';
-import { Response } from 'express';
-import { setAuthCookies } from './common/cookie.util';
+import { Controller, Post, Get, Body, Query, UseGuards, GoneException } from '@nestjs/common';
 import { DriverService } from './driver.service';
 import { DriverLoginDto, DriverOnlineDto, TripActionDto, DriverRegisterDto, UpdateDriverProfileDto, UploadDriverDocumentDto, SaveDriverPreferencesDto, SubmitTrainingDto } from './dtos';
 import { AuthGuard, RolesGuard } from './common/guards';
@@ -11,13 +9,10 @@ export class DriverController {
   constructor(private readonly driverService: DriverService) {}
 
   @Post('login')
-  async login(@Body() body: DriverLoginDto, @Res({ passthrough: true }) res: Response) {
-    const result = await this.driverService.login(body.phoneNumber, body.pin);
-    if (result.token) {
-        setAuthCookies(res, result.token);
-        delete result.token;
-    }
-    return result;
+  async login(@Body() body: DriverLoginDto) {
+    // DISABLED legacy flow: plaintext 4-digit OTP compared from Redis (+ test bypass).
+    // Driver auth is now Firebase OTP (POST /auth/firebase-verify) + PIN (POST /auth/login-pin).
+    throw new GoneException('ช่องทางนี้ปิดแล้ว กรุณาเข้าสู่ระบบด้วย OTP + PIN');
   }
 
   @Post('register')

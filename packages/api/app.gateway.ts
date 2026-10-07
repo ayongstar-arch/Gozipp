@@ -42,8 +42,14 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect, OnM
     this.subscriber.on('message', (_channel, tripId) => {
       void this.offerTripToNextDriver(tripId);
     });
-    const restoredTripIds = await this.passengerService.resumeSearchingTrips();
-    for (const tripId of restoredTripIds) void this.offerTripToNextDriver(tripId);
+    // Best-effort resume: a schema without the trips table (e.g. partial
+    // dev DBs) must not prevent boot.
+    try {
+      const restoredTripIds = await this.passengerService.resumeSearchingTrips();
+      for (const tripId of restoredTripIds) void this.offerTripToNextDriver(tripId);
+    } catch (err: any) {
+      console.warn('Skipping trip resume on boot:', err?.message || err);
+    }
   }
 
   async onModuleDestroy() {

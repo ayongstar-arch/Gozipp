@@ -65,6 +65,8 @@ export class DriverService implements OnModuleInit {
   }
 
   async onModuleInit() {
+    // Seed Demo User (opt-in only — same guard as PassengerService).
+    if (process.env.SEED_DEMO_DATA !== 'true') return;
     // Seed Demo User
     const demoUser = await this.driverRepo.findOne({ where: { phone: '0812345678' } });
     if (!demoUser) {

@@ -14,14 +14,22 @@ function validateProductionEnvironment() {
   const required = [
     'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME',
     'REDIS_URL', 'JWT_SECRET', 'ALLOWED_ORIGINS',
-    'THAIBULKSMS_APP_KEY', 'THAIBULKSMS_APP_SECRET',
   ];
+  // ThaiBulkSMS keys are only required when the deprecated ThaiBulkSMS OTP
+  // fallback is enabled. Firebase Phone Auth is the MASTER provider.
+  if ((process.env.OTP_PROVIDER || 'firebase') !== 'firebase') {
+    required.push('THAIBULKSMS_APP_KEY', 'THAIBULKSMS_APP_SECRET');
+  }
   const missing = required.filter((key) => !process.env[key]?.trim());
   if (missing.length) {
     throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
   }
   if (process.env.JWT_SECRET.length < 64 || /change|your-/i.test(process.env.JWT_SECRET)) {
     throw new Error('JWT_SECRET must be a non-placeholder secret of at least 64 characters');
+  }
+  const pepper = process.env.PIN_PEPPER || '';
+  if (pepper.length < 32 || /change-me/i.test(pepper)) {
+    throw new Error('PIN_PEPPER must be a non-placeholder secret of at least 32 characters');
   }
   if (process.env.ALLOW_TEST_OTP === 'true') {
     throw new Error('ALLOW_TEST_OTP must be disabled in production');

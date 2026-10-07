@@ -15,8 +15,12 @@ interface PinViewProps {
 const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPin }) => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
   const { isLoading } = useUIStore();
-  const { setupPin, loginWithPin, error, setError } = useAuth();
+  const { setupPin, loginWithPin, redeemRecoveryTicket, error, setError } = useAuth();
   const { registerPasskey, authenticatePasskey } = useWebAuthn();
+
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryTicket, setRecoveryTicket] = useState('');
+  const [recoveryDone, setRecoveryDone] = useState(false);
   
   const [pin, setPin] = useState(['', '', '', '', '', '']);
   const [firstPin, setFirstPin] = useState<string | null>(null);
@@ -59,6 +63,23 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPi
       }
     } else if (mode === 'LOGIN' && phoneNumber) {
       await loginWithPin(phoneNumber, pinCode);
+    }
+  };
+
+  const handleRecoverySubmit = async () => {
+    if (!phoneNumber) return;
+    const newPinCode = pin.join('');
+    if (recoveryTicket.trim().length < 8 || newPinCode.length < 6) {
+      setError('กรอกรหัสกู้ 8 หลักและตั้ง PIN 6 หลัก');
+      return;
+    }
+    const ok = await redeemRecoveryTicket(phoneNumber, recoveryTicket.trim().toUpperCase(), newPinCode);
+    if (ok) {
+      setRecoveryDone(true);
+      setShowRecovery(false);
+      setRecoveryTicket('');
+      setPin(['', '', '', '', '', '']);
+      setError(null);
     }
   };
 
@@ -247,6 +268,47 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPi
           >
             ลืม PIN? ขอรีเซ็ตด้วยการยืนยันเบอร์โทร
           </button>
+
+          {!showRecovery ? (
+            <button
+              onClick={() => { setShowRecovery(true); setError(null); }}
+              className="text-gray-600 text-xs font-medium text-center hover:text-[#A3FF3F] transition-colors"
+              type="button"
+            >
+              มีรหัสกู้จากแอดมิน (กรณีเปลี่ยนเบอร์/ซิมหาย)
+            </button>
+          ) : (
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+              <p className="text-gray-400 text-xs text-center leading-relaxed">
+                กรอกรหัสกู้ 8 หลักที่แอดมินให้ แล้วตั้ง PIN ใหม่ 6 หลักในช่องด้านบน
+                {recoveryDone && <span className="block text-[#A3FF3F] font-bold mt-1">ตั้ง PIN ใหม่สำเร็จ กรุณาเข้าสู่ระบบด้วย PIN ด้านบน</span>}
+              </p>
+              <input
+                type="text"
+                placeholder="รหัสกู้ เช่น A3F9K7Q2"
+                value={recoveryTicket}
+                onChange={e => setRecoveryTicket(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+                className="w-full bg-black/40 border border-white/10 p-3 rounded-xl text-center text-lg font-black tracking-[0.3em] text-white outline-none focus:border-[#A3FF3F] placeholder:text-gray-600 placeholder:tracking-normal placeholder:text-sm"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowRecovery(false); setRecoveryTicket(''); setError(null); }}
+                  className="flex-1 text-gray-500 text-sm py-3 hover:text-white transition-colors"
+                  type="button"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleRecoverySubmit}
+                  disabled={isLoading || recoveryTicket.length < 8 || pin.join('').length < 6}
+                  className="flex-[2] bg-[#A3FF3F] text-[#04070B] font-black py-3 rounded-xl disabled:opacity-50 text-sm"
+                  type="button"
+                >
+                  {isLoading ? 'กำลังตรวจสอบ...' : 'ใช้รหัสกู้ตั้ง PIN ใหม่'}
+                </button>
+              </div>
+            </div>
+          )}
         </motion.div>
       )}
         </div>

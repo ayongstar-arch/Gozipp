@@ -1,0 +1,6 @@
+@echo off
+cd /d "%~dp0"
+echo Starting GOZIPP Passenger web on port 3000...
+echo DO NOT close this window. Wait for: Ready in ...
+call npm run dev --workspace=@gozipp/passenger -- -p 3000 -H 0.0.0.0
+pause

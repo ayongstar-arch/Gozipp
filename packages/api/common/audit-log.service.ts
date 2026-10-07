@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, FindOptionsWhere, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { appendFileSync, mkdirSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
 import { AuditLogEntity } from '../entities/audit-log.entity';
 
 /**
@@ -17,6 +19,7 @@ export const AdminAction = {
   DAILY_CLOSE: 'DAILY_CLOSE',
   ROLE_CHANGED: 'ROLE_CHANGED',
   WALLET_ADJUSTMENT: 'WALLET_ADJUSTMENT',
+  PIN_RECOVERY_ISSUED: 'PIN_RECOVERY_ISSUED',
 } as const;
 
 export type AdminActionType = typeof AdminAction[keyof typeof AdminAction];
@@ -42,6 +45,9 @@ export class AuditLogService {
 
   /**
    * General-purpose audit log entry (existing method — preserved).
+   * `failClosed: true` aborts the caller when the trail cannot be written
+   * (used for security-critical ops); otherwise the entry is preserved to a
+   * local fallback file so nothing is ever silently lost.
    */
   async log(data: {
     actorId?: string;
@@ -51,14 +57,17 @@ export class AuditLogService {
     resourceId?: string;
     metadata?: any;
     ipAddress?: string;
-  }) {
+  }, opts: { failClosed?: boolean } = {}) {
     try {
       const entry = this.auditRepo.create(data);
       await this.auditRepo.save(entry);
-      
+
       this.logger.log(`Audit Log: ${data.action} - ${data.actorId || 'System'}`);
     } catch (err) {
-      this.logger.error('Failed to write audit log', err);
+      this.preserveFallback(data, err);
+      if (opts.failClosed) {
+        throw new InternalServerErrorException('Audit trail unavailable — operation aborted');
+      }
     }
   }
 
@@ -93,8 +102,35 @@ export class AuditLogService {
       );
     } catch (err) {
       // Never throw from audit logging — it must not break the main operation
-      this.logger.error('Failed to write admin audit log', err);
+      this.preserveFallback(
+        {
+          actorId: params.actorId,
+          actorRole: params.actorRole,
+          action: params.action,
+          resourceType: params.resourceType,
+          resourceId: params.resourceId,
+          metadata: params.metadata || {},
+          ipAddress: params.ipAddress || null,
+        },
+        err,
+      );
     }
+  }
+
+  /**
+   * Fallback sink: DB failures must never silently drop audit events.
+   * Appends JSONL locally (ops should ship this file to SIEM) and logs loudly.
+   */
+  private preserveFallback(data: object, err: any) {
+    const line = JSON.stringify({ ts: new Date().toISOString(), ...data }) + '\n';
+    try {
+      const dir = join(process.cwd(), 'logs');
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      appendFileSync(join(dir, 'audit-fallback.log'), line);
+    } catch (fileErr) {
+      this.logger.error('Audit fallback file write failed', fileErr);
+    }
+    this.logger.error('Audit DB write failed — event preserved to logs/audit-fallback.log', err);
   }
 
   /**

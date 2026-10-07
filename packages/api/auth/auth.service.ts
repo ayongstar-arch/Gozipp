@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -14,8 +14,10 @@ import { DriverEntity } from '../entities/driver.entity';
 import { RefreshTokenEntity } from '../entities/refresh-token.entity';
 import { AuditLogService } from '../common/audit-log.service';
 import { RiskEngineService } from './risk-engine.service';
+import { FirebaseService } from './firebase.service';
 import * as crypto from 'crypto';
 import { normalizeThaiMobileNumber } from '../common/phone.util';
+import { hashPin, verifyPin } from '../common/pin-crypto';
 
 export interface DeviceMetadata {
     ipAddress?: string;
@@ -38,6 +40,7 @@ export class AuthService {
         private configService: ConfigService,
         private auditLog: AuditLogService,
         private riskEngine: RiskEngineService,
+        private firebaseService: FirebaseService,
     ) {
         this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
     }
@@ -327,12 +330,136 @@ export class AuthService {
         return `https://access.line.me/oauth2/v2.1/authorize?${params}`;
     }
 
+    // --- FIREBASE OTP (MASTER) ---
+    /**
+     * Master OTP login/registration via Firebase Phone Auth.
+     * 1. Verify Firebase ID token signature (proves user owns the phone number)
+     * 2. Ensure token phone matches the claimed phone number
+     * 3. Find-or-create Passenger/Driver row (single source of truth: Postgres)
+     * 4. Issue Gozipp JWT + refresh token (HttpOnly cookies set by controller)
+     *
+     * ThaiBulkSMS OTP (PassengerService.requestOtp) is deprecated fallback only.
+     */
+    async verifyFirebaseLogin(
+        idToken: string,
+        phoneNumber: string,
+        name: string | undefined,
+        role: 'PASSENGER' | 'DRIVER',
+        deviceMeta: DeviceMetadata = {},
+        referralCode?: string,
+    ) {
+        const decoded = await this.firebaseService.verifyIdToken(idToken);
+        const localPhone = this.firebaseService.toLocalPhone(phoneNumber, decoded.phone_number);
+        const normalized = normalizeThaiMobileNumber(localPhone);
+        if (!normalized) throw new BadRequestException('กรุณากรอกเบอร์โทรศัพท์มือถือไทยให้ถูกต้อง');
+
+        // Token phone must match claimed phone (skip only for dev TEST_ID_TOKEN bypass).
+        if (decoded.phone_number && idToken !== 'TEST_ID_TOKEN') {
+            const expected = normalized.startsWith('0') ? `+66${normalized.slice(1)}` : normalized;
+            if (decoded.phone_number !== expected) {
+                throw new BadRequestException('เบอร์โทรศัพท์ไม่ตรงกับที่ยืนยัน');
+            }
+        }
+
+        if (role === 'PASSENGER') {
+            let passenger = await this.passengerRepo.findOne({ where: { phone: normalized } });
+            const isNew = !passenger;
+            if (!passenger) {
+                const cleanName = (name || '').trim() || 'ผู้ใช้งานใหม่';
+                if (cleanName.length < 2) throw new BadRequestException('กรุณากรอกชื่อ-นามสกุล');
+
+                let referredById: string | null = null;
+                if (referralCode) {
+                    const inviter = await this.passengerRepo.findOne({ where: { referral_code: referralCode } });
+                    if (inviter) referredById = inviter.id;
+                }
+
+                passenger = this.passengerRepo.create({
+                    phone: normalized,
+                    name: cleanName.slice(0, 200),
+                    auth_provider: 'OTP',
+                    provider_id: decoded.uid,
+                    points_balance: 0,
+                    free_rides_remaining: 3,
+                    referral_code: `P-${crypto.randomUUID().toUpperCase().slice(0, 6)}`,
+                    referred_by_id: referredById || undefined,
+                });
+                await this.passengerRepo.save(passenger);
+                await this.auditLog.log({
+                    actorId: passenger.id,
+                    actorRole: 'PASSENGER',
+                    action: 'REGISTER_FIREBASE',
+                    metadata: { phone: normalized },
+                    ipAddress: deviceMeta.ipAddress,
+                });
+            } else if (!passenger.provider_id && decoded.uid) {
+                passenger.provider_id = decoded.uid;
+                if (name?.trim()) passenger.name = name.trim().slice(0, 200);
+                await this.passengerRepo.save(passenger);
+            }
+
+            const tokens = await this.issueTokens(passenger.id, 'PASSENGER', deviceMeta);
+            return {
+                success: true,
+                ...tokens,
+                passengerId: passenger.id,
+                name: passenger.name,
+                phoneNumber: passenger.phone,
+                pointsBalance: Number(passenger.points_balance) ?? 0,
+                freeRidesRemaining: passenger.free_rides_remaining ?? 0,
+                hasPin: !!passenger.pin_hash,
+                isNew,
+                purpose: 'REGISTER' as const,
+            };
+        }
+
+        // DRIVER
+        let driver = await this.driverRepo.findOne({ where: { phone: normalized } });
+        const isNew = !driver;
+        if (!driver) {
+            const cleanName = (name || '').trim() || 'คนขับใหม่';
+            driver = this.driverRepo.create({
+                phone: normalized,
+                name: cleanName.slice(0, 200),
+                plate: '',
+                invite_code: 'FIREBASE',
+                approval_status: 'PENDING',
+                auth_provider: 'OTP',
+                provider_id: decoded.uid,
+            });
+            await this.driverRepo.save(driver);
+            await this.auditLog.log({
+                actorId: driver.id,
+                actorRole: 'DRIVER',
+                action: 'REGISTER_FIREBASE',
+                metadata: { phone: normalized },
+                ipAddress: deviceMeta.ipAddress,
+            });
+        } else if (!driver.provider_id && decoded.uid) {
+            driver.provider_id = decoded.uid;
+            await this.driverRepo.save(driver);
+        }
+
+        const tokens = await this.issueTokens(driver.id, 'DRIVER', deviceMeta);
+        return {
+            success: true,
+            ...tokens,
+            driverId: driver.id,
+            name: driver.name,
+            phoneNumber: driver.phone,
+            approvalStatus: driver.approval_status,
+            hasPin: !!driver.pin_hash,
+            isNew,
+            purpose: 'REGISTER' as const,
+        };
+    }
+
     // --- PIN MANAGEMENT ---
     async setPin(userId: string, pin: string, role: 'PASSENGER' | 'DRIVER') {
         if (!/^\d{6}$/.test(pin)) {
             throw new BadRequestException('PIN must be 6 digits');
         }
-        const hash = await argon2.hash(pin, { type: argon2.argon2id });
+        const hash = await hashPin(pin);
 
         if (role === 'PASSENGER') {
             await this.passengerRepo.update(userId, { pin_hash: hash });
@@ -449,7 +576,10 @@ export class AuthService {
         }
         if (!user?.pin_hash) throw new BadRequestException('PIN not set');
 
-        const isValid = await argon2.verify(user.pin_hash, currentPin);
+        const pinCheck = await verifyPin(user.pin_hash, currentPin);
+        // Pre-pepper argon2 hashes are accepted and transparently re-hashed below.
+        // Legacy bcrypt accounts must complete one PIN login (auto-upgrade) first.
+        const isValid = pinCheck !== 'no';
         if (!isValid) {
             const nextFailCount = failCount + 1;
             await this.redis
@@ -460,7 +590,7 @@ export class AuthService {
             throw new BadRequestException('Current PIN is incorrect');
         }
 
-        const newHash = await argon2.hash(nextPin, { type: argon2.argon2id });
+        const newHash = await hashPin(nextPin);
         if (role === 'PASSENGER') {
             await this.passengerRepo.update(userId, { pin_hash: newHash });
         } else {
@@ -491,22 +621,52 @@ export class AuthService {
         if (!user) throw new UnauthorizedException('User not found');
         if (!user.pin_hash) throw new UnauthorizedException('PIN not set. Please complete first-time registration.');
 
+        // --- Per-account PIN brute-force lockout (6-digit PIN = 1M combos) ---
+        const PIN_MAX_ATTEMPTS = 5;
+        const PIN_LOCK_SECONDS = 900; // 15 minutes
+        const pinLockKey = `pin_login_lock:${role}:${user.id}`;
+        const pinFailKey = `pin_login_fail:${role}:${user.id}`;
+        if (await this.redis.exists(pinLockKey)) {
+            throw new HttpException('กรอกรหัส PIN ผิดครบจำนวนครั้ง บัญชีถูกล็อกชั่วคราว 15 นาที', HttpStatus.TOO_MANY_REQUESTS);
+        }
+
         let isValid = false;
         const isLegacyBcrypt = user.pin_hash.startsWith('$2b$') || user.pin_hash.startsWith('$2a$') || user.pin_hash.startsWith('$2y$');
 
         if (isLegacyBcrypt) {
             isValid = await bcrypt.compare(pin, user.pin_hash);
             if (isValid) {
-                // Auto-upgrade to Argon2id
-                const newHash = await argon2.hash(pin, { type: argon2.argon2id });
+                // Auto-upgrade to peppered Argon2id
+                const newHash = await hashPin(pin);
                 if (role === 'PASSENGER') await this.passengerRepo.update(user.id, { pin_hash: newHash });
                 else await this.driverRepo.update(user.id, { pin_hash: newHash });
             }
         } else {
-            isValid = await argon2.verify(user.pin_hash, pin);
+            // Peppered Argon2id; pre-pepper hashes auto-upgrade on success.
+            const pinCheck = await verifyPin(user.pin_hash, pin);
+            isValid = pinCheck !== 'no';
+            if (pinCheck === 'legacy') {
+                const newHash = await hashPin(pin);
+                if (role === 'PASSENGER') await this.passengerRepo.update(user.id, { pin_hash: newHash });
+                else await this.driverRepo.update(user.id, { pin_hash: newHash });
+            }
         }
 
         if (!isValid) {
+            const fails = await this.redis.incr(pinFailKey);
+            if (fails === 1) await this.redis.expire(pinFailKey, PIN_LOCK_SECONDS);
+            if (fails >= PIN_MAX_ATTEMPTS) {
+                await this.redis.set(pinLockKey, '1', 'EX', PIN_LOCK_SECONDS);
+                await this.redis.del(pinFailKey);
+                await this.auditLog.log({
+                    actorId: user.id,
+                    actorRole: role,
+                    action: 'LOGIN_PIN_LOCKED',
+                    metadata: { phone: phoneNumber },
+                    ipAddress: deviceMeta.ipAddress,
+                });
+                throw new HttpException('กรอกรหัส PIN ผิดครบจำนวนครั้ง บัญชีถูกล็อกชั่วคราว 15 นาที', HttpStatus.TOO_MANY_REQUESTS);
+            }
             await this.auditLog.log({
                 actorId: user.id,
                 actorRole: role,
@@ -533,6 +693,10 @@ export class AuthService {
                 throw new UnauthorizedException('REQUIRE_OTP');
             }
         }
+
+        // PIN correct — clear brute-force counters before issuing session.
+        await this.redis.del(pinFailKey);
+        await this.redis.del(pinLockKey);
 
         // Generate Tokens
         const tokens = await this.issueTokens(user.id, role, deviceMeta);
@@ -572,6 +736,91 @@ export class AuthService {
         const normalized = normalizeThaiMobileNumber(value);
         if (!normalized) throw new BadRequestException('Invalid Thai mobile number');
         return normalized;
+    }
+
+    // --- ADMIN-ASSISTED PIN RECOVERY (lost phone / SIM cases) ---
+    /**
+     * Admin verifies identity offline (e.g. ID card at the win office), then
+     * issues a single-use 8-char ticket shown ONCE. The user redeems it with a
+     * new PIN. Admin never sees or sets the PIN itself.
+     */
+    async issuePinRecovery(adminId: string, adminRole: string, phoneNumber: string, role: 'PASSENGER' | 'DRIVER', ipAddress?: string) {
+        const phone = this.requirePhoneNumber(phoneNumber);
+        const user = role === 'PASSENGER'
+            ? await this.passengerRepo.findOne({ where: { phone } })
+            : await this.driverRepo.findOne({ where: { phone } });
+        if (!user) throw new BadRequestException('ไม่พบบัญชีผู้ใช้นี้');
+        if (!user.pin_hash) throw new BadRequestException('บัญชียังไม่ได้ตั้ง PIN');
+
+        const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // unambiguous, no 0/O/1/I
+        const bytes = crypto.randomBytes(8);
+        let ticket = '';
+        for (const b of bytes) ticket += alphabet[b % alphabet.length];
+
+        const payload = {
+            userId: user.id,
+            role,
+            phone,
+            status: 'PENDING',
+            issuedBy: adminId,
+            issuedAt: Date.now(),
+            expiresAt: Date.now() + 30 * 60 * 1000,
+        };
+        await this.redis.set(`pin_recovery:${ticket}`, JSON.stringify(payload), 'EX', 1800);
+
+        // Fail closed: a recovery ticket MUST NOT exist without its audit trail.
+        await this.auditLog.log({
+            actorId: adminId,
+            actorRole: adminRole,
+            action: 'PIN_RECOVERY_ISSUED',
+            resourceType: role,
+            resourceId: user.id,
+            metadata: { phone },
+            ipAddress,
+        }, { failClosed: true });
+
+        return { success: true, ticket, expiresInSeconds: 1800 }; // ticket shown ONCE
+    }
+
+    async redeemPinRecovery(phoneNumber: string, role: 'PASSENGER' | 'DRIVER', ticket: string, newPin: string, deviceMeta: DeviceMetadata = {}) {
+        // Generic errors everywhere — the ticket is the only secret, no oracle.
+        const fail = () => { throw new BadRequestException('รหัสกู้ไม่ถูกต้องหรือหมดอายุ'); };
+        if (!/^\d{6}$/.test(newPin)) throw new BadRequestException('PIN ต้องเป็นตัวเลข 6 หลัก');
+        const phone = normalizeThaiMobileNumber(phoneNumber);
+        if (!phone || !ticket || ticket.length > 16) return fail();
+
+        const key = `pin_recovery:${ticket.toUpperCase().trim()}`;
+        const raw = await this.redis.get(key);
+        if (!raw) return fail();
+        // Ticket space is 32^8 (~1T); misses simply don't resolve to a key.
+        // Endpoint throttle (10/10min) is the brute-force backstop.
+        const rec = JSON.parse(raw);
+        if (rec.status !== 'PENDING' || rec.role !== role || rec.phone !== phone) return fail();
+        if (Date.now() > rec.expiresAt) {
+            await this.redis.del(key);
+            return fail();
+        }
+
+        const user = role === 'PASSENGER'
+            ? await this.passengerRepo.findOne({ where: { id: rec.userId } })
+            : await this.driverRepo.findOne({ where: { id: rec.userId } });
+        if (!user || user.phone !== phone) {
+            await this.redis.del(key);
+            return fail();
+        }
+
+        await this.setPin(user.id, newPin, role);
+        await this.redis.del(key); // single-use
+
+        await this.auditLog.log({
+            actorId: user.id,
+            actorRole: role,
+            action: 'PIN_RECOVERY_REDEEMED',
+            metadata: { issuedBy: rec.issuedBy },
+            ipAddress: deviceMeta.ipAddress,
+        });
+
+        return { success: true, message: 'ตั้ง PIN ใหม่สำเร็จ กรุณาเข้าสู่ระบบด้วย PIN', hasPin: true };
     }
 
     // --- SESSION MANAGEMENT ---

@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { AuthGuard as PassportAuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
+import { FirebaseVerifyDto } from '../dtos';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { setAuthCookies, clearAuthCookies } from '../common/cookie.util';
 import { AuthGuard as ApiAuthGuard } from '../common/guards';
@@ -77,12 +78,35 @@ export class AuthController {
         };
     }
 
+    // Public oracle by design (login UX needs exists/hasPin) — strict per-IP throttle is the mitigation.
     @Post('check-status')
+    @Throttle({ default: { limit: 30, ttl: 60000 } }) // 30/min per IP
     async checkStatus(@Body() body: { phoneNumber: string, role: 'PASSENGER' | 'DRIVER' }) {
         return this.authService.checkUserStatus(body.phoneNumber, body.role);
     }
 
+    // --- FIREBASE OTP (MASTER) ---
+    // Client: Firebase SDK sends/verifies SMS -> POST idToken here.
+    // Server verifies token, upserts user row, issues Gozipp JWT via HttpOnly cookies.
+    @Post('firebase-verify')
+    @Throttle({ default: { limit: 10, ttl: 600000 } }) // 10 attempts / 10 min
+    async firebaseVerify(
+        @Body() body: FirebaseVerifyDto,
+        @Req() req: any,
+        @Res({ passthrough: true }) res: Response,
+    ) {
+        const role = body.role === 'DRIVER' ? 'DRIVER' : 'PASSENGER';
+        const deviceMeta = this.getDeviceMeta(req);
+        const result = await this.authService.verifyFirebaseLogin(
+            body.idToken, body.phoneNumber, body.name, role, deviceMeta, body.referralCode,
+        );
+        setAuthCookies(res, result.accessToken, result.refreshToken);
+        const { accessToken, refreshToken, ...rest } = result;
+        return rest;
+    }
+
     @Post('login-pin')
+    @Throttle({ default: { limit: 20, ttl: 600000 } }) // 20/10min per IP, plus per-account lockout in service
     async loginWithPin(@Body() body: { phoneNumber: string, pin: string, role: 'PASSENGER' | 'DRIVER' }, @Req() req: any, @Res({ passthrough: true }) res: Response) {
         const deviceMeta = this.getDeviceMeta(req);
         const result = await this.authService.validatePinLogin(body.phoneNumber, body.pin, body.role, deviceMeta);
@@ -176,5 +200,16 @@ export class AuthController {
     @Post('pin-reset/:requestId/complete')
     async completePinReset(@Param('requestId') requestId: string, @Body() body: { newPin: string }) {
         return this.authService.completePinReset(requestId, body.newPin);
+    }
+
+    // --- ADMIN-ASSISTED RECOVERY (lost phone/SIM) ---
+    // Ticket issued offline by admin; redeemable once within 30 min.
+    @Post('pin-recovery/redeem')
+    @Throttle({ default: { limit: 10, ttl: 600000 } }) // 10/10min per IP
+    async redeemPinRecovery(
+        @Body() body: { phoneNumber: string, role: 'PASSENGER' | 'DRIVER', ticket: string, newPin: string },
+        @Req() req: any,
+    ) {
+        return this.authService.redeemPinRecovery(body.phoneNumber, body.role, body.ticket, body.newPin, this.getDeviceMeta(req));
     }
 }

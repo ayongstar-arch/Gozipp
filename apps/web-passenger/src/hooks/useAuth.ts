@@ -216,6 +216,32 @@ export const useAuth = () => {
     }
   }, [setAuthStep, setIsLoading, setUser]);
 
+  // --- Admin ticket recovery (lost phone/SIM): ticket issued offline by admin ---
+  const redeemRecoveryTicket = useCallback(async (
+    phoneNumber: string,
+    ticket: string,
+    newPin: string,
+  ): Promise<boolean> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      if (!/^\d{6}$/.test(newPin)) {
+        throw new Error('PIN ต้องเป็นตัวเลข 6 หลัก');
+      }
+      await apiFetch('/api/v1/auth/pin-recovery/redeem', {
+        method: 'POST',
+        body: JSON.stringify({ phoneNumber, ticket, newPin, role: 'PASSENGER' }),
+      });
+      setToastMessage('ตั้ง PIN ใหม่สำเร็จ กรุณาเข้าสู่ระบบด้วย PIN');
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setIsLoading, setToastMessage]);
+
   // --- Refresh Access Token ---
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
     try {
@@ -275,6 +301,7 @@ export const useAuth = () => {
     setupPin,
     loginWithPin,
     resetPinWithOtp,
+    redeemRecoveryTicket,
     refreshAccessToken,
     restoreSession,
     logout,

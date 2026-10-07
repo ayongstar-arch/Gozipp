@@ -1,20 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../hooks/useAuth';
+import { useFirebasePhoneAuth } from '../../hooks/useFirebasePhoneAuth';
 import { motion } from 'framer-motion';
 
 const RegisterView: React.FC = () => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
-  const { isLoading } = useUIStore();
-  const { requestOtp, verifyOtp, error, setError } = useAuth();
+  const { setUser, setOtpPurpose } = useAuthStore();
+  const { isLoading: authLoading } = useUIStore();
+  const { setIsLoading, setToastMessage } = useUIStore();
+  const { verifyOtp: verifyBackendOtp, error: backendError, setError: setBackendError } = useAuth();
+  const {
+    isLoading: firebaseLoading,
+    error: firebaseError,
+    setError: setFirebaseError,
+    initRecaptcha,
+    sendOtp,
+    verifyOtp: verifyFirebaseOtp,
+  } = useFirebasePhoneAuth();
   
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
   });
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const isLoading = authLoading || firebaseLoading;
+  const error = firebaseError || backendError;
+  const setError = (msg: string | null) => {
+    setFirebaseError(msg);
+    setBackendError(msg);
+  };
+
+  // Initialize reCAPTCHA on mount
+  useEffect(() => {
+    initRecaptcha('recaptcha-container');
+  }, [initRecaptcha]);
+
+  // STEP 1: Send OTP via Firebase
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const phoneNumber = formData.phone.replace(/\D/g, '');
     const name = formData.name.trim();
@@ -23,7 +49,64 @@ const RegisterView: React.FC = () => {
       return setError('กรุณากรอกเบอร์โทรศัพท์มือถือไทย 10 หลัก');
     }
 
-    await requestOtp(phoneNumber, true, name);
+    const success = await sendOtp(phoneNumber);
+    if (success) {
+      setOtpStep(true);
+      setToastMessage('OTP ถูกส่งไปยังเบอร์ของคุณแล้ว');
+    }
+  };
+
+  // STEP 2: Verify OTP via Firebase, then sync with backend
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otpCode.length !== 6) return setError('กรุณากรอกรหัส OTP 6 หลัก');
+
+    const idToken = await verifyFirebaseOtp(otpCode);
+    if (idToken) {
+      // OTP verified by Firebase! Now sync user to our Supabase backend
+      try {
+        setIsLoading(true);
+        const phoneNumber = formData.phone.replace(/\D/g, '');
+
+        const res = await fetch('/api/v1/auth/firebase-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idToken,
+            phoneNumber,
+            name: formData.name.trim(),
+            role: 'PASSENGER',
+            purpose: 'REGISTER',
+          }),
+        });
+        const data = await res.json();
+
+        if (data.success || data.user || data.passengerId) {
+          setUser({
+            id: data.passengerId || data.user?.id || '',
+            name: data.name || data.user?.name || formData.name,
+            phone: phoneNumber,
+            email: data.user?.email || '',
+            avatarSeed: (data.passengerId || data.user?.id || 'user').slice(0, 8),
+            pointsBalance: data.pointsBalance ?? 0,
+            freeRidesRemaining: data.freeRidesRemaining ?? 3,
+          });
+
+          if (data.hasPin) {
+            setAuthStep('APP_SHELL');
+          } else {
+            setAuthStep('SETUP_PIN');
+          }
+          setToastMessage('ลงทะเบียนสำเร็จ! 🎉');
+        } else {
+          setError(data.message || 'ไม่สามารถลงทะเบียนได้ กรุณาลองใหม่');
+        }
+      } catch (err: any) {
+        setError('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+      } finally {
+        setIsLoading(false);
+      }
+    }
   };
 
   return (
@@ -92,11 +175,14 @@ const RegisterView: React.FC = () => {
             </div>
           </motion.div>
 
+        {/* Invisible reCAPTCHA container */}
+        <div id="recaptcha-container"></div>
+
         <motion.form 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          onSubmit={handleSubmit} 
+          onSubmit={otpStep ? handleVerifyOtp : handleSendOtp} 
           className="space-y-4"
         >
           {error && (
@@ -109,44 +195,84 @@ const RegisterView: React.FC = () => {
             </motion.div>
           )}
 
-          <div className="space-y-5">
-            <label className="block relative">
-              <span className="absolute -top-3 left-6 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">ชื่อ-นามสกุล</span>
-              <input
-                type="text"
-                placeholder="เช่น สมชาย ใจดี"
-                value={formData.name}
-                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                className="w-full bg-white/5 border border-white/5 p-4 rounded-3xl text-xl font-bold text-white outline-none focus:border-[#A3FF3F] transition-all backdrop-blur-2xl placeholder:text-gray-600 shadow-inner"
-                required
-              />
-            </label>
+          {!otpStep ? (
+            /* STEP 1: Name + Phone */
+            <div className="space-y-5">
+              <label className="block relative">
+                <span className="absolute -top-3 left-6 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">ชื่อ-นามสกุล</span>
+                <input
+                  type="text"
+                  placeholder="เช่น สมชาย ใจดี"
+                  value={formData.name}
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full bg-white/5 border border-white/5 p-4 rounded-3xl text-xl font-bold text-white outline-none focus:border-[#A3FF3F] transition-all backdrop-blur-2xl placeholder:text-gray-600 shadow-inner"
+                  required
+                />
+              </label>
 
-            <label className="block relative">
-              <span className="absolute -top-3 left-6 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">เบอร์โทรศัพท์</span>
-              <input
-                type="tel"
-                placeholder="081-234-5678"
-                value={formData.phone}
-                inputMode="numeric"
-                maxLength={12}
-                onChange={e => {
-                  const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
-                  const formatted = digits.length > 6
-                    ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
-                    : digits.length > 3
-                      ? `${digits.slice(0, 3)}-${digits.slice(3)}`
-                      : digits;
-                  setFormData({ ...formData, phone: formatted });
-                  setError(null);
-                }}
-                className="w-full bg-white/5 border border-white/5 p-4 rounded-3xl text-xl font-bold text-white outline-none focus:border-[#A3FF3F] transition-all backdrop-blur-2xl placeholder:text-gray-600 shadow-inner"
-                required
-              />
-            </label>
-          </div>
+              <label className="block relative">
+                <span className="absolute -top-3 left-6 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">เบอร์โทรศัพท์</span>
+                <input
+                  type="tel"
+                  placeholder="081-234-5678"
+                  value={formData.phone}
+                  inputMode="numeric"
+                  maxLength={12}
+                  onChange={e => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    const formatted = digits.length > 6
+                      ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+                      : digits.length > 3
+                        ? `${digits.slice(0, 3)}-${digits.slice(3)}`
+                        : digits;
+                    setFormData({ ...formData, phone: formatted });
+                    setError(null);
+                  }}
+                  className="w-full bg-white/5 border border-white/5 p-4 rounded-3xl text-xl font-bold text-white outline-none focus:border-[#A3FF3F] transition-all backdrop-blur-2xl placeholder:text-gray-600 shadow-inner"
+                  required
+                />
+              </label>
+            </div>
+          ) : (
+            /* STEP 2: OTP Input */
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-5"
+            >
+              <div className="text-center mb-2">
+                <p className="text-gray-400 text-sm">ส่งรหัส OTP ไปที่เบอร์</p>
+                <p className="text-[#A3FF3F] font-bold text-lg">{formData.phone}</p>
+              </div>
+              <label className="block relative">
+                <span className="absolute -top-3 left-6 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">รหัส OTP 6 หลัก</span>
+                <input
+                  type="text"
+                  placeholder="• • • • • •"
+                  value={otpCode}
+                  inputMode="numeric"
+                  maxLength={6}
+                  autoFocus
+                  onChange={e => {
+                    setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    setError(null);
+                  }}
+                  className="w-full bg-white/5 border border-white/5 p-4 rounded-3xl text-3xl font-bold text-white outline-none focus:border-[#A3FF3F] transition-all backdrop-blur-2xl placeholder:text-gray-600 shadow-inner text-center tracking-[0.5em]"
+                  required
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => { setOtpStep(false); setOtpCode(''); setError(null); }}
+                className="text-gray-500 hover:text-[#A3FF3F] text-xs transition-colors mx-auto block"
+              >
+                ← เปลี่ยนเบอร์โทรศัพท์
+              </button>
+            </motion.div>
+          )}
 
           <motion.button
+            id="send-otp-btn"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             type="submit"
@@ -154,7 +280,13 @@ const RegisterView: React.FC = () => {
             className="group relative w-full bg-[#A3FF3F] text-[#04070B] font-extrabold py-4 rounded-3xl text-lg transition-all disabled:opacity-50 overflow-hidden shadow-[0_0_20px_rgba(163,255,63,0.15)] hover:shadow-[0_0_30px_rgba(163,255,63,0.3)] mt-6"
           >
             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
-            <span className="relative z-10">{isLoading ? 'กำลังดำเนินการ...' : 'ลงทะเบียนเลย'}</span>
+            <span className="relative z-10">
+              {isLoading
+                ? 'กำลังดำเนินการ...'
+                : otpStep
+                  ? 'ยืนยัน OTP'
+                  : 'ขอรับรหัส OTP'}
+            </span>
           </motion.button>
         </motion.form>
 
