@@ -1,34 +1,17 @@
 version: '3.8'
-
 services:
-  winno-app:
-    build: .
-    restart: always
+  gozipp-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
     ports:
-      - "80:5173"   # Frontend
-      - "3000:3000" # API
-    env_file: .env
-    depends_on:
-      - db
-      - redis
-
-  db:
-    image: postgres:15-alpine
+      - "3000:3000"
     restart: always
     environment:
-      POSTGRES_DB: winno_db
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: CHANGE_ME_PROD
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-    restart: always
-    command: redis-server --appendonly yes
-    volumes:
-      - redisdata:/data
-
-volumes:
-  pgdata:
-  redisdata:
+      - NODE_ENV=production
+      - PORT=3000
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=${REDIS_URL}
+      - FIREBASE_SERVICE_ACCOUNT_JSON=${FIREBASE_SERVICE_ACCOUNT_JSON}
