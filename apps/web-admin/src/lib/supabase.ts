@@ -11,11 +11,11 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 
 // Client for general public/anonymous operations
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl || 'https://placeholder.invalid', supabaseAnonKey || 'placeholder');
 
 // Client with service role bypass for secure backend-only operations (e.g. database inserts, overrides)
 export const supabaseAdmin = typeof window === 'undefined' && supabaseServiceKey
-  ? createClient(supabaseUrl, supabaseServiceKey, {
+  ? createClient(supabaseUrl || 'https://placeholder.invalid', supabaseServiceKey || 'placeholder', {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
