@@ -20,7 +20,7 @@ interface DriverAppProps {
     matchedRider: Rider | undefined;
 }
 
-type AuthStep = 'LOGIN' | 'LOGIN_PIN' | 'OTP' | 'REGISTER' | 'PENDING' | 'SETUP_PIN' | 'DASHBOARD';
+type AuthStep = 'ONBOARDING' | 'LOGIN' | 'LOGIN_PIN' | 'OTP' | 'REGISTER' | 'PENDING' | 'SETUP_PIN' | 'DASHBOARD';
 
 // Real dispatch payload from backend RIDE_OFFER { trip, expiresInSeconds }.
 // getTripForDispatch(): { id, passengerId, passengerName, status, pickup{lat,lng,address}, destination{lat,lng,address}, fare, distanceKm, requestedAt }
@@ -55,7 +55,7 @@ const formatDist = (km: number): string =>
 const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, matchedRider: initialMatchedRider }) => {
     const [driverData, setDriverData] = useState<Driver | undefined>(initialDriverData);
     const [matchedRider, setMatchedRider] = useState<Rider | undefined>(initialMatchedRider);
-    const [authStep, setAuthStep] = useState<AuthStep>('LOGIN');
+    const [authStep, setAuthStep] = useState<AuthStep>('ONBOARDING');
     const [pinCode, setPinCode] = useState(['', '', '', '', '', '']); 
     const [showPerformance, setShowPerformance] = useState(false); // New: Performance View
 
@@ -687,80 +687,185 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
     // --- VIEWS ---
 
+    if (authStep === 'ONBOARDING') {
+        return (
+            <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white">
+                <InstallPwaPrompt />
+
+                {/* Main Content Area (Logo + Slogans) */}
+                <div className="flex-1 flex flex-col items-center justify-start mt-0 space-y-2 relative z-10 w-full pt-8">
+                    {/* Background SVG Cityscape */}
+                    <div className="absolute bottom-0 left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end w-full">
+                        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+                        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80 mix-blend-screen" />
+                    </div>
+
+                    {/* Radial glow background wrapper */}
+                    <div className="relative flex items-center justify-center w-48 h-48 mx-auto mix-blend-screen">
+                        <div 
+                            className="absolute inset-0 rounded-full pointer-events-none scale-125"
+                            style={{
+                                background: 'radial-gradient(circle, rgba(163,255,63,0.12) 0%, transparent 65%)'
+                            }}
+                        />
+                        <img 
+                            src="/logo-gozipp.png" 
+                            alt="GOZIPP Logo" 
+                            className="w-40 h-auto relative z-10 object-contain contrast-125"
+                        />
+                    </div>
+                    
+                    {/* Texts */}
+                    <div className="space-y-2.5 text-center mt-2 relative z-10 px-4">
+                        <h1 className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight drop-shadow-lg">
+                            พาร์ทเนอร์คนขับ GOZIPP
+                        </h1>
+                        <p className="text-gray-100 font-medium text-lg drop-shadow-md">
+                            เพิ่มโอกาสรับงาน เข้าถึงผู้โดยสารจริงในพื้นที่
+                        </p>
+                        <p className="text-gray-400 font-medium text-sm drop-shadow">
+                            สมัครครั้งแรกด้วย OTP จากนั้นเข้าใช้งานด้วย PIN
+                        </p>
+                    </div>
+                </div>
+
+                {/* Actions Area - Glassmorphism Dock */}
+                <div className="relative z-20 w-full flex flex-col space-y-4 bg-black/40 backdrop-blur-2xl border-t border-white/5 px-6 pt-6 pb-8 shadow-[0_-20px_40px_rgba(0,0,0,0.5)]">
+                    {/* Primary Action */}
+                    <button
+                        onClick={() => { setAuthStep('REGISTER'); setAuthError(''); }} 
+                        className="bg-gradient-to-b from-[#4ADE80] to-[#22C55E] text-black font-extrabold w-full py-4 rounded-3xl text-lg flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(57,181,74,0.2)] hover:shadow-[0_0_30px_rgba(57,181,74,0.4)] border border-white/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                        ลงทะเบียนใช้งาน
+                    </button>
+
+                    {/* Divider */}
+                    <div className="flex items-center w-full px-2 mt-2">
+                        <div className="flex-1 h-px bg-white/5"></div>
+                        <span className="px-4 text-sm font-medium text-gray-500 tracking-wide">หรือ</span>
+                        <div className="flex-1 h-px bg-white/5"></div>
+                    </div>
+
+                    {/* Footer Link */}
+                    <div className="text-center pt-2">
+                        <p className="text-gray-400 font-medium text-sm mb-4 tracking-wide text-balance">มีบัญชีอยู่แล้ว?</p>
+                        <button
+                            onClick={() => { setAuthStep('LOGIN'); setAuthError(''); }} 
+                            className="w-full bg-white/5 border border-white/5 text-white font-bold py-3.5 rounded-3xl text-lg backdrop-blur-sm transition-colors shadow-sm hover:bg-white/10 active:scale-[0.98]"
+                        >
+                            เข้าสู่ระบบ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     if (authStep === 'LOGIN') {
         return (
-            <div className="flex flex-col h-full bg-[#0F172A] font-sans relative overflow-hidden text-white">
-                {/* Dynamic Background: Animated Gradients */}
-                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-500/10 blur-[120px] rounded-full animate-pulse"></div>
-                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-500/10 blur-[150px] rounded-full"></div>
+            <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white">
+                <InstallPwaPrompt />
 
-                <div className="flex-1 flex flex-col items-center justify-center p-8 z-10 text-center">
-                    {/* Logo: Premium Reveal Animation */}
-                    <div className="w-40 h-40 mb-8 relative group animate-in zoom-in fade-in duration-1000">
-                        <div className="absolute inset-0 bg-emerald-500/20 blur-2xl rounded-full group-hover:bg-emerald-500/40 transition-all duration-700"></div>
-                        <img 
-                            src={APP_LOGO_DARK_PATH} 
-                            onError={(e) => {
-                                (e.target as HTMLImageElement).src = 'https://ui-avatars.com/api/?name=GOZIPP&background=22C55E&color=fff';
+                {/* Back Button */}
+                <div className="absolute top-6 left-6 z-30">
+                    <button
+                        onClick={() => { setAuthStep('ONBOARDING'); setAuthError(''); }}
+                        className="w-12 h-12 bg-white/5 border border-white/5 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-2xl shadow-sm hover:bg-white/10"
+                        aria-label="กลับ"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                </div>
+
+                {/* Main Container */}
+                <div className="flex-1 flex flex-col justify-start mt-8 relative z-10 w-full overflow-y-auto">
+                    {/* Background Cityscape */}
+                    <div className="absolute top-0 left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
+                        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+                        <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+                    </div>
+
+                    {/* Compact Logo */}
+                    <div className="mx-auto w-32 h-32 flex items-center justify-center relative z-20 mix-blend-screen mt-[2vh] mb-2">
+                        <div 
+                            className="absolute inset-0 rounded-full pointer-events-none"
+                            style={{
+                                background: 'radial-gradient(circle, rgba(163,255,63,0.15) 0%, transparent 70%)'
                             }}
-                            className="w-full h-full object-contain relative z-10 drop-shadow-[0_0_15px_rgba(34,197,94,0.3)]" 
-                            alt="GOZIPP Logo" 
+                        />
+                        <img 
+                            src="/logo-gozipp.png" 
+                            className="w-28 h-auto object-contain relative z-10 contrast-125" 
+                            alt="GOZIPP" 
                         />
                     </div>
 
-                    <h1 className="text-5xl font-black mb-2 tracking-tighter text-white animate-in slide-in-from-bottom-4 duration-700">
-                        GOZIPP
-                    </h1>
-                    <p className="text-emerald-400 font-bold text-[10px] uppercase tracking-[0.3em] mb-12 animate-in slide-in-from-bottom-2 duration-1000">
-                        Driver Partner Portal
-                    </p>
+                    {/* Form Container */}
+                    <div className="w-full max-w-sm mx-auto px-6 relative z-20 flex flex-col">
+                        <div className="text-center mb-6">
+                            <h2 className="text-3xl font-extrabold text-white tracking-tight mb-1">เข้าสู่ระบบ</h2>
+                            <p className="text-[#A3FF3F] text-xs font-bold tracking-[0.2em] uppercase">Driver Partner Portal</p>
+                        </div>
 
-                    {/* Input Area */}
-                    <div className="w-full max-w-xs space-y-4 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
                         {authError && (
-                            <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-2xl text-sm font-bold backdrop-blur-md">
-                                ⚠️ {authError}
+                            <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-2xl mb-4 text-sm flex items-center gap-2 backdrop-blur-md">
+                                <span>⚠️</span> {authError}
                             </div>
                         )}
-                        <div className="relative group">
-                            <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                                <span className="text-slate-500 text-lg group-focus-within:text-emerald-500 transition-colors">📞</span>
+
+                        <div className="space-y-4">
+                            <div className="relative group">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <span className="text-gray-500 text-lg group-focus-within:text-[#A3FF3F] transition-colors">📞</span>
+                                </div>
+                                <input
+                                    className="w-full bg-white/5 border border-white/10 focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] text-white py-4 pl-12 pr-4 rounded-2xl text-lg font-bold outline-none transition-all placeholder:text-gray-600 backdrop-blur-xl"
+                                    value={phoneNumber}
+                                    onChange={e => { setPhoneNumber(e.target.value); setAuthError(''); }}
+                                    placeholder="เบอร์โทรศัพท์"
+                                    type="tel"
+                                />
                             </div>
-                            <input
-                                className="w-full bg-white/5 border-2 border-white/10 focus:border-emerald-500 focus:bg-white/10 text-white py-5 pl-14 pr-4 rounded-[1.5rem] text-lg font-bold outline-none transition-all placeholder:text-slate-600 placeholder:font-normal backdrop-blur-xl"
-                                value={phoneNumber}
-                                onChange={e => { setPhoneNumber(e.target.value); setAuthError(''); }}
-                                placeholder="เบอร์โทรศัพท์"
-                                type="tel"
-                            />
+
+                            <button
+                                id="driver-send-otp-btn"
+                                onClick={requestOtp}
+                                disabled={isLoading}
+                                className="w-full bg-gradient-to-b from-[#4ADE80] to-[#22C55E] text-black font-extrabold py-4 rounded-2xl text-lg shadow-[0_0_20px_rgba(57,181,74,0.2)] hover:shadow-[0_0_30px_rgba(57,181,74,0.4)] border border-white/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                            >
+                                {isLoading ? 'กำลังดำเนินการ...' : 'เข้าสู่ระบบ'}
+                            </button>
                         </div>
-                        <button
-                            id="driver-send-otp-btn"
-                            onClick={requestOtp}
-                            disabled={isLoading}
-                            className="w-full bg-emerald-500 hover:bg-emerald-400 text-white py-5 rounded-[1.5rem] font-black text-xl shadow-2xl shadow-emerald-900/40 active:scale-95 transition-all disabled:opacity-50"
-                        >
-                            {isLoading ? '...' : 'เข้าสู่ระบบ'}
-                        </button>
-                    </div>
 
-                    <div className="mt-8">
-                        <button onClick={() => { setAuthStep('REGISTER'); setAuthError(''); }} className="text-slate-400 font-bold text-sm hover:text-emerald-400 transition-colors underline decoration-slate-700 underline-offset-8">
-                            ลงทะเบียนพาร์ทเนอร์ใหม่
-                        </button>
-                    </div>
-                    {/* Social Login */}
-                    <div className="flex flex-col gap-3 mt-12 w-full max-w-xs">
-                        <button onClick={() => window.location.href = `${API_BASE_URL}/api/v1/auth/line?type=DRIVER`} className="w-full bg-[#06C755] hover:bg-[#00B900] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-green-950/20 active:scale-95">
-                            <span className="text-xl">💬</span> LINE Login
-                        </button>
+                        <div className="text-center mt-6">
+                            <button 
+                                onClick={() => { setAuthStep('REGISTER'); setAuthError(''); }} 
+                                className="text-gray-400 font-bold text-sm hover:text-[#A3FF3F] transition-colors"
+                            >
+                                ลงทะเบียนพาร์ทเนอร์ใหม่
+                            </button>
+                        </div>
+
+                        <div className="flex flex-col gap-3 mt-6 w-full">
+                            <button 
+                                onClick={() => window.location.href = `${API_BASE_URL}/api/v1/auth/line?type=DRIVER`} 
+                                className="w-full bg-[#06C755] hover:bg-[#00B900] text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg active:scale-95"
+                            >
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" alt="LINE" className="w-5 h-5 brightness-0 invert" />
+                                LINE Login
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div className="p-8 text-center relative z-10">
-                    <div className="text-[9px] text-slate-500 font-black tracking-[0.4em] uppercase">Community Rider Platform</div>
+                <div className="p-4 text-center relative z-10 text-[10px] text-gray-500 font-bold tracking-widest uppercase">
+                    GOZIPP DRIVER PARTNER PLATFORM
                 </div>
-                <InstallPwaPrompt />
             </div>
         );
     }

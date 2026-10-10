@@ -1,57 +1,110 @@
 import React from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import InstallPwaPrompt from '../../components/InstallPwaPrompt';
-import { APP_LOGO_PATH } from '@/constants';
+import { motion } from 'framer-motion';
 
 const OnboardingView: React.FC = () => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: 'easeOut' } }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-slate-950 font-sans selection:bg-gozipp-green/30">
+    <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white">
       <InstallPwaPrompt />
-      <div className="flex-1 flex flex-col items-center justify-center p-10 text-center space-y-12">
-        <div className="w-64 h-64 bg-slate-900 rounded-full flex items-center justify-center mb-4 relative overflow-hidden group shadow-premium">
-          <div className="absolute inset-0 bg-gradient-to-tr from-gozipp-green/20 to-transparent opacity-70"></div>
-          <img 
-            src={APP_LOGO_PATH} 
-            alt="GOZIPP Logo" 
-            className="w-48 h-48 relative z-10 object-contain drop-shadow-2xl transition-transform group-hover:scale-110 duration-700" 
-          />
-        </div>
-        
-        <div className="space-y-4 animate-in fade-in slide-in-from-bottom duration-700">
-          <h1 className="text-5xl font-black text-white tracking-tighter uppercase">GOZIPP</h1>
-          <div className="w-16 h-2 bg-gozipp-green mx-auto rounded-full"></div>
-          <p className="text-slate-400 text-lg leading-relaxed font-medium">
-            Ride Fast. Move Smart.<br />
-            <span className="text-white">Thailand's Premium Mobility.</span>
-          </p>
+
+      {/* Main Content Area (Logo + Slogans) */}
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="flex-1 flex flex-col items-center justify-start mt-0 space-y-2 relative z-10 w-full pt-8"
+      >
+        {/* Background SVG Cityscape */}
+        <div className="absolute bottom-0 left-0 right-0 h-[45vh] pointer-events-none z-0 overflow-hidden flex items-end w-full">
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+          <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80 mix-blend-screen" />
         </div>
 
-        <div className="grid grid-cols-3 gap-6 w-full max-w-sm mt-8">
-          <div className="flex flex-col items-center space-y-2">
-            <div className="w-14 h-14 bg-slate-900 text-gozipp-green rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-white/5">⚡</div>
-            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Fastest</span>
-          </div>
-          <div className="flex flex-col items-center space-y-2">
-            <div className="w-14 h-14 bg-slate-900 text-gozipp-green rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-white/5">🛡️</div>
-            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Secure</span>
-          </div>
-          <div className="flex flex-col items-center space-y-2">
-            <div className="w-14 h-14 bg-slate-900 text-gozipp-green rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-white/5">💎</div>
-            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Premium</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="p-10">
-        <button 
-          onClick={() => setAuthStep('LOGIN')} 
-          className="w-full bg-gozipp-green text-slate-950 font-black py-5 rounded-2xl shadow-2xl shadow-gozipp-green/20 text-xl hover:bg-green-400 active:scale-[0.98] transition-all uppercase tracking-tighter"
+        {/* Radial glow background wrapper */}
+        <motion.div 
+          variants={itemVariants} 
+          className="relative flex items-center justify-center w-48 h-48 mx-auto mix-blend-screen"
         >
-          Get Started
-        </button>
-      </div>
+          <div 
+            className="absolute inset-0 rounded-full pointer-events-none scale-125"
+            style={{
+              background: 'radial-gradient(circle, rgba(163,255,63,0.12) 0%, transparent 65%)'
+            }}
+          />
+          <img 
+            src="/logo-gozipp.png" 
+            alt="GOZIPP Logo" 
+            className="w-40 h-auto relative z-10 object-contain contrast-125"
+          />
+        </motion.div>
+        
+        {/* Texts */}
+        <motion.div variants={itemVariants} className="space-y-2.5 text-center mt-2 relative z-10 px-4">
+          <h1 className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight drop-shadow-lg">
+            พาร์ทเนอร์คนขับ GOZIPP
+          </h1>
+          <p className="text-gray-100 font-medium text-lg drop-shadow-md">
+            เพิ่มโอกาสรับงาน เข้าถึงผู้โดยสารจริงในพื้นที่
+          </p>
+          <p className="text-gray-400 font-medium text-sm drop-shadow">
+            สมัครครั้งแรกด้วย OTP จากนั้นเข้าใช้งานด้วย PIN
+          </p>
+        </motion.div>
+      </motion.div>
+
+      {/* Actions Area - Glassmorphism Dock */}
+      <motion.div 
+        initial={{ opacity: 0, y: 40 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, duration: 0.6 }}
+        className="relative z-20 w-full flex flex-col space-y-4 bg-black/40 backdrop-blur-2xl border-t border-white/5 px-6 pt-6 pb-8 shadow-[0_-20px_40px_rgba(0,0,0,0.5)]"
+      >
+        {/* Primary Action */}
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => setAuthStep('REGISTER')} 
+          className="bg-gradient-to-b from-[#4ADE80] to-[#22C55E] text-black font-extrabold w-full py-4 rounded-3xl text-lg flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(57,181,74,0.2)] hover:shadow-[0_0_30px_rgba(57,181,74,0.4)] border border-white/20 transition-all"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+          ลงทะเบียนใช้งาน
+        </motion.button>
+
+        {/* Divider */}
+        <div className="flex items-center w-full px-2 mt-2">
+          <div className="flex-1 h-px bg-white/5"></div>
+          <span className="px-4 text-sm font-medium text-gray-500 tracking-wide">หรือ</span>
+          <div className="flex-1 h-px bg-white/5"></div>
+        </div>
+
+        {/* Footer Link */}
+        <div className="text-center pt-2">
+          <p className="text-gray-400 font-medium text-sm mb-4 tracking-wide text-balance">มีบัญชีอยู่แล้ว?</p>
+          <motion.button
+            whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.1)' }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setAuthStep('LOGIN')} 
+            className="w-full bg-white/5 border border-white/5 text-white font-bold py-3.5 rounded-3xl text-lg backdrop-blur-sm transition-colors shadow-sm"
+          >
+            เข้าสู่ระบบ
+          </motion.button>
+        </div>
+      </motion.div>
     </div>
   );
 };

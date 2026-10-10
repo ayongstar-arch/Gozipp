@@ -95,29 +95,60 @@ const RegisterView: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#04070B] font-sans p-6 relative overflow-hidden text-white justify-center">
-      {/* Background Orbs */}
-      <div className="absolute top-[-10%] left-[-10%] w-[400px] h-[400px] bg-[#A3FF3F]/10 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[300px] h-[300px] bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
+    <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white">
+      {/* Back Button */}
+      <div className="absolute top-6 left-6 z-30">
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => { setAuthStep('ONBOARDING'); setError(null); }}
+          className="w-12 h-12 bg-white/5 border border-white/5 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-2xl shadow-sm hover:bg-white/10"
+          aria-label="กลับ"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </motion.button>
+      </div>
 
-      <div className="relative z-10 max-w-sm w-full mx-auto">
+      {/* Main Container */}
+      <div className="flex-1 flex flex-col justify-start mt-8 relative z-10 w-full overflow-y-auto">
+        {/* Background Cityscape */}
+        <div className="absolute top-0 left-0 right-0 h-[40vh] pointer-events-none z-0 overflow-hidden flex items-end">
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black z-10"></div>
+          <img src="/bg-city-realistic.png" alt="Cityscape" className="w-full h-full object-cover object-bottom opacity-80" />
+        </div>
+
+        {/* Compact Logo */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 mx-auto w-32 h-32 rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(255,255,255,0.1)] bg-white flex items-center justify-center p-2"
+          className="mx-auto w-32 h-32 flex items-center justify-center relative z-20 mix-blend-screen mt-[2vh] mb-2"
         >
-          <img src={APP_LOGO_PATH} className="w-full h-full object-contain" alt="Gozipp" />
+          <div 
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background: 'radial-gradient(circle, rgba(163,255,63,0.15) 0%, transparent 70%)'
+            }}
+          />
+          <img 
+            src="/logo-gozipp.png" 
+            className="w-28 h-auto object-contain relative z-10 contrast-125" 
+            alt="GOZIPP" 
+          />
         </motion.div>
         
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-8 text-center"
-        >
-          <h2 className="text-4xl font-black text-white tracking-tight mb-2">ลงทะเบียนใหม่</h2>
-          <p className="text-gray-400 font-medium">ร่วมเป็นพาร์ทเนอร์คนขับ GOZIPP</p>
-        </motion.div>
+        {/* Form Container */}
+        <div className="w-full max-w-sm mx-auto px-6 relative z-20 flex flex-col">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="mb-6 text-center"
+          >
+            <h2 className="text-3xl font-extrabold text-white tracking-tight mb-1">ลงทะเบียนใหม่</h2>
+            <p className="text-gray-400 font-medium text-sm">ร่วมเป็นพาร์ทเนอร์คนขับ GOZIPP</p>
+          </motion.div>
 
         {/* Invisible reCAPTCHA container */}
         <div id="recaptcha-container"></div>
@@ -248,6 +279,7 @@ const RegisterView: React.FC = () => {
             </button>
           </p>
         </motion.div>
+      </div>
       </div>
     </div>
   );
