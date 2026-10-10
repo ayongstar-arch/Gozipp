@@ -82,7 +82,7 @@ export default function HeroSection() {
                 <span className="text-xs text-[#04070B]/70 relative z-10 font-medium">รับแต้มฟรี 100 แต้ม</span>
               </Link>
               <Link
-                href="http://localhost:3000"
+                href="https://gozipp-mobile-driver.vercel.app"
                 className="group px-6 py-3 bg-[#0B1120] border border-gray-500 hover:border-[#A3FF3F]/50 text-white rounded-xl font-bold font-kanit flex flex-col items-center justify-center gap-0.5 transition-all hover:bg-gray-900"
               >
                 <div className="flex items-center gap-2">

@@ -113,7 +113,7 @@ export default function RoleSelectionSection() {
               </div>
 
               <div className="flex justify-end">
-                <Link href="http://localhost:3000" className="w-12 h-12 bg-[#A3FF3F] rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-[0_0_20px_rgba(163,255,63,0.4)] group-hover:bg-[#B7FF57]">
+                <Link href="https://gozipp-mobile-driver.vercel.app" className="w-12 h-12 bg-[#A3FF3F] rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-[0_0_20px_rgba(163,255,63,0.4)] group-hover:bg-[#B7FF57]">
                   <ArrowRight className="w-6 h-6 text-[#04070B]" />
                 </Link>
               </div>

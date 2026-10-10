@@ -5,6 +5,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+import { API_BASE_URL } from '../constants';
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -59,7 +61,7 @@ export const useAuthStore = create<AuthState>()(
         })),
       logout: async () => {
         try {
-            await fetch('http://localhost:3000/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+            await fetch(`${API_BASE_URL}/api/v1/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
         } catch (e) {}
         set({
           token: null,

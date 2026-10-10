@@ -45,7 +45,7 @@ export default function DownloadCtaSection() {
               </Link>
               
               <Link
-                href="http://localhost:3000"
+                href="https://gozipp-mobile-driver.vercel.app"
                 className="group px-6 py-3 bg-white/20 border border-white/40 hover:bg-white/30 text-[#04070B] rounded-xl font-bold font-kanit flex flex-col items-center justify-center gap-0.5 transition-all flex-1 backdrop-blur-sm shadow-xl"
               >
                 <div className="flex items-center gap-2">

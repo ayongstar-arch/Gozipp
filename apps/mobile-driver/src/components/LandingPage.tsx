@@ -25,8 +25,8 @@ const LandingPage: React.FC = () => {
   }, []);
 
   const openPassenger = () => {
-    // If passenger is a separate app, you might want to use window.location.href = 'http://localhost:3001' or similar in dev, but for now we redirect to /passenger if it exists, or just open the hash for fallback.
-    window.location.href = 'http://localhost:3001'; // Assuming passenger app runs on 3001
+    // Redirect to the passenger app
+    window.location.href = 'https://www.gozipp.app';
   };
 
   const openDriver = () => {

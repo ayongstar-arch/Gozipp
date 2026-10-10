@@ -18,7 +18,7 @@ const NEST_BASE =
   process.env.NEST_API_URL ||
   process.env.GOZIPP_API_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
-  'http://localhost:3001';
+  'https://gozipp-api-staging-production.up.railway.app';
 
 export async function POST(request: NextRequest) {
   let body: any;
