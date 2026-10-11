@@ -56,7 +56,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     const [driverData, setDriverData] = useState<Driver | undefined>(initialDriverData);
     const [matchedRider, setMatchedRider] = useState<Rider | undefined>(initialMatchedRider);
     const [authStep, setAuthStep] = useState<AuthStep>('ONBOARDING');
-    const [pinCode, setPinCode] = useState(['', '', '', '', '', '']); 
+    const [pinCode, setPinCode] = useState(['', '', '', '']); 
     const [showPerformance, setShowPerformance] = useState(false); // New: Performance View
 
     const [phoneNumber, setPhoneNumber] = useState('');
@@ -334,8 +334,10 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                 body: JSON.stringify({
                     phoneNumber,
                     fullName: regForm.name,
-                    licensePlate: 'TBD',
-                    inviteCode: 'WIN888', // Default for now
+                    licensePlate: regForm.plate || 'TBD',
+                    winId: regForm.winId || '',
+                    winName: regForm.winName || '',
+                    inviteCode: regForm.inviteCode || 'WIN888',
                     profilePicUrl: regForm.profilePic,
                     registrationToken
                 })
@@ -929,6 +931,16 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                                     />
                                 </div>
                                 <div>
+                                    <label className="text-[10px] font-bold text-emerald-600 uppercase mb-2 block">ป้ายทะเบียนรถมอเตอร์ไซค์ *</label>
+                                    <input
+                                        className="w-full bg-slate-50 border-2 border-slate-200 focus:border-emerald-500 focus:bg-white rounded-2xl p-4 text-lg font-bold outline-none transition-all"
+                                        value={regForm.plate}
+                                        onChange={e => setRegForm({ ...regForm, plate: e.target.value })}
+                                        placeholder="เช่น 1กข 1234 กทม."
+                                        required
+                                    />
+                                </div>
+                                <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">LINE ID (ไม่บังคับ)</label>
                                     <input
                                         className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-500 focus:bg-white rounded-2xl p-4 text-lg font-bold outline-none transition-all"
@@ -1156,15 +1168,34 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
                 {/* Footer Action */}
                 <div className="p-6 bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
-                    {regStep < 5 ? (
+                    {regStep === 1 ? (
+                        <div className="space-y-3">
+                            <button 
+                                onClick={async () => {
+                                    await handleRegister();
+                                    setAuthStep('SETUP_PIN');
+                                }}
+                                disabled={!regForm.name || !regForm.plate || isLoading}
+                                className="w-full bg-[#A3FF3F] hover:bg-[#B7FF57] text-[#04070B] py-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-900/20 active:scale-95 transition-all disabled:opacity-30 font-kanit"
+                            >
+                                {isLoading ? 'กำลังบันทึกข้อมูล...' : '🚀 บันทึกและตั้งรหัส PIN 4 หลัก'}
+                            </button>
+                            <button 
+                                onClick={() => setRegStep(2)}
+                                disabled={!regForm.name}
+                                className="w-full text-slate-500 hover:text-slate-700 text-xs font-bold py-2 font-kanit transition-colors"
+                            >
+                                แนบเอกสารเพิ่มเติม (ทางเลือก) →
+                            </button>
+                        </div>
+                    ) : regStep < 5 ? (
                         <button 
                             onClick={() => setRegStep(regStep + 1)}
                             disabled={
-                                (regStep === 1 && (!regForm.name || !regForm.winId)) || 
                                 (regStep === 2 && !regForm.profilePic) ||
                                 (regStep === 4 && regForm.zones.length === 0)
                             }
-                            className="w-full bg-[#0F172A] hover:bg-slate-800 text-white py-5 rounded-2xl font-bold text-lg shadow-xl shadow-slate-900/20 active:scale-95 transition-all disabled:opacity-30"
+                            className="w-full bg-[#0F172A] hover:bg-slate-800 text-white py-5 rounded-2xl font-bold text-lg shadow-xl shadow-slate-900/20 active:scale-95 transition-all disabled:opacity-30 font-kanit"
                         >
                             ถัดไป (Continue)
                         </button>
@@ -1257,7 +1288,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     if (authStep === 'LOGIN_PIN') {
         const handlePinLogin = async () => {
             const pin = pinCode.join('');
-            if (pin.length < 6) return;
+            if (pin.length < 4) return;
             setIsLoading(true);
             try {
                 const res = await fetch(`${API_BASE_URL}/api/v1/auth/login-pin`, {
@@ -1272,25 +1303,26 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                 setAuthStep('DASHBOARD');
             } catch (err: any) {
                 setAuthError(err.message);
-                setPinCode(['', '', '', '', '', '']); // Reset
+                setPinCode(['', '', '', '']); // Reset
             } finally {
                 setIsLoading(false);
             }
         };
 
-        // Auto-submit when length is 6
+        // Auto-submit when length is 4
         useEffect(() => {
-            if (pinCode.join('').length === 6) {
+            if (pinCode.join('').length === 4) {
                 handlePinLogin();
             }
         }, [pinCode]);
 
         return (
             <div className="flex flex-col h-full bg-slate-900 text-white p-8 items-center justify-center font-sans">
-                <h2 className="text-2xl font-bold mb-8">ใส่รหัส PIN</h2>
-                {authError && <div className="text-red-400 mb-4 text-sm">{authError}</div>}
+                <h2 className="text-3xl font-black mb-2 text-white font-kanit">ใส่รหัส PIN 4 หลัก</h2>
+                <p className="text-slate-400 text-sm mb-8 font-kanit">เข้าสู่ระบบเพื่อเริ่มรับงาน</p>
+                {authError && <div className="text-red-400 mb-4 text-sm font-kanit">⚠️ {authError}</div>}
 
-                <div className="flex gap-2 justify-center mb-8">
+                <div className="flex gap-4 justify-center mb-8">
                     {pinCode.map((digit, i) => (
                         <input
                             key={i}
@@ -1305,9 +1337,9 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                                 const newPin = [...pinCode];
                                 newPin[i] = val.substring(val.length - 1);
                                 setPinCode(newPin);
-                                if (val && i < 5) document.getElementById(`pin-${i + 1}`)?.focus();
+                                if (val && i < 3) document.getElementById(`pin-${i + 1}`)?.focus();
                             }}
-                            className="w-12 h-12 bg-slate-800 rounded-full border border-slate-700 text-2xl font-bold text-center outline-none focus:border-mywin-green transition-colors"
+                            className="w-14 h-16 bg-slate-800 rounded-2xl border-2 border-slate-700 text-3xl font-bold text-center outline-none focus:border-emerald-500 transition-colors"
                         />
                     ))}
                 </div>
@@ -1380,7 +1412,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     if (authStep === 'SETUP_PIN') {
         const handleSetPin = async () => {
             const pin = pinCode.join('');
-            if (pin.length < 6) return;
+            if (pin.length < 4) return;
             setIsLoading(true);
             try {
                 // Identity comes from the HttpOnly session cookie (Firebase verify).
@@ -1401,12 +1433,14 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         };
 
         return (
-            <div className="flex flex-col h-full bg-white text-slate-900 p-8 items-center justify-center font-sans">
-                <div className="mb-8 p-4 bg-emerald-50 rounded-full text-4xl">🔐</div>
-                <h2 className="text-2xl font-bold mb-2">ตั้งรหัส PIN ใหม่</h2>
-                <p className="text-slate-500 text-center mb-8 text-sm">กำหนดรหัส 6 หลักเพื่อเข้าใช้งานครั้งต่อไป<br />โดยไม่ต้องใช้ OTP อีก</p>
+            <div className="flex flex-col h-full bg-slate-950 text-white p-8 items-center justify-center font-sans">
+                <div className="mb-6 p-5 bg-emerald-500/10 rounded-3xl text-4xl border border-emerald-500/20 shadow-2xl">🔐</div>
+                <h2 className="text-3xl font-black mb-2 text-white font-kanit">ตั้งรหัส PIN 4 หลัก</h2>
+                <p className="text-slate-400 text-center mb-8 text-sm max-w-[280px] font-kanit">กำหนดรหัส 4 หลักเพื่อเข้าใช้งานครั้งต่อไป<br />โดยไม่ต้องใช้ OTP อีก</p>
 
-                <div className="flex gap-2 justify-center mb-8">
+                {authError && <div className="text-red-400 mb-4 text-sm font-kanit">⚠️ {authError}</div>}
+
+                <div className="flex gap-4 justify-center mb-8">
                     {pinCode.map((digit, i) => (
                         <input
                             key={i}
@@ -1421,19 +1455,19 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                                 const newPin = [...pinCode];
                                 newPin[i] = val.substring(val.length - 1);
                                 setPinCode(newPin);
-                                if (val && i < 5) document.getElementById(`setpin-${i + 1}`)?.focus();
+                                if (val && i < 3) document.getElementById(`setpin-${i + 1}`)?.focus();
                             }}
-                            className="w-12 h-14 bg-slate-50 rounded-xl border-2 border-slate-200 text-2xl font-bold text-center outline-none focus:border-mywin-green transition-colors"
+                            className="w-14 h-16 bg-slate-900 rounded-2xl border-2 border-slate-700 text-3xl font-bold text-center outline-none focus:border-emerald-500 transition-colors"
                         />
                     ))}
                 </div>
 
                 <button
                     onClick={handleSetPin}
-                    disabled={pinCode.join('').length < 6 || isLoading}
-                    className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50"
+                    disabled={pinCode.join('').length < 4 || isLoading}
+                    className="w-full max-w-xs bg-[#A3FF3F] hover:bg-[#B7FF57] text-[#04070B] py-5 rounded-2xl font-black text-xl shadow-2xl shadow-emerald-500/20 active:scale-95 transition-all disabled:opacity-30 font-kanit"
                 >
-                    {isLoading ? 'กำลังบันทึก...' : 'ยืนยันรหัส PIN'}
+                    {isLoading ? 'กำลังบันทึก...' : 'ยืนยันรหัส PIN 4 หลัก'}
                 </button>
             </div>
         );

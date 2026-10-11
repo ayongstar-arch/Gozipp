@@ -138,12 +138,12 @@ export const useAuth = () => {
     setIsLoading(true);
     setError(null);
     try {
-      if (!/^\d{6}$/.test(pin)) {
-        throw new Error('PIN ต้องเป็นตัวเลข 6 หลัก');
+      if (!/^\d{4,6}$/.test(pin)) {
+        throw new Error('PIN ต้องเป็นตัวเลข 4-6 หลัก');
       }
       await apiFetch('/api/v1/auth/set-pin', {
         method: 'POST',
-        body: JSON.stringify({ pin, role: 'PASSENGER' }),
+        body: JSON.stringify({ pin, role: 'DRIVER' }),
       }, token);
 
       setToastMessage('ตั้ง PIN สำเร็จ!');
@@ -162,12 +162,12 @@ export const useAuth = () => {
     setIsLoading(true);
     setError(null);
     try {
-      if (!/^\d{6}$/.test(pin)) {
-        throw new Error('PIN ต้องเป็นตัวเลข 6 หลัก');
+      if (!/^\d{4,6}$/.test(pin)) {
+        throw new Error('PIN ต้องเป็นตัวเลข 4-6 หลัก');
       }
       const data = await apiFetch('/api/v1/auth/login-pin', {
         method: 'POST',
-        body: JSON.stringify({ phoneNumber, pin, role: 'PASSENGER' }),
+        body: JSON.stringify({ phoneNumber, pin, role: 'DRIVER' }),
       });
 
       const accessToken = data.accessToken || data.token;

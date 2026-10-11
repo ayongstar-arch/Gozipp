@@ -14,7 +14,7 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
   const { isLoading } = useUIStore();
   const { setupPin, loginWithPin, requestPinReset, getPinResetRequest, error, setError } = useAuth();
   
-  const [pin, setPin] = useState(['', '', '', '', '', '']);
+  const [pin, setPin] = useState(['', '', '', '']);
   const [requestId, setRequestId] = useState<string | null>(null);
 
   const handlePinChange = (index: number, value: string) => {
@@ -23,14 +23,14 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
     newPin[index] = value.substring(value.length - 1);
     setPin(newPin);
 
-    if (value && index < 5) {
+    if (value && index < 3) {
       document.getElementById(`pin-${index + 1}`)?.focus();
     }
   };
 
   const handleSubmit = async () => {
     const pinCode = pin.join('');
-    if (pinCode.length < 6) return;
+    if (pinCode.length < 4) return;
     
     if (mode === 'SETUP' && userId) {
       await setupPin(pinCode);
@@ -57,12 +57,12 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
   return (
     <div className="flex flex-col h-full bg-slate-950 font-sans p-6 justify-center">
       <div className="text-center mb-12 animate-in fade-in zoom-in duration-500">
-        <div className="w-20 h-20 bg-gozipp-green/10 rounded-3xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-2xl shadow-gozipp-green/20">🔑</div>
-        <h2 className="text-4xl font-black text-white tracking-tighter uppercase mb-2">
-          {mode === 'SETUP' ? 'Create PIN' : 'Enter PIN'}
+        <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-2xl shadow-emerald-500/20">🔑</div>
+        <h2 className="text-3xl font-black text-white tracking-tight mb-2">
+          {mode === 'SETUP' ? 'ตั้งรหัส PIN 4 หลัก' : 'ใส่รหัส PIN 4 หลัก'}
         </h2>
-        <p className="text-slate-500 font-medium">
-          {mode === 'SETUP' ? 'Secure your GOZIPP account' : 'Welcome back to GOZIPP'}
+        <p className="text-slate-400 font-medium text-sm">
+          {mode === 'SETUP' ? 'กำหนดรหัส PIN เพื่อเข้าใช้งานครั้งต่อไปโดยไม่ต้องใช้ OTP' : 'เข้าสู่ระบบ GOZIPP ด้วยรหัส PIN ของคุณ'}
         </p>
       </div>
 
@@ -72,7 +72,7 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
         </div>
       )}
 
-      <div className="flex gap-3 justify-center mb-12">
+      <div className="flex gap-4 justify-center mb-12">
         {pin.map((digit, i) => (
           <input
             key={i}
@@ -82,17 +82,17 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
             maxLength={1}
             value={digit}
             onChange={e => handlePinChange(i, e.target.value)}
-            className="w-12 h-16 bg-slate-900 rounded-2xl border border-white/5 flex items-center justify-center text-2xl font-black text-white text-center outline-none focus:border-gozipp-green focus:bg-slate-800 transition-all shadow-xl"
+            className="w-14 h-16 bg-slate-900 rounded-2xl border border-white/10 flex items-center justify-center text-3xl font-black text-white text-center outline-none focus:border-emerald-500 focus:bg-slate-800 transition-all shadow-xl"
           />
         ))}
       </div>
 
       <button
         onClick={handleSubmit}
-        disabled={isLoading || pin.join('').length < 6}
-        className="w-full bg-gozipp-green text-slate-950 font-black py-5 rounded-2xl shadow-2xl shadow-gozipp-green/20 hover:bg-green-400 transition-all disabled:opacity-30 uppercase tracking-tighter text-xl"
+        disabled={isLoading || pin.join('').length < 4}
+        className="w-full bg-[#A3FF3F] text-[#04070B] font-black py-5 rounded-2xl shadow-2xl shadow-emerald-500/20 hover:bg-[#B7FF57] transition-all disabled:opacity-30 tracking-tight text-xl font-kanit"
       >
-        {isLoading ? 'Processing...' : 'Confirm PIN'}
+        {isLoading ? 'กำลังดำเนินการ...' : mode === 'SETUP' ? 'ยืนยันการตั้งรหัส PIN' : 'เข้าสู่ระบบ'}
       </button>
 
       {mode === 'LOGIN' && (

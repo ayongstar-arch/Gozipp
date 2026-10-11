@@ -17,9 +17,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!pin || !/^\d{6}$/.test(pin)) {
+    if (!pin || !/^\d{4,6}$/.test(pin)) {
       return NextResponse.json(
-        { success: false, error: 'PIN ต้องเป็นตัวเลข 6 หลัก' },
+        { success: false, error: 'PIN ต้องเป็นตัวเลข 4-6 หลัก' },
         { status: 400 }
       );
     }
