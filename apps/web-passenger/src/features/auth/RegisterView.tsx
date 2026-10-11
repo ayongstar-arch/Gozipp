@@ -24,6 +24,7 @@ const RegisterView: React.FC = () => {
     name: '',
     phone: '',
   });
+  const [referralCode, setReferralCode] = useState('');
   const [otpStep, setOtpStep] = useState(false);
   const [otpCode, setOtpCode] = useState('');
 
@@ -34,9 +35,15 @@ const RegisterView: React.FC = () => {
     setBackendError(msg);
   };
 
-  // Initialize reCAPTCHA on mount
+  // Initialize reCAPTCHA on mount and read stored referral code
   useEffect(() => {
     initRecaptcha('recaptcha-container');
+    if (typeof window !== 'undefined') {
+      const storedRef = localStorage.getItem('gozipp_referrer_code');
+      if (storedRef) {
+        setReferralCode(storedRef);
+      }
+    }
   }, [initRecaptcha]);
 
   // STEP 1: Send OTP via Firebase
@@ -77,6 +84,7 @@ const RegisterView: React.FC = () => {
             name: formData.name.trim(),
             role: 'PASSENGER',
             purpose: 'REGISTER',
+            referralCode: referralCode.trim().toUpperCase() || undefined,
           }),
         });
         const data = await res.json();
@@ -232,6 +240,32 @@ const RegisterView: React.FC = () => {
                   required
                 />
               </label>
+
+              {/* Referral Code Badge or Optional Input */}
+              {referralCode ? (
+                <div className="flex items-center justify-between p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🎁</span>
+                    <span>รหัสแนะนำ: <strong className="text-white tracking-wider">{referralCode}</strong></span>
+                  </div>
+                  <span className="text-[10px] bg-emerald-500/20 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider text-gozipp-green">
+                    รับสิทธิ์นั่งฟรี 3 เที่ยว
+                  </span>
+                </div>
+              ) : (
+                <label className="block relative">
+                  <span className="absolute -top-3 left-6 bg-black px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider z-10">
+                    รหัสแนะนำเพื่อน (ถ้ามี)
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="เช่น P-XXXXXX หรือเว้นว่างไว้"
+                    value={referralCode}
+                    onChange={e => setReferralCode(e.target.value.toUpperCase().trim())}
+                    className="w-full bg-white/5 border border-white/5 p-3.5 rounded-3xl text-sm font-bold text-white outline-none focus:border-[#A3FF3F] transition-all backdrop-blur-2xl placeholder:text-gray-600 shadow-inner tracking-wider"
+                  />
+                </label>
+              )}
             </div>
           ) : (
             /* STEP 2: OTP Input */

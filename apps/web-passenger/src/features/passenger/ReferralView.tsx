@@ -15,8 +15,8 @@ const ReferralView: React.FC<ReferralViewProps> = ({ onClose }) => {
 
   const referralCode = user?.referralCode || 'P-SYSTEM';
   const inviteUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/register?code=${referralCode}`
-    : `https://app.gozipp.com/register?code=${referralCode}`;
+    ? `${window.location.origin}/passenger?ref=${referralCode}`
+    : `https://www.gozipp.app/passenger?ref=${referralCode}`;
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(referralCode);
@@ -34,8 +34,8 @@ const ReferralView: React.FC<ReferralViewProps> = ({ onClose }) => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'สมัครใช้งาน GOZIPP',
-          text: `สมัครใช้งาน GOZIPP วันนี้ผ่านรหัสแนะนำของฉัน: ${referralCode} เพื่อรับสิทธิพิเศษ!`,
+          title: 'ชวนเพื่อนใช้ GOZIPP',
+          text: `นั่งวินมอเตอร์ไซค์สะดวก ปลอดภัยกับ GOZIPP! สมัครผ่านรหัสแนะนำของฉัน: ${referralCode} รับสิทธิ์นั่งฟรี 3 เที่ยวและแต้มสะสมพิเศษทันที!`,
           url: inviteUrl,
         });
       } catch (err) {

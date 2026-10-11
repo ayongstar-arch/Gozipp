@@ -6,6 +6,7 @@ import AdminHeader from './AdminHeader';
 import OperationsDashboard from './OperationsDashboard';
 import AuditLogViewer from './AuditLogViewer';
 import AdminRateDashboard from '@/components/AdminRateDashboard';
+import ReferralManagement from './ReferralManagement';
 import { useAdminStore } from '@/stores/adminStore';
 
 function PlaceholderView({ title, subtitle }: { title: string; subtitle: string }) {
@@ -57,12 +58,7 @@ export default function AdminShell() {
         );
 
       case 'referrals':
-        return (
-          <PlaceholderView
-            title="ระบบแนะนำเพื่อน (Referrals)"
-            subtitle="ระบบแนะนำเพื่อน จะพร้อมใช้งานในเฟส 3"
-          />
-        );
+        return <ReferralManagement />;
 
       case 'settings':
         return (

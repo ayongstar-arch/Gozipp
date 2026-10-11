@@ -34,6 +34,20 @@ export default function PassengerPage() {
 
   React.useEffect(() => {
     restoreSession();
+
+    // Capture referral code from URL if arriving via referral link/QR
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const ref = params.get('ref') || params.get('code');
+        if (ref) {
+          localStorage.setItem('gozipp_referrer_code', ref.trim().toUpperCase());
+        }
+      } catch (e) {
+        // Silently ignore URL parsing errors
+      }
+    }
+
     const timer = setTimeout(() => setIsBooting(false), 1200);
     return () => clearTimeout(timer);
   }, [restoreSession]);
