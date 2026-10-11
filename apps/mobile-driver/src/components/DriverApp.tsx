@@ -668,8 +668,12 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         setActiveJob(null);
         setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
     };
+
     const handleShareQR = async () => {
-        const url = `${window.location.origin}/#passenger?ref=${driverData?.id || ''}`;
+        const passengerBase = typeof window !== 'undefined' && window.location.hostname.includes('localhost') 
+            ? `${window.location.origin}/#passenger` 
+            : 'https://www.gozipp.app/passenger';
+        const url = `${passengerBase}?ref=${driverData?.id || ''}`;
         if (navigator.share) {
             try {
                 await navigator.share({
@@ -1891,7 +1895,11 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                         <div className="bg-white p-2 rounded-xl border-2 border-slate-100 shadow-inner inline-block mb-4">
                             {/* QR Code pointing to Passenger App with Referral ID */}
                             <img
-                                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + '/#passenger?ref=' + (driverData?.id || ''))}`}
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
+                                    (typeof window !== 'undefined' && window.location.hostname.includes('localhost')
+                                        ? window.location.origin + '/#passenger'
+                                        : 'https://www.gozipp.app/passenger') + '?ref=' + (driverData?.id || '')
+                                )}`}
                                 className="w-48 h-48"
                                 alt="Passenger QR"
                             />
