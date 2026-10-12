@@ -12,8 +12,19 @@ const nextConfig = {
   turbopack: {
     root: path.join(__dirname, '../..'),
   },
-  // Since we have a backend on port 3000, we might need a proxy for development
-  // but for now we'll use absolute URLs or the IS_PRODUCTION check in constants.ts
+  async rewrites() {
+    const backendUrl =
+      process.env.NEST_API_URL ||
+      process.env.GOZIPP_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      'https://gozipp-api-staging-production.up.railway.app';
+    return [
+      {
+        source: '/api/v1/:path*',
+        destination: `${backendUrl.replace(/\/$/, '')}/api/v1/:path*`,
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;

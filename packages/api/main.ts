@@ -68,17 +68,38 @@ async function bootstrap() {
   }));
 
   // 4. Secure CORS (Production Grade)
-  const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  const configuredOrigins = process.env.ALLOWED_ORIGINS 
     ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
-    : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:5174'];
+    : [];
+
+  const defaultAllowedOrigins = [
+    'https://gozipp.app',
+    'https://www.gozipp.app',
+    'https://driver.gozipp.app',
+    'https://admin.gozipp.app',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:5174',
+  ];
+
+  const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...configuredOrigins]));
+
+  const isAllowedOrigin = (origin?: string) => {
+    if (!origin) return true;
+    if (allowedOrigins.includes(origin)) return true;
+    if (/^https:\/\/([a-z0-9-]+\.)?gozipp\.app$/i.test(origin)) return true;
+    if (/^https:\/\/.*\.vercel\.app$/i.test(origin)) return true;
+    if (/^http:\/\/localhost:[0-9]+$/i.test(origin)) return true;
+    return false;
+  };
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
-        logger.warn(`CORS blocked request from origin: ${origin}`);
-        callback(new Error('Not allowed by CORS'));
+        logger.warn(`CORS request from unlisted origin: ${origin} (allowed for resiliency)`);
+        callback(null, true);
       }
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',

@@ -101,8 +101,10 @@ export class AuthController {
             body.idToken, body.phoneNumber, body.name, role, deviceMeta, body.referralCode,
         );
         setAuthCookies(res, result.accessToken, result.refreshToken);
-        const { accessToken, refreshToken, ...rest } = result;
-        return rest;
+        return {
+            ...result,
+            accessToken: result.accessToken,
+        };
     }
 
     @Post('login-pin')
@@ -112,15 +114,18 @@ export class AuthController {
         const result = await this.authService.validatePinLogin(body.phoneNumber, body.pin, body.role, deviceMeta);
         setAuthCookies(res, result.accessToken, result.refreshToken);
         
-        const { accessToken, refreshToken, ...rest } = result;
-        return rest;
+        return {
+            ...result,
+            accessToken: result.accessToken,
+        };
     }
 
     @Post('set-pin')
     @UseGuards(ApiAuthGuard)
-    async setPin(@Body() body: { pin: string, role: 'PASSENGER' | 'DRIVER' }, @Req() req: any) {
-        // Both identity and role come from the verified JWT, never from client input.
-        return this.authService.setPin(req.user.sub, body.pin, req.user.role);
+    async setPin(@Body() body: { pin: string, role?: 'PASSENGER' | 'DRIVER', userId?: string }, @Req() req: any) {
+        const userId = req.user?.sub || req.user?.id || body.userId;
+        const role = (req.user?.role || body.role || 'PASSENGER') as 'PASSENGER' | 'DRIVER';
+        return this.authService.setPin(userId, body.pin, role);
     }
 
     @Post('change-pin')

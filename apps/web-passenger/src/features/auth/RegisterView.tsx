@@ -100,6 +100,13 @@ const RegisterView: React.FC = () => {
             freeRidesRemaining: data.freeRidesRemaining ?? 3,
           });
 
+          if (data.accessToken && typeof window !== 'undefined') {
+            localStorage.setItem('gozipp_access_token', data.accessToken);
+          }
+          if ((data.passengerId || data.user?.id) && typeof window !== 'undefined') {
+            localStorage.setItem('gozipp_passenger_id', data.passengerId || data.user?.id);
+          }
+
           if (data.hasPin) {
             setAuthStep('APP_SHELL');
           } else {

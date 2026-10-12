@@ -17,17 +17,22 @@ export class ApiError extends Error {
   }
 }
 
-const request = (path: string, options: RequestInit, headers: Record<string, string>) =>
-  fetch(`${API_BASE_URL}${path}`, {
+const request = (path: string, options: RequestInit, headers: Record<string, string>) => {
+  // In browser, use relative path to route through Next.js same-origin API proxy (eliminates CORS and Failed to fetch)
+  const url = typeof window !== 'undefined' ? path : `${API_BASE_URL}${path}`;
+  return fetch(url, {
     ...options,
     headers,
     credentials: 'include',
   });
+};
 
 export const apiFetch = async <T = any>(path: string, options: RequestInit = {}): Promise<T> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('gozipp_access_token') : null;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Device-Id': getDeviceId(),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...((options.headers as Record<string, string>) || {}),
   };
 
@@ -38,7 +43,14 @@ export const apiFetch = async <T = any>(path: string, options: RequestInit = {})
       { method: 'POST', body: JSON.stringify({}) },
       headers,
     );
-    if (refreshResponse.ok) response = await request(path, options, headers);
+    if (refreshResponse.ok) {
+      const refreshData = await refreshResponse.json().catch(() => ({}));
+      if (refreshData.accessToken && typeof window !== 'undefined') {
+        localStorage.setItem('gozipp_access_token', refreshData.accessToken);
+        headers['Authorization'] = `Bearer ${refreshData.accessToken}`;
+      }
+      response = await request(path, options, headers);
+    }
   }
 
   const data = await response.json().catch(() => ({}));

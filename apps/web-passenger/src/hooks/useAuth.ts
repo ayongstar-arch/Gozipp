@@ -120,9 +120,10 @@ export const useAuth = () => {
       if (!/^\d{6}$/.test(pin)) {
         throw new Error('PIN ต้องเป็นตัวเลข 6 หลัก');
       }
+      const userId = user?.id || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_passenger_id') : undefined);
       await apiFetch('/api/v1/auth/set-pin', {
         method: 'POST',
-        body: JSON.stringify({ pin, role: 'PASSENGER' }),
+        body: JSON.stringify({ pin, role: 'PASSENGER', userId }),
       });
 
       setToastMessage('ตั้ง PIN สำเร็จ!');

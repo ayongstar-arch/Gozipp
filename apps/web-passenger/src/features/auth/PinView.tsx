@@ -41,7 +41,7 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPi
     const pinCode = pin.join('');
     if (pinCode.length < 6) return;
     
-    if (mode === 'SETUP' && userId) {
+    if (mode === 'SETUP') {
       if (!firstPin) {
         setFirstPin(pinCode);
         setPin(['', '', '', '', '', '']);
