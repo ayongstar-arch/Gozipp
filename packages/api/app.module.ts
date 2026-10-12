@@ -47,6 +47,7 @@ import { AuthModule } from './auth/auth.module'; // NEW
 
 import { LoggingInterceptor, ResilienceInterceptor } from './common/interceptors';
 import { AiService } from './ai.service';
+import { DatabaseMigrationService } from './database/database-migration.service';
 
 @Global()
 @Module({
@@ -134,6 +135,7 @@ import { AiService } from './ai.service';
     SosService,
     AuditLogService,
     S3Service,
+    DatabaseMigrationService,
     // Add Throttler Guard globally
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },

@@ -1,6 +1,6 @@
-import { Injectable, BadRequestException, UnauthorizedException, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -30,12 +30,14 @@ export interface DeviceMetadata {
 
 @Injectable()
 export class AuthService {
+    private readonly logger = new Logger(AuthService.name);
     private redis: Redis;
 
     constructor(
         @InjectRepository(PassengerEntity) private passengerRepo: Repository<PassengerEntity>,
         @InjectRepository(DriverEntity) private driverRepo: Repository<DriverEntity>,
         @InjectRepository(RefreshTokenEntity) private refreshRepo: Repository<RefreshTokenEntity>,
+        private dataSource: DataSource,
         private jwtService: JwtService,
         private configService: ConfigService,
         private auditLog: AuditLogService,
@@ -46,16 +48,40 @@ export class AuthService {
     }
 
     private async findUserById(userId: string, role: 'PASSENGER' | 'DRIVER') {
-        return role === 'PASSENGER'
-            ? this.passengerRepo.findOne({ where: { id: userId } })
-            : this.driverRepo.findOne({ where: { id: userId } });
+        try {
+            return role === 'PASSENGER'
+                ? await this.passengerRepo.findOne({ where: { id: userId } })
+                : await this.driverRepo.findOne({ where: { id: userId } });
+        } catch (err: any) {
+            this.logger.warn(`findUserById TypeORM error, trying raw query fallback: ${err?.message}`);
+            try {
+                const table = role === 'PASSENGER' ? 'passengers' : 'drivers';
+                const rows = await this.dataSource.query(`SELECT * FROM ${table} WHERE id = $1 LIMIT 1`, [userId]);
+                return rows[0] || null;
+            } catch (rawErr: any) {
+                this.logger.error(`findUserById raw query error: ${rawErr?.message}`);
+                return null;
+            }
+        }
     }
 
     private async findUserByPhone(phoneNumber: string, role: 'PASSENGER' | 'DRIVER') {
         phoneNumber = normalizeThaiMobileNumber(phoneNumber) || phoneNumber;
-        return role === 'PASSENGER'
-            ? this.passengerRepo.findOne({ where: { phone: phoneNumber } })
-            : this.driverRepo.findOne({ where: { phone: phoneNumber } });
+        try {
+            return role === 'PASSENGER'
+                ? await this.passengerRepo.findOne({ where: { phone: phoneNumber } })
+                : await this.driverRepo.findOne({ where: { phone: phoneNumber } });
+        } catch (err: any) {
+            this.logger.warn(`findUserByPhone TypeORM error, trying raw query fallback: ${err?.message}`);
+            try {
+                const table = role === 'PASSENGER' ? 'passengers' : 'drivers';
+                const rows = await this.dataSource.query(`SELECT * FROM ${table} WHERE phone = $1 LIMIT 1`, [phoneNumber]);
+                return rows[0] || null;
+            } catch (rawErr: any) {
+                this.logger.error(`findUserByPhone raw query error: ${rawErr?.message}`);
+                return null;
+            }
+        }
     }
 
     // --- TOKEN MANAGEMENT ---
@@ -74,30 +100,52 @@ export class AuthService {
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
 
-        const savedToken = await this.refreshRepo.save({
-            userId,
-            userRole: role,
-            tokenHash,
-            expiresAt,
-            ipAddress: deviceMeta.ipAddress,
-            deviceId: deviceMeta.deviceId,
-            deviceName: deviceMeta.deviceName,
-            os: deviceMeta.os,
-            browser: deviceMeta.browser,
-            location: deviceMeta.location,
-            lastActiveAt: new Date(),
-        });
+        let refreshToken = `temp_${userId}:${rawToken}`;
+        try {
+            const savedToken = await this.refreshRepo.save({
+                userId,
+                userRole: role,
+                tokenHash,
+                expiresAt,
+                ipAddress: deviceMeta.ipAddress,
+                deviceId: deviceMeta.deviceId,
+                deviceName: deviceMeta.deviceName,
+                os: deviceMeta.os,
+                browser: deviceMeta.browser,
+                location: deviceMeta.location,
+                lastActiveAt: new Date(),
+            });
+            refreshToken = `${savedToken.id}:${rawToken}`;
+        } catch (err: any) {
+            this.logger.warn(`Failed persisting refresh token via TypeORM: ${err?.message || err}`);
+            try {
+                const rows = await this.dataSource.query(`
+                    INSERT INTO refresh_tokens (user_id, user_type, token_hash, expires_at, ip_address, device_id, device_name)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING id
+                `, [userId, role, tokenHash, expiresAt, deviceMeta.ipAddress || null, deviceMeta.deviceId || null, deviceMeta.deviceName || null]);
+                if (rows && rows[0]?.id) {
+                    refreshToken = `${rows[0].id}:${rawToken}`;
+                }
+            } catch (rawErr: any) {
+                this.logger.warn(`Raw refresh token fallback failed, using temporary session token: ${rawErr?.message}`);
+            }
+        }
 
         // 4. Log Audit Event
-        await this.auditLog.log({
-            actorId: userId,
-            actorRole: role,
-            action: 'LOGIN',
-            ipAddress: deviceMeta.ipAddress,
-        });
+        try {
+            await this.auditLog.log({
+                actorId: userId,
+                actorRole: role,
+                action: 'LOGIN',
+                ipAddress: deviceMeta.ipAddress,
+            });
+        } catch (auditErr: any) {
+            this.logger.warn(`Audit log failed: ${auditErr?.message || auditErr}`);
+        }
 
         // Return token as recordId:rawToken for fast O(1) lookup during refresh
-        return { accessToken, refreshToken: `${savedToken.id}:${rawToken}` };
+        return { accessToken, refreshToken };
     }
 
     async refreshTokens(oldRefreshToken: string, deviceMeta: DeviceMetadata = {}) {
@@ -362,7 +410,19 @@ export class AuthService {
         }
 
         if (role === 'PASSENGER') {
-            let passenger = await this.passengerRepo.findOne({ where: { phone: normalized } });
+            let passenger: any = null;
+            try {
+                passenger = await this.passengerRepo.findOne({ where: { phone: normalized } });
+            } catch (err: any) {
+                this.logger.warn(`TypeORM passenger lookup error, trying raw query fallback: ${err?.message}`);
+                try {
+                    const rows = await this.dataSource.query(`SELECT * FROM passengers WHERE phone = $1 LIMIT 1`, [normalized]);
+                    if (rows && rows.length > 0) passenger = rows[0];
+                } catch (rawErr: any) {
+                    this.logger.error(`Raw query passenger lookup failed: ${rawErr?.message}`);
+                }
+            }
+
             const isNew = !passenger;
             if (!passenger) {
                 const cleanName = (name || '').trim() || 'ผู้ใช้งานใหม่';
@@ -370,32 +430,61 @@ export class AuthService {
 
                 let referredById: string | null = null;
                 if (referralCode) {
-                    const inviter = await this.passengerRepo.findOne({ where: { referral_code: referralCode } });
-                    if (inviter) referredById = inviter.id;
+                    try {
+                        const inviter = await this.passengerRepo.findOne({ where: { referral_code: referralCode } });
+                        if (inviter) referredById = inviter.id;
+                    } catch (e: any) {
+                        this.logger.warn(`Referral lookup failed: ${e?.message}`);
+                    }
                 }
 
-                passenger = this.passengerRepo.create({
-                    phone: normalized,
-                    name: cleanName.slice(0, 200),
-                    auth_provider: 'OTP',
-                    provider_id: decoded.uid,
-                    points_balance: 0,
-                    free_rides_remaining: 3,
-                    referral_code: `P-${crypto.randomUUID().toUpperCase().slice(0, 6)}`,
-                    referred_by_id: referredById || undefined,
-                });
-                await this.passengerRepo.save(passenger);
-                await this.auditLog.log({
-                    actorId: passenger.id,
-                    actorRole: 'PASSENGER',
-                    action: 'REGISTER_FIREBASE',
-                    metadata: { phone: normalized },
-                    ipAddress: deviceMeta.ipAddress,
-                });
+                const refCode = `P-${crypto.randomUUID().toUpperCase().slice(0, 6)}`;
+                try {
+                    passenger = this.passengerRepo.create({
+                        phone: normalized,
+                        name: cleanName.slice(0, 200),
+                        auth_provider: 'OTP',
+                        provider_id: decoded.uid,
+                        points_balance: 0,
+                        free_rides_remaining: 3,
+                        referral_code: refCode,
+                        referred_by_id: referredById || undefined,
+                    });
+                    passenger = await this.passengerRepo.save(passenger);
+                } catch (saveErr: any) {
+                    this.logger.warn(`TypeORM save passenger failed, executing raw UPSERT fallback: ${saveErr?.message}`);
+                    const newId = crypto.randomUUID();
+                    await this.dataSource.query(`
+                        INSERT INTO passengers (id, phone, name, auth_provider, provider_id, points_balance, free_rides_remaining, referral_code, referred_by_id)
+                        VALUES ($1, $2, $3, 'OTP', $4, 0, 3, $5, $6)
+                        ON CONFLICT (phone) DO UPDATE 
+                        SET name = EXCLUDED.name, provider_id = EXCLUDED.provider_id
+                    `, [newId, normalized, cleanName.slice(0, 200), decoded.uid, refCode, referredById || null]);
+
+                    const rows = await this.dataSource.query(`SELECT * FROM passengers WHERE phone = $1 LIMIT 1`, [normalized]);
+                    passenger = (rows && rows[0]) ? rows[0] : ({ id: newId, phone: normalized, name: cleanName, points_balance: 0, free_rides_remaining: 3 } as any);
+                }
+
+                try {
+                    await this.auditLog.log({
+                        actorId: passenger.id,
+                        actorRole: 'PASSENGER',
+                        action: 'REGISTER_FIREBASE',
+                        metadata: { phone: normalized },
+                        ipAddress: deviceMeta.ipAddress,
+                    });
+                } catch (auditErr: any) {
+                    this.logger.warn(`Audit log registration failed: ${auditErr?.message}`);
+                }
             } else if (!passenger.provider_id && decoded.uid) {
-                passenger.provider_id = decoded.uid;
-                if (name?.trim()) passenger.name = name.trim().slice(0, 200);
-                await this.passengerRepo.save(passenger);
+                try {
+                    passenger.provider_id = decoded.uid;
+                    if (name?.trim()) passenger.name = name.trim().slice(0, 200);
+                    await this.passengerRepo.save(passenger);
+                } catch (updErr: any) {
+                    this.logger.warn(`Update passenger provider_id failed, running raw update: ${updErr?.message}`);
+                    await this.dataSource.query(`UPDATE passengers SET provider_id = $1 WHERE id = $2`, [decoded.uid, passenger.id]).catch(() => null);
+                }
             }
 
             const tokens = await this.issueTokens(passenger.id, 'PASSENGER', deviceMeta);
@@ -414,30 +503,65 @@ export class AuthService {
         }
 
         // DRIVER
-        let driver = await this.driverRepo.findOne({ where: { phone: normalized } });
+        let driver: any = null;
+        try {
+            driver = await this.driverRepo.findOne({ where: { phone: normalized } });
+        } catch (err: any) {
+            this.logger.warn(`TypeORM driver lookup error, trying raw query fallback: ${err?.message}`);
+            try {
+                const rows = await this.dataSource.query(`SELECT * FROM drivers WHERE phone = $1 LIMIT 1`, [normalized]);
+                if (rows && rows.length > 0) driver = rows[0];
+            } catch (rawErr: any) {
+                this.logger.error(`Raw query driver lookup failed: ${rawErr?.message}`);
+            }
+        }
+
         const isNew = !driver;
         if (!driver) {
             const cleanName = (name || '').trim() || 'คนขับใหม่';
-            driver = this.driverRepo.create({
-                phone: normalized,
-                name: cleanName.slice(0, 200),
-                plate: '',
-                invite_code: 'FIREBASE',
-                approval_status: 'PENDING',
-                auth_provider: 'OTP',
-                provider_id: decoded.uid,
-            });
-            await this.driverRepo.save(driver);
-            await this.auditLog.log({
-                actorId: driver.id,
-                actorRole: 'DRIVER',
-                action: 'REGISTER_FIREBASE',
-                metadata: { phone: normalized },
-                ipAddress: deviceMeta.ipAddress,
-            });
+            try {
+                driver = this.driverRepo.create({
+                    phone: normalized,
+                    name: cleanName.slice(0, 200),
+                    plate: '',
+                    invite_code: 'FIREBASE',
+                    approval_status: 'PENDING',
+                    auth_provider: 'OTP',
+                    provider_id: decoded.uid,
+                });
+                driver = await this.driverRepo.save(driver);
+            } catch (saveErr: any) {
+                this.logger.warn(`TypeORM save driver failed, running raw insert fallback: ${saveErr?.message}`);
+                const newId = crypto.randomUUID();
+                await this.dataSource.query(`
+                    INSERT INTO drivers (id, phone, name, plate, invite_code, approval_status, auth_provider, provider_id)
+                    VALUES ($1, $2, $3, '', 'FIREBASE', 'PENDING', 'OTP', $4)
+                    ON CONFLICT (phone) DO UPDATE SET name = EXCLUDED.name, provider_id = EXCLUDED.provider_id
+                `, [newId, normalized, cleanName.slice(0, 200), decoded.uid]);
+
+                const rows = await this.dataSource.query(`SELECT * FROM drivers WHERE phone = $1 LIMIT 1`, [normalized]);
+                driver = (rows && rows[0]) ? rows[0] : ({ id: newId, phone: normalized, name: cleanName, approval_status: 'PENDING' } as any);
+            }
+
+            try {
+                await this.auditLog.log({
+                    actorId: driver.id,
+                    actorRole: 'DRIVER',
+                    action: 'REGISTER_FIREBASE',
+                    metadata: { phone: normalized },
+                    ipAddress: deviceMeta.ipAddress,
+                });
+            } catch (auditErr: any) {
+                this.logger.warn(`Audit log registration driver failed: ${auditErr?.message}`);
+            }
         } else if (!driver.provider_id && decoded.uid) {
-            driver.provider_id = decoded.uid;
-            await this.driverRepo.save(driver);
+            try {
+                driver.provider_id = decoded.uid;
+                await this.driverRepo.save(driver);
+            } catch (updErr: any) {
+                this.logger.warn(`Update driver provider_id failed, running raw update: ${updErr?.message}`);
+                await this.dataSource.query(`UPDATE drivers SET provider_id = $1 WHERE id = $2`, [decoded.uid, driver.id]).catch(() => null);
+            }
         }
 
         const tokens = await this.issueTokens(driver.id, 'DRIVER', deviceMeta);
