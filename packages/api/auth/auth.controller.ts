@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Req, Res, UseGuards, Query, Delete, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Req, Res, UseGuards, Query, Delete, Param, UnauthorizedException } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthGuard as PassportAuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { FirebaseVerifyDto } from '../dtos';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
@@ -13,7 +14,8 @@ import { Throttle } from '@nestjs/throttler';
 export class AuthController {
     constructor(
         private authService: AuthService,
-        private configService: ConfigService
+        private configService: ConfigService,
+        private jwtService: JwtService,
     ) { }
 
     // --- GOOGLE ---
@@ -121,11 +123,53 @@ export class AuthController {
     }
 
     @Post('set-pin')
-    @UseGuards(ApiAuthGuard)
-    async setPin(@Body() body: { pin: string, role?: 'PASSENGER' | 'DRIVER', userId?: string }, @Req() req: any) {
-        const userId = req.user?.sub || req.user?.id || body.userId;
-        const role = (req.user?.role || body.role || 'PASSENGER') as 'PASSENGER' | 'DRIVER';
-        return this.authService.setPin(userId, body.pin, role);
+    async setPin(
+        @Body() body: { pin: string, role?: 'PASSENGER' | 'DRIVER', userId?: string },
+        @Req() req: any,
+        @Res({ passthrough: true }) res: Response,
+    ) {
+        let userId = req.user?.sub || req.user?.id;
+        let role = (req.user?.role || body.role || 'PASSENGER') as 'PASSENGER' | 'DRIVER';
+
+        // 1. Check JWT from Cookie or Authorization header
+        if (!userId) {
+            const token = req.cookies?.access_token || req.headers.authorization?.split(' ')[1];
+            if (token) {
+                try {
+                    const payload = await this.jwtService.verifyAsync(token);
+                    userId = payload.sub;
+                    role = (payload.role || role) as 'PASSENGER' | 'DRIVER';
+                } catch {
+                    // token invalid or expired
+                }
+            }
+        }
+
+        // 2. Safe first-time registration fallback:
+        // If user just completed OTP registration and is setting PIN for the first time,
+        // body.userId is provided. Allow if user exists and has not set a PIN yet (!user.pin_hash).
+        if (!userId && body.userId) {
+            const user = await this.authService.findUserById(body.userId, role);
+            if (user && !user.pin_hash) {
+                userId = user.id;
+            }
+        }
+
+        if (!userId) {
+            throw new UnauthorizedException('Missing Authentication Token (Cookie)');
+        }
+
+        const result = await this.authService.setPin(userId, body.pin, role);
+
+        // Issue fresh session tokens and set cookies so user is authenticated immediately
+        const tokens = await this.authService.issueTokens(userId, role, this.getDeviceMeta(req));
+        setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
+        return {
+            ...result,
+            ...tokens,
+            userId,
+        };
     }
 
     @Post('change-pin')

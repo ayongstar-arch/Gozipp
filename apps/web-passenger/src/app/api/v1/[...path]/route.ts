@@ -32,6 +32,16 @@ async function handleProxy(request: NextRequest, { params }: { params: Promise<{
     }
   });
 
+  const cookieHeader = request.headers.get('cookie') || request.cookies.toString();
+  if (cookieHeader) {
+    headers.set('cookie', cookieHeader);
+  }
+
+  const authHeader = request.headers.get('authorization');
+  if (authHeader) {
+    headers.set('authorization', authHeader);
+  }
+
   const method = request.method;
   let body: ArrayBuffer | undefined = undefined;
   if (!['GET', 'HEAD'].includes(method)) {

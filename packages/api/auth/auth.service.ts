@@ -47,7 +47,7 @@ export class AuthService {
         this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
     }
 
-    private async findUserById(userId: string, role: 'PASSENGER' | 'DRIVER') {
+    async findUserById(userId: string, role: 'PASSENGER' | 'DRIVER') {
         try {
             return role === 'PASSENGER'
                 ? await this.passengerRepo.findOne({ where: { id: userId } })
