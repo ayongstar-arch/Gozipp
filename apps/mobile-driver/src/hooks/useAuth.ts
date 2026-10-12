@@ -10,13 +10,17 @@ import { API_BASE_URL } from '@/constants';
 
 // Internal helper: authenticated fetch with JWT
 const apiFetch = async (path: string, options: RequestInit = {}, token?: string | null) => {
+  const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_access_token') : null);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     ...(options.headers as Record<string, string> || {}),
   };
   const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({}));
+  if (data.accessToken && typeof window !== 'undefined') {
+    localStorage.setItem('gozipp_access_token', data.accessToken);
+  }
   if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
   return data;
 };
@@ -141,9 +145,10 @@ export const useAuth = () => {
       if (!/^\d{4,6}$/.test(pin)) {
         throw new Error('PIN ต้องเป็นตัวเลข 4-6 หลัก');
       }
+      const userId = user?.id || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_driver_id') : undefined);
       await apiFetch('/api/v1/auth/set-pin', {
         method: 'POST',
-        body: JSON.stringify({ pin, role: 'DRIVER' }),
+        body: JSON.stringify({ pin, role: 'DRIVER', userId }),
       }, token);
 
       setToastMessage('ตั้ง PIN สำเร็จ!');

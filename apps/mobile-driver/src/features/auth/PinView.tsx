@@ -32,7 +32,7 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber }) => {
     const pinCode = pin.join('');
     if (pinCode.length < 4) return;
     
-    if (mode === 'SETUP' && userId) {
+    if (mode === 'SETUP') {
       await setupPin(pinCode);
     } else if (mode === 'LOGIN' && phoneNumber) {
       await loginWithPin(phoneNumber, pinCode);

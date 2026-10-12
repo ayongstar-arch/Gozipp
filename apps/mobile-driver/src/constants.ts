@@ -44,7 +44,7 @@ export const UI_LABELS_TH = {
 export const API_BASE_URL =
   (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) ||
   (typeof window !== 'undefined' && (window as any).__GOZIPP_API_URL) ||
-  'http://localhost:3000';
+  'https://gozipp-api-staging-production.up.railway.app';
 
 export const SOCKET_URL =
   (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SOCKET_URL) ||

@@ -69,6 +69,13 @@ const RegisterView: React.FC = () => {
       const data = await res.json();
       
       if (data.success || data.user || data.driverId) {
+        if (data.accessToken && typeof window !== 'undefined') {
+          localStorage.setItem('gozipp_access_token', data.accessToken);
+        }
+        if ((data.driverId || data.user?.id) && typeof window !== 'undefined') {
+          localStorage.setItem('gozipp_driver_id', data.driverId || data.user?.id);
+        }
+
         setUser({
           id: data.driverId || data.user?.id || '',
           name: data.name || data.user?.name || formData.name,
