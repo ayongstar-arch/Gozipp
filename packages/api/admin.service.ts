@@ -238,25 +238,20 @@ export class AdminService {
     await this.redis.set('config:referral_points', points.toString());
   }
 
-  // --- Trip Pricing & Overdraft Configuration ---
+  // --- Trip Pricing & Overdraft Configuration (Flat Fee per Trip) ---
 
   async getPricingConfig() {
     const baseFare = await this.redis.get('config:trip_base_fare_points');
-    const perKm = await this.redis.get('config:trip_per_km_points');
     const overdraftLimit = await this.redis.get('config:emergency_overdraft_limit');
     return {
       baseFarePoints: baseFare ? parseInt(baseFare, 10) : 25,
-      perKmPoints: perKm ? parseInt(perKm, 10) : 5,
       emergencyOverdraftLimit: overdraftLimit ? parseInt(overdraftLimit, 10) : 100,
     };
   }
 
-  async setPricingConfig(dto: { baseFarePoints?: number; perKmPoints?: number; emergencyOverdraftLimit?: number }) {
+  async setPricingConfig(dto: { baseFarePoints?: number; emergencyOverdraftLimit?: number }) {
     if (dto.baseFarePoints !== undefined && dto.baseFarePoints >= 0) {
       await this.redis.set('config:trip_base_fare_points', dto.baseFarePoints.toString());
-    }
-    if (dto.perKmPoints !== undefined && dto.perKmPoints >= 0) {
-      await this.redis.set('config:trip_per_km_points', dto.perKmPoints.toString());
     }
     if (dto.emergencyOverdraftLimit !== undefined && dto.emergencyOverdraftLimit >= 0) {
       await this.redis.set('config:emergency_overdraft_limit', dto.emergencyOverdraftLimit.toString());

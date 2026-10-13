@@ -53,9 +53,8 @@ const AdminRateDashboard: React.FC = () => {
   const [referralPoints, setReferralPoints] = useState<number>(50);
   const [isReferralSaving, setIsReferralSaving] = useState(false);
 
-  // Pricing Policy State (Configured by Admin)
+  // Pricing Policy State (Configured by Admin - Flat Fee per Trip)
   const [baseFarePoints, setBaseFarePoints] = useState<number>(25);
-  const [perKmPoints, setPerKmPoints] = useState<number>(5);
   const [emergencyOverdraftLimit, setEmergencyOverdraftLimit] = useState<number>(100);
   const [isPricingSaving, setIsPricingSaving] = useState(false);
 
@@ -96,7 +95,6 @@ const AdminRateDashboard: React.FC = () => {
           if (response.ok) {
               const data = await response.json();
               if (data.baseFarePoints !== undefined) setBaseFarePoints(data.baseFarePoints);
-              if (data.perKmPoints !== undefined) setPerKmPoints(data.perKmPoints);
               if (data.emergencyOverdraftLimit !== undefined) setEmergencyOverdraftLimit(data.emergencyOverdraftLimit);
           }
       } catch (error) {
@@ -139,7 +137,6 @@ const AdminRateDashboard: React.FC = () => {
               },
               body: JSON.stringify({
                   baseFarePoints,
-                  perKmPoints,
                   emergencyOverdraftLimit,
               })
           });
@@ -503,18 +500,7 @@ const AdminRateDashboard: React.FC = () => {
                                   className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-lg focus:outline-none focus:border-gozipp-green"
                                   min="0"
                               />
-                              <p className="text-[10px] text-slate-500 mt-1">แต้มที่ระบบจะหักผู้โดยสารเมื่อเรียกวินเริ่มต้น (ค่าเริ่มต้น: 25 แต้ม)</p>
-                          </div>
-
-                          <div>
-                              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">ค่าบริการตามระยะทางต่อกิโลเมตร (Points / Km)</label>
-                              <input
-                                  type="number"
-                                  value={perKmPoints}
-                                  onChange={(e) => setPerKmPoints(Math.max(0, parseInt(e.target.value) || 0))}
-                                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-lg focus:outline-none focus:border-gozipp-green"
-                                  min="0"
-                              />
+                               <p className="text-[10px] text-slate-500 mt-1">แต้มที่ระบบจะหักผู้โดยสารแบบเหมาจ่ายต่อเที่ยว (ค่าเริ่มต้น: 25 แต้ม)</p>
                           </div>
 
                           <div>

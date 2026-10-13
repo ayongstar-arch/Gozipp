@@ -305,11 +305,9 @@ export class PassengerService implements OnModuleInit {
 
   async getPricingConfig() {
     const baseFare = await this.redis.get('config:trip_base_fare_points');
-    const perKm = await this.redis.get('config:trip_per_km_points');
     const overdraftLimit = await this.redis.get('config:emergency_overdraft_limit');
     return {
       baseFarePoints: baseFare ? parseInt(baseFare, 10) : 25,
-      perKmPoints: perKm ? parseInt(perKm, 10) : 5,
       emergencyOverdraftLimit: overdraftLimit ? parseInt(overdraftLimit, 10) : 100,
     };
   }
@@ -323,8 +321,8 @@ export class PassengerService implements OnModuleInit {
     );
 
     const pricing = await this.getPricingConfig();
-    const estimatedFare = pricing.baseFarePoints + (route.distanceKm * pricing.perKmPoints);
-    const pointsRequired = Math.ceil(estimatedFare);
+    // Flat rate per trip (no distance-based multiplier)
+    const pointsRequired = pricing.baseFarePoints;
 
     const balance = await this.creditService.getBalance(dto.passengerId);
     const passenger = await this.passengerRepo.findOne({ where: { id: dto.passengerId } });

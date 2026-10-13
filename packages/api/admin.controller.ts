@@ -192,7 +192,7 @@ export class AdminController {
   @Post('config/pricing')
   @Roles('ADMIN')
   async setPricingConfig(
-    @Body() body: { baseFarePoints?: number; perKmPoints?: number; emergencyOverdraftLimit?: number },
+    @Body() body: { baseFarePoints?: number; emergencyOverdraftLimit?: number },
     @Req() req: any
   ) {
     const updated = await this.adminService.setPricingConfig(body);
