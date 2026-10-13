@@ -723,15 +723,17 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
                         {isLoading ? 'กำลังตรวจสอบ...' : 'ยืนยันรหัส'}
                     </button>
 
-                    <div className="text-center mt-4">
+                    <div className="text-center mt-5">
                         {otpCountdown > 0 ? (
-                            <span className="text-slate-400 text-sm">ส่งรหัสใหม่ได้ใน {otpCountdown} วินาที</span>
+                            <span className="text-slate-400 text-xs font-medium bg-slate-100 px-3 py-1.5 rounded-full inline-block">
+                                ⏱️ ขอรหัส OTP ใหม่ได้ในอีก <strong className="text-slate-700">{otpCountdown}</strong> วินาที
+                            </span>
                         ) : (
                             <button
                                 onClick={() => requestOtp(true)}
-                                className="text-mywin-blue text-sm font-bold hover:underline"
+                                className="text-mywin-blue text-xs font-black uppercase tracking-wider hover:underline bg-blue-50 px-4 py-2 rounded-full inline-flex items-center gap-1.5"
                             >
-                                ส่งรหัสใหม่
+                                <span>🔄 ขอรับรหัส OTP อีกครั้ง</span>
                             </button>
                         )}
                     </div>
