@@ -116,6 +116,18 @@ export class PassengerController {
       parseInt(limit),
     );
   }
+
+  /** GET /api/v1/passenger/drivers/search?q=... */
+  @Get('drivers/search')
+  async searchDrivers(@Query('q') query: string) {
+    return this.passengerService.lookupDrivers(query || '');
+  }
+
+  /** GET /api/v1/passenger/drivers/candidates?stationId=... */
+  @Get('drivers/candidates')
+  async getFavoriteCandidates(@Query('stationId') stationId?: string) {
+    return this.passengerService.getFavoriteCandidates(stationId);
+  }
 }
 
 // ===== RIDE OPERATIONS =====

@@ -58,6 +58,11 @@ export const useRide = () => {
           setRideStatus(newTrip.status);
           setIsSearching(newTrip.status === 'SEARCHING');
 
+          if (newTrip.status === 'SCHEDULED') {
+            setIsSearching(false);
+            setToastMessage('⏱️ บันทึกการนัดหมายวินล่วงหน้าเรียบร้อยแล้ว!');
+          }
+
           // If driver accepted the trip, fetch driver details
           if (newTrip.status === 'ACCEPTED' && newTrip.driver_id) {
             const { data: driver } = await supabase
@@ -130,6 +135,10 @@ export const useRide = () => {
     destLng: number,
     destAddress: string,
     isEmergency = false,
+    options?: {
+      scheduledAt?: string;
+      preferredDriverId?: string;
+    }
   ): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
@@ -145,6 +154,8 @@ export const useRide = () => {
           destLng,
           destAddress,
           isEmergency,
+          scheduledAt: options?.scheduledAt,
+          preferredDriverId: options?.preferredDriverId,
         }),
       });
 
@@ -155,8 +166,9 @@ export const useRide = () => {
         eta: data.eta,
       });
       setCurrentTripId(data.tripId);
-      setIsSearching(true);
-      setRideStatus('SEARCHING');
+      const isSched = data.status === 'SCHEDULED';
+      setIsSearching(!isSched);
+      setRideStatus(data.status || 'SEARCHING');
 
       return true;
     } catch (err: any) {

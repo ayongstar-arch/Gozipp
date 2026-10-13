@@ -71,10 +71,17 @@ export class TripEntity {
   // Status
   @Column({
     type: 'enum',
-    enum: ['SEARCHING', 'ACCEPTED', 'DRIVER_ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'TIMEOUT_NO_DRIVER'],
+    enum: ['SEARCHING', 'SCHEDULED', 'ACCEPTED', 'DRIVER_ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'TIMEOUT_NO_DRIVER'],
     default: 'SEARCHING'
   })
   status: string;
+
+  // Advance Ride Scheduling & Preferred Driver
+  @Column({ type: 'timestamptz', nullable: true })
+  scheduled_at: Date;
+
+  @Column({ nullable: true })
+  preferred_driver_id: string;
 
   // Timestamps
   @CreateDateColumn({ type: 'timestamptz' })

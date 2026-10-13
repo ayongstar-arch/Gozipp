@@ -38,9 +38,18 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect, OnM
   ) { }
 
   async onModuleInit() {
-    await this.subscriber.subscribe('ride:requested');
-    this.subscriber.on('message', (_channel, tripId) => {
-      void this.offerTripToNextDriver(tripId);
+    await this.subscriber.subscribe('ride:requested', 'ride:scheduled');
+    this.subscriber.on('message', (channel, data) => {
+      if (channel === 'ride:requested') {
+        void this.offerTripToNextDriver(data);
+      } else if (channel === 'ride:scheduled') {
+        try {
+          const payload = JSON.parse(data);
+          if (payload.preferredDriverId) {
+            this.server.to(`user:${payload.preferredDriverId}`).emit('RIDE_SCHEDULED', payload);
+          }
+        } catch {}
+      }
     });
     // Best-effort resume: a schema without the trips table (e.g. partial
     // dev DBs) must not prevent boot.
@@ -67,11 +76,17 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect, OnM
 
       let driverId: string | null = null;
       let stationId: string | null = null;
-      for (const candidateStation of this.fairQueueService.rankStationsByDistance(trip.pickup.lat, trip.pickup.lng)) {
-        driverId = await this.fairQueueService.popBestDriver(candidateStation);
-        if (driverId) {
-          stationId = candidateStation;
-          break;
+
+      // Prioritize preferred driver if specified
+      if ((trip as any).preferredDriverId) {
+        driverId = (trip as any).preferredDriverId;
+      } else {
+        for (const candidateStation of this.fairQueueService.rankStationsByDistance(trip.pickup.lat, trip.pickup.lng)) {
+          driverId = await this.fairQueueService.popBestDriver(candidateStation);
+          if (driverId) {
+            stationId = candidateStation;
+            break;
+          }
         }
       }
 

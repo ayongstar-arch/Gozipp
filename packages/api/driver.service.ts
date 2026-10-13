@@ -245,9 +245,14 @@ export class DriverService implements OnModuleInit {
     if (!acquired) throw new BadRequestException('งานนี้หมดอายุหรือมีคนรับไปแล้ว');
 
     const trip = await this.tripRepo.findOne({ where: { id: dto.tripId } });
-    if (!trip || trip.status !== 'SEARCHING') {
+    if (!trip || !['SEARCHING', 'SCHEDULED'].includes(trip.status)) {
       await this.redis.del(lockKey);
       throw new BadRequestException('งานนี้ไม่อยู่ในสถานะรอคนขับ');
+    }
+
+    if (trip.preferred_driver_id && trip.preferred_driver_id !== dto.driverId && trip.status === 'SCHEDULED') {
+      await this.redis.del(lockKey);
+      throw new BadRequestException('งานนี้ถูกนัดหมายไว้สำหรับวินประจำท่านอื่น');
     }
 
     const passengerId = await this.redis.hget(`trip:${dto.tripId}`, 'passengerId');

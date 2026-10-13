@@ -34,6 +34,13 @@ import {
   CreditCard,
   Sparkles,
   Plus,
+  Calendar,
+  Clock,
+  Star,
+  UserCheck,
+  Search,
+  Trash2,
+  User,
 } from 'lucide-react';
 
 // Dynamic import for Leaflet map to prevent SSR errors
@@ -51,8 +58,19 @@ const PassengerHomeMap = dynamic(() => import('@/components/PassengerHomeMap'), 
 const DEFAULT_COORDS = { lat: 13.738, lng: 100.562 };
 const DEFAULT_ADDRESS = 'กำลังระบุตำแหน่งของคุณ...';
 
+export interface FavoriteDriver {
+  id: string;
+  name: string;
+  nickname?: string;
+  plate: string;
+  phone?: string;
+  rating?: number;
+  stationId?: string;
+  totalTrips?: number;
+}
+
 export default function HomeView() {
-  const { myLocation, setMyLocation, isSearching, activeDriver, stationId, setStationId } =
+  const { myLocation, setMyLocation, isSearching, activeDriver, stationId, setStationId, rideStatus } =
     useRideStore();
   const { user } = useAuthStore();
   const { setToastMessage } = useUIStore();
@@ -74,6 +92,22 @@ export default function HomeView() {
   const [showQuickTopupModal, setShowQuickTopupModal] = useState(false);
   const [selectedTopupAmount, setSelectedTopupAmount] = useState<number | null>(20);
   const [isTopupLoading, setIsTopupLoading] = useState(false);
+
+  // Advance Ride Appointment (นัดหมายเวลาวินล่วงหน้า)
+  const [bookingMode, setBookingMode] = useState<'NOW' | 'SCHEDULE'>('NOW');
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState<string | null>(null);
+  const [scheduledDisplay, setScheduledDisplay] = useState<string>('');
+  const [customScheduleInput, setCustomScheduleInput] = useState<string>('');
+
+  // Regular / Favorite Driver Selection (เลือกวินขาประจำ)
+  const [preferredDriver, setPreferredDriver] = useState<FavoriteDriver | null>(null);
+  const [showDriverPickerModal, setShowDriverPickerModal] = useState(false);
+  const [favoriteDrivers, setFavoriteDrivers] = useState<FavoriteDriver[]>([]);
+  const [driverSearchQuery, setDriverSearchQuery] = useState('');
+  const [driverSearchResults, setDriverSearchResults] = useState<FavoriteDriver[]>([]);
+  const [isSearchingDriver, setIsSearchingDriver] = useState(false);
+  const [suggestedDrivers, setSuggestedDrivers] = useState<FavoriteDriver[]>([]);
 
   // Dynamic Location-Aware Pickup Chips (Adapts to user's real GPS position)
   const [dynamicChips, setDynamicChips] = useState<string[]>([
@@ -244,6 +278,121 @@ export default function HomeView() {
       .catch(() => {});
   }, []);
 
+  // Helper to format Thai schedule
+  const formatThaiSchedule = useCallback((date: Date): string => {
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = date.toDateString() === tomorrow.toDateString();
+
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const timeStr = `${hours}:${minutes} น.`;
+
+    if (isToday) return `วันนี้ ${timeStr}`;
+    if (isTomorrow) return `พรุ่งนี้ ${timeStr}`;
+
+    const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    return `${date.getDate()} ${months[date.getMonth()]} ${timeStr}`;
+  }, []);
+
+  const handleSelectScheduleDate = useCallback((date: Date) => {
+    if (date.getTime() <= Date.now()) {
+      setToastMessage('⚠️ กรุณาเลือกเวลาในอนาคต');
+      return;
+    }
+    setScheduledAt(date.toISOString());
+    setScheduledDisplay(formatThaiSchedule(date));
+    setBookingMode('SCHEDULE');
+    setShowScheduleModal(false);
+    setToastMessage(`⏱️ ตั้งเวลานัดหมาย: ${formatThaiSchedule(date)}`);
+  }, [formatThaiSchedule, setToastMessage]);
+
+  const handleClearSchedule = useCallback(() => {
+    setScheduledAt(null);
+    setScheduledDisplay('');
+    setBookingMode('NOW');
+    setShowScheduleModal(false);
+    setToastMessage('🔄 เปลี่ยนเป็นเรียกวินทันที');
+  }, [setToastMessage]);
+
+  const saveFavoriteDriver = useCallback((driver: FavoriteDriver) => {
+    setFavoriteDrivers((prev) => {
+      if (prev.some((d) => d.id === driver.id)) return prev;
+      const updated = [driver, ...prev];
+      try {
+        localStorage.setItem('gozipp_favorite_drivers', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
+
+  const removeFavoriteDriver = useCallback((driverId: string) => {
+    setFavoriteDrivers((prev) => {
+      const updated = prev.filter((d) => d.id !== driverId);
+      try {
+        localStorage.setItem('gozipp_favorite_drivers', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    if (preferredDriver?.id === driverId) {
+      setPreferredDriver(null);
+    }
+    setToastMessage('🗑️ ลบออกจากรายการวินประจำแล้ว');
+  }, [preferredDriver, setToastMessage]);
+
+  const handleSearchDriver = useCallback(async (q: string) => {
+    setDriverSearchQuery(q);
+    if (!q.trim()) {
+      setDriverSearchResults([]);
+      return;
+    }
+    setIsSearchingDriver(true);
+    try {
+      const res = await apiFetch(`/api/v1/passenger/drivers/search?q=${encodeURIComponent(q.trim())}`);
+      setDriverSearchResults(Array.isArray(res) ? res : []);
+    } catch {
+      setDriverSearchResults([]);
+    } finally {
+      setIsSearchingDriver(false);
+    }
+  }, []);
+
+  // Load favorite drivers from localStorage & check URL ref/driverId on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('gozipp_favorite_drivers');
+      if (saved) {
+        setFavoriteDrivers(JSON.parse(saved));
+      }
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const refDriverId = params.get('ref') || params.get('driverId');
+      if (refDriverId) {
+        apiFetch(`/api/v1/passenger/drivers/search?q=${encodeURIComponent(refDriverId)}`)
+          .then((drivers: FavoriteDriver[]) => {
+            if (drivers && drivers.length > 0) {
+              const matched = drivers[0];
+              setPreferredDriver(matched);
+              saveFavoriteDriver(matched);
+              setToastMessage(`⭐ เชื่อมต่อกับพี่วินประจำ "${matched.nickname || matched.name}" เรียบร้อยแล้ว!`);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+
+    // Load suggested drivers for the area
+    apiFetch('/api/v1/passenger/drivers/candidates')
+      .then((res: FavoriteDriver[]) => {
+        if (Array.isArray(res)) setSuggestedDrivers(res);
+      })
+      .catch(() => {});
+  }, [saveFavoriteDriver, setToastMessage]);
+
   const mapCenter = myLocation || DEFAULT_COORDS;
 
   // Re-center handler: triggers GPS refresh and pans map
@@ -299,7 +448,7 @@ export default function HomeView() {
     setToastMessage(`🎙️ บันทึกเสียง: "${chosen}"`);
   }, [setToastMessage]);
 
-  // Main Call Win handler with point comparison check
+  // Main Call Win handler with point comparison check, advance scheduling & favorite driver support
   const handleCallWin = async () => {
     const currentPoints = user?.pointsBalance ?? 0;
     const freeRides = user?.freeRidesRemaining ?? 0;
@@ -320,18 +469,29 @@ export default function HomeView() {
     const destLng = lng + 0.004;
     const destAddress = 'แจ้งคนขับเมื่อขึ้นรถ (วินใกล้คุณ)';
 
-    const success = await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress, false);
+    const rideOptions = {
+      scheduledAt: bookingMode === 'SCHEDULE' && scheduledAt ? scheduledAt : undefined,
+      preferredDriverId: preferredDriver?.id || undefined,
+    };
+
+    const success = await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress, false, rideOptions);
     if (success) {
       if (hasFreeRides) {
         useAuthStore.getState().setUser({
           ...user!,
           freeRidesRemaining: Math.max(0, freeRides - 1),
         });
-        setToastMessage(`🎁 เรียกวินสำเร็จ! ใช้ฟรีไรด์ (เหลือ ${freeRides - 1} เที่ยว)`);
+        setToastMessage(`🎁 ${bookingMode === 'SCHEDULE' ? 'นัดหมายสำเร็จ' : 'เรียกวินสำเร็จ'}! ใช้ฟรีไรด์ (เหลือ ${freeRides - 1} เที่ยว)`);
       } else {
         const remaining = currentPoints - tripPoints;
         useAuthStore.getState().updatePointsBalance(remaining);
-        setToastMessage(`🛵 เรียกวินสำเร็จ! หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
+        if (bookingMode === 'SCHEDULE') {
+          setToastMessage(`⏱️ นัดหมายเวลาล่วงหน้าสำเร็จ! (${scheduledDisplay}) หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
+        } else if (preferredDriver) {
+          setToastMessage(`⭐ เรียกพี่วินขาประจำ "${preferredDriver.nickname || preferredDriver.name}" สำเร็จ! หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
+        } else {
+          setToastMessage(`🛵 เรียกวินสำเร็จ! หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
+        }
       }
     }
   };
@@ -356,7 +516,12 @@ export default function HomeView() {
     const destLng = lng + 0.004;
     const destAddress = 'แจ้งคนขับเมื่อขึ้นรถ (วินใกล้คุณ)';
 
-    const success = await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress, true);
+    const rideOptions = {
+      scheduledAt: bookingMode === 'SCHEDULE' && scheduledAt ? scheduledAt : undefined,
+      preferredDriverId: preferredDriver?.id || undefined,
+    };
+
+    const success = await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress, true, rideOptions);
     if (success) {
       const newNegativeBalance = currentPoints - tripPoints;
       useAuthStore.getState().updatePointsBalance(newNegativeBalance);
@@ -607,45 +772,158 @@ export default function HomeView() {
           </div>
         </div>
 
-        {/* Nearby Win Card */}
+        {/* Feature Selectors Row: Advance Scheduling & Regular Driver */}
+        <div className="grid grid-cols-2 gap-1.5 pointer-events-auto">
+          {/* 1. Schedule Ride Button */}
+          <button
+            onClick={() => setShowScheduleModal(true)}
+            className={`py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all active:scale-95 ${
+              bookingMode === 'SCHEDULE' && scheduledAt
+                ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300 shadow-md shadow-emerald-900/30'
+                : 'bg-[#091b27]/90 border-slate-700/60 text-slate-300 hover:border-slate-600'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Clock className={`w-3.5 h-3.5 shrink-0 ${bookingMode === 'SCHEDULE' && scheduledAt ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
+              <div className="text-left truncate">
+                <div className="text-[10px] text-slate-400 font-medium leading-none">เวลาเดินทาง</div>
+                <div className="text-xs truncate font-bold mt-0.5">
+                  {bookingMode === 'SCHEDULE' && scheduledAt ? scheduledDisplay : 'นัดเวลาล่วงหน้า'}
+                </div>
+              </div>
+            </div>
+            {bookingMode === 'SCHEDULE' && scheduledAt ? (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClearSchedule();
+                }}
+                className="w-4 h-4 rounded-full bg-emerald-800/80 hover:bg-emerald-700 text-emerald-200 flex items-center justify-center text-[10px] shrink-0 ml-1"
+                title="ยกเลิกนัดหมาย"
+              >
+                ✕
+              </span>
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            )}
+          </button>
+
+          {/* 2. Preferred / Regular Driver Button */}
+          <button
+            onClick={() => setShowDriverPickerModal(true)}
+            className={`py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all active:scale-95 ${
+              preferredDriver
+                ? 'bg-amber-950/80 border-amber-500/60 text-amber-300 shadow-md shadow-amber-900/30'
+                : 'bg-[#091b27]/90 border-slate-700/60 text-slate-300 hover:border-slate-600'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Star className={`w-3.5 h-3.5 shrink-0 ${preferredDriver ? 'text-amber-400 fill-amber-400' : 'text-slate-400'}`} />
+              <div className="text-left truncate">
+                <div className="text-[10px] text-slate-400 font-medium leading-none">คนขับ</div>
+                <div className="text-xs truncate font-bold mt-0.5">
+                  {preferredDriver ? (preferredDriver.nickname || preferredDriver.name) : 'เลือกวินขาประจำ'}
+                </div>
+              </div>
+            </div>
+            {preferredDriver ? (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPreferredDriver(null);
+                  setToastMessage('🔄 เปลี่ยนเป็นวินทั่วไปตามคิว');
+                }}
+                className="w-4 h-4 rounded-full bg-amber-800/80 hover:bg-amber-700 text-amber-200 flex items-center justify-center text-[10px] shrink-0 ml-1"
+                title="ยกเลิกวินประจำ"
+              >
+                ✕
+              </span>
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            )}
+          </button>
+        </div>
+
+        {/* Nearby Win / Driver Card */}
         <div
-          onClick={() => setShowWinDetails(!showWinDetails)}
-          className="bg-[#091b27]/90 backdrop-blur-md rounded-2xl border border-slate-700/60 p-2 sm:p-2.5 shadow-2xl flex items-center justify-between cursor-pointer hover:border-[#00e58b]/40 active:scale-[0.99] transition-all pointer-events-auto w-full max-w-full min-w-0 box-border"
+          onClick={() => {
+            if (preferredDriver) {
+              setShowDriverPickerModal(true);
+            } else {
+              setShowWinDetails(!showWinDetails);
+            }
+          }}
+          className={`backdrop-blur-md rounded-2xl border p-2 sm:p-2.5 shadow-2xl flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all pointer-events-auto w-full max-w-full min-w-0 box-border ${
+            preferredDriver
+              ? 'bg-[#091b27]/95 border-amber-500/40 hover:border-amber-400/60'
+              : 'bg-[#091b27]/90 border-slate-700/60 hover:border-[#00e58b]/40'
+          }`}
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#102a3a] border border-[#00e58b]/20 flex items-center justify-center text-white shrink-0 shadow-inner">
-              <Bike className="w-4 h-4 text-white" />
+            <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center shrink-0 shadow-inner ${
+              preferredDriver ? 'bg-amber-950/80 border border-amber-500/30 text-amber-300' : 'bg-[#102a3a] border border-[#00e58b]/20 text-white'
+            }`}>
+              {preferredDriver ? <Star className="w-4 h-4 text-amber-400 fill-amber-400" /> : <Bike className="w-4 h-4 text-white" />}
             </div>
             <div className="min-w-0">
-              <div className="text-xs sm:text-sm font-bold text-white tracking-tight leading-tight">
-                วินใกล้คุณ
+              <div className="text-xs sm:text-sm font-bold text-white tracking-tight leading-tight truncate flex items-center gap-1.5">
+                <span>{preferredDriver ? `วินประจำ: ${preferredDriver.name}` : 'วินใกล้คุณ'}</span>
+                {preferredDriver && (
+                  <span className="text-[10px] font-bold text-amber-400 bg-amber-950/80 border border-amber-500/40 px-1.5 py-0.2 rounded-full">
+                    ⭐ {preferredDriver.rating?.toFixed(1) || '5.0'}
+                  </span>
+                )}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5 truncate">
-                มีคนขับพร้อมให้บริการหลายคัน
+                {preferredDriver
+                  ? `ทะเบียน/เบอร์เสื้อ: ${preferredDriver.plate} • มีประวัติคุ้นเคย`
+                  : 'มีคนขับพร้อมให้บริการหลายคัน (ระบบคิวเป็นธรรม)'}
               </div>
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
         </div>
 
-        {/* Main CTA Button: เรียกวินใกล้ฉัน */}
+        {/* Main CTA Button: เรียกวิน / ยืนยันนัดหมาย */}
         <div className="pointer-events-auto w-full max-w-full">
           <button
             onClick={handleCallWin}
             disabled={isLoading || isSearching}
-            className="w-full py-3 sm:py-3.5 px-4 rounded-full font-black text-sm sm:text-base text-[#041a12] bg-gradient-to-r from-[#00f293] via-[#00d075] to-[#00b865] shadow-[0_10px_25px_rgba(0,229,139,0.35)] flex items-center justify-center gap-2 hover:brightness-105 active:scale-[0.98] transition-all disabled:opacity-50"
+            className={`w-full py-3 sm:py-3.5 px-4 rounded-full font-black text-sm sm:text-base flex items-center justify-center gap-2 hover:brightness-105 active:scale-[0.98] transition-all disabled:opacity-50 ${
+              bookingMode === 'SCHEDULE' && scheduledAt
+                ? 'text-[#041a12] bg-gradient-to-r from-emerald-300 via-teal-300 to-[#00e58b] shadow-[0_10px_25px_rgba(0,229,139,0.35)]'
+                : preferredDriver
+                ? 'text-[#191003] bg-gradient-to-r from-amber-300 via-yellow-400 to-[#00e58b] shadow-[0_10px_25px_rgba(245,158,11,0.35)]'
+                : 'text-[#041a12] bg-gradient-to-r from-[#00f293] via-[#00d075] to-[#00b865] shadow-[0_10px_25px_rgba(0,229,139,0.35)]'
+            }`}
           >
-            <Bike className="w-4 h-4 sm:w-5 sm:h-5 text-[#041a12] stroke-[2.5]" />
+            {bookingMode === 'SCHEDULE' && scheduledAt ? (
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-[#041a12] stroke-[2.5]" />
+            ) : preferredDriver ? (
+              <Star className="w-4 h-4 sm:w-5 sm:h-5 text-[#191003] fill-[#191003]" />
+            ) : (
+              <Bike className="w-4 h-4 sm:w-5 sm:h-5 text-[#041a12] stroke-[2.5]" />
+            )}
             <span className="tracking-tight font-black">
-              {isLoading ? 'กำลังส่งคำขอ...' : 'เรียกวินใกล้ฉัน'}
+              {isLoading
+                ? 'กำลังส่งคำขอ...'
+                : bookingMode === 'SCHEDULE' && scheduledAt
+                ? (preferredDriver ? `นัดหมายวินประจำ (${scheduledDisplay})` : `ยืนยันนัดหมายเวลา (${scheduledDisplay})`)
+                : preferredDriver
+                ? `เรียกพี่วินขาประจำ (${preferredDriver.nickname || preferredDriver.name})`
+                : 'เรียกวินใกล้ฉัน'}
             </span>
-            <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-[#041a12] stroke-[2.5]" />
+            <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-current stroke-[2.5]" />
           </button>
 
           {/* Subtext info */}
           <div className="flex items-center justify-center gap-1 mt-1 text-[10px] text-slate-400 font-normal">
             <Info className="w-3 h-3 text-slate-400 shrink-0" />
-            <span>ไม่ต้องระบุจุดหมายปลายทาง</span>
+            <span>
+              {bookingMode === 'SCHEDULE' && scheduledAt
+                ? 'คนขับจะจัดเตรียมมารับตามเวลานัดหมาย · ยกเลิกได้ตลอด'
+                : 'ไม่ต้องระบุจุดหมายปลายทาง · ชำระตามอัตรามาตรฐาน'}
+            </span>
           </div>
         </div>
       </div>
@@ -1099,6 +1377,443 @@ export default function HomeView() {
                 ปิดหน้าต่าง
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 10. MODAL: ADVANCE RIDE APPOINTMENT (นัดหมายเวลาวินล่วงหน้า) */}
+      {showScheduleModal && (
+        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+          <div className="bg-[#091b27] border-t sm:border border-emerald-500/40 rounded-t-3xl sm:rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                  <Clock className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-white">นัดหมายเวลาวินล่วงหน้า</h4>
+                  <p className="text-[10px] text-slate-400">จองเวลารถล่วงหน้าเพื่อเตรียมพร้อมตรงเวลา</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Time Presets */}
+            <div>
+              <span className="text-[11px] font-bold text-slate-300 block mb-2 flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-[#00e58b]" />
+                เลือกเวลานัดหมายด่วน
+              </span>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {[
+                  { label: '+15 นาที', offsetMin: 15 },
+                  { label: '+30 นาที', offsetMin: 30 },
+                  { label: '+1 ชั่วโมง', offsetMin: 60 },
+                  { label: '+2 ชั่วโมง', offsetMin: 120 },
+                ].map((preset) => {
+                  const target = new Date(Date.now() + preset.offsetMin * 60 * 1000);
+                  return (
+                    <button
+                      key={preset.label}
+                      onClick={() => handleSelectScheduleDate(target)}
+                      className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-emerald-950/40 hover:border-emerald-500/40 text-slate-200 transition-all text-left flex items-center justify-between group active:scale-95"
+                    >
+                      <div>
+                        <div className="font-bold text-xs group-hover:text-emerald-300">{preset.label}</div>
+                        <div className="text-[10px] text-slate-400">
+                          {target.getHours().toString().padStart(2, '0')}:{target.getMinutes().toString().padStart(2, '0')} น.
+                        </div>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400" />
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Tomorrow Presets */}
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {[
+                  { label: 'พรุ่งนี้ 07:30 น.', h: 7, m: 30 },
+                  { label: 'พรุ่งนี้ 08:30 น.', h: 8, m: 30 },
+                ].map((preset) => {
+                  const target = new Date();
+                  target.setDate(target.getDate() + 1);
+                  target.setHours(preset.h, preset.m, 0, 0);
+                  return (
+                    <button
+                      key={preset.label}
+                      onClick={() => handleSelectScheduleDate(target)}
+                      className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-emerald-950/40 hover:border-emerald-500/40 text-slate-200 transition-all text-left flex items-center justify-between group active:scale-95"
+                    >
+                      <div>
+                        <div className="font-bold text-xs group-hover:text-emerald-300">{preset.label}</div>
+                        <div className="text-[10px] text-slate-400">รอบเช้าไปทำงาน</div>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Custom Date & Time Picker */}
+            <div className="bg-slate-900/90 rounded-2xl p-3 border border-slate-800 space-y-2">
+              <span className="text-[11px] font-bold text-slate-300 block flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-[#00e58b]" />
+                หรือระบุวันและเวลาเอง
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="datetime-local"
+                  value={customScheduleInput}
+                  onChange={(e) => setCustomScheduleInput(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 text-slate-100 rounded-xl px-3 py-2 text-xs w-full outline-none focus:border-emerald-500 font-mono"
+                />
+                <button
+                  disabled={!customScheduleInput}
+                  onClick={() => {
+                    if (customScheduleInput) {
+                      const d = new Date(customScheduleInput);
+                      if (!isNaN(d.getTime())) {
+                        handleSelectScheduleDate(d);
+                      }
+                    }
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-xs px-3.5 py-2 rounded-xl shrink-0 transition-all"
+                >
+                  เลือก
+                </button>
+              </div>
+            </div>
+
+            {/* Current Schedule Status */}
+            {scheduledAt && (
+              <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-3 flex items-center justify-between text-xs text-emerald-300">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div>
+                    <div className="text-[10px] text-emerald-400/80">เวลานัดหมายที่เลือกไว้:</div>
+                    <div className="font-black text-sm text-emerald-200">{scheduledDisplay}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={handleClearSchedule}
+                  className="text-[11px] text-red-400 hover:text-red-300 bg-red-950/60 border border-red-500/40 px-2 py-1 rounded-lg"
+                >
+                  ล้างค่า
+                </button>
+              </div>
+            )}
+
+            <div className="pt-1">
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="w-full bg-[#00e58b] text-[#041a12] font-black py-2.5 rounded-xl text-xs hover:brightness-105 active:scale-95 transition-all"
+              >
+                เสร็จสิ้น
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 11. MODAL: REGULAR / FAVORITE DRIVER PICKER (เลือกวินขาประจำ) */}
+      {showDriverPickerModal && (
+        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+          <div className="bg-[#091b27] border-t sm:border border-amber-500/40 rounded-t-3xl sm:rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                  <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-white">เลือกวินขาประจำ</h4>
+                  <p className="text-[10px] text-slate-400">เลือกพี่วินที่คุณคุ้นเคย หรือค้นหาจากรหัส/เบอร์เสื้อ</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDriverPickerModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Current Active Selection Badge */}
+            {preferredDriver ? (
+              <div className="bg-amber-950/40 border border-amber-500/40 rounded-2xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-base border border-amber-500/30">
+                    🛵
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">กำลังเลือกเป็นวินประจำ</div>
+                    <div className="text-sm font-black text-white">{preferredDriver.nickname || preferredDriver.name}</div>
+                    <div className="text-[10px] text-slate-300">
+                      ทะเบียน/เบอร์: {preferredDriver.plate} • ⭐ {preferredDriver.rating?.toFixed(1) || '5.0'}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setPreferredDriver(null);
+                    setToastMessage('🔄 ยกเลิกวินประจำแล้ว (กลับมาใช้วินทั่วไปตามคิว)');
+                  }}
+                  className="text-[10px] text-red-300 bg-red-950/70 border border-red-500/40 px-2 py-1 rounded-lg"
+                >
+                  ล้างการเลือก
+                </button>
+              </div>
+            ) : (
+              <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-300 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Bike className="w-4 h-4 text-[#00e58b]" />
+                  <span>สถานะปัจจุบัน: <strong>วินทั่วไปตามคิว</strong></span>
+                </div>
+                <span className="text-[10px] text-[#00e58b] bg-[#00e58b]/10 px-2 py-0.5 rounded-full font-bold">Fair Queue</span>
+              </div>
+            )}
+
+            {/* Search Input for Driver ID / Shirt Number / Plate / Phone */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-slate-300 block flex items-center gap-1.5">
+                <Search className="w-3.5 h-3.5 text-amber-400" />
+                ค้นหาพี่วิน (รหัสคนขับ, เบอร์เสื้อ, ชื่อ หรือ ทะเบียน)
+              </span>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={driverSearchQuery}
+                  onChange={(e) => handleSearchDriver(e.target.value)}
+                  placeholder="เช่น พี่สมชาย, วินเบอร์ 12, 1กข 1234..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-amber-400"
+                />
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              </div>
+
+              {/* Search Results */}
+              {isSearchingDriver ? (
+                <div className="text-center py-2 text-xs text-slate-400 flex items-center justify-center gap-2">
+                  <div className="w-3 h-3 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
+                  <span>กำลังค้นหาข้อมูลคนขับ...</span>
+                </div>
+              ) : driverSearchResults.length > 0 ? (
+                <div className="space-y-1.5 mt-2 max-h-40 overflow-y-auto">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ผลการค้นหา:</span>
+                  {driverSearchResults.map((d) => (
+                    <div
+                      key={d.id}
+                      className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl flex items-center justify-between hover:border-amber-500/50 transition-colors"
+                    >
+                      <div>
+                        <div className="text-xs font-bold text-white">{d.nickname || d.name}</div>
+                        <div className="text-[10px] text-slate-400">ทะเบียน: {d.plate} • ⭐ {d.rating?.toFixed(1) || '5.0'}</div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            saveFavoriteDriver(d);
+                            setPreferredDriver(d);
+                            setShowDriverPickerModal(false);
+                            setToastMessage(`⭐ เลือกพี่วิน "${d.nickname || d.name}" เป็นวินประจำแล้ว!`);
+                          }}
+                          className="bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold px-2.5 py-1 rounded-lg text-[10px]"
+                        >
+                          เลือก
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : driverSearchQuery.trim() ? (
+                <div className="text-center py-2 text-[11px] text-slate-400">
+                  ไม่พบคนขับที่ตรงกับข้อความที่ค้นหา
+                </div>
+              ) : null}
+            </div>
+
+            {/* Saved Favorite Drivers List */}
+            <div className="space-y-2 pt-1">
+              <span className="text-[11px] font-bold text-slate-300 block flex items-center gap-1.5">
+                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                วินขาประจำที่คุณบันทึกไว้ ({favoriteDrivers.length})
+              </span>
+
+              {favoriteDrivers.length === 0 ? (
+                <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-3 text-center text-[11px] text-slate-400">
+                  คุณยังไม่มีรายชื่อวินขาประจำ<br />
+                  <span className="text-[10px] text-slate-500">สแกน QR Code คนขับ หรือ ค้นหาจากรหัสเพื่อบันทึก</span>
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {favoriteDrivers.map((d) => {
+                    const isSelected = preferredDriver?.id === d.id;
+                    return (
+                      <div
+                        key={d.id}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between transition-all ${
+                          isSelected
+                            ? 'bg-amber-950/40 border-amber-500/60 shadow-sm'
+                            : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-slate-800 text-amber-300 flex items-center justify-center text-xs font-bold">
+                            🛵
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-white flex items-center gap-1">
+                              <span>{d.nickname || d.name}</span>
+                              {isSelected && (
+                                <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1 rounded">กำลังเลือก</span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {d.plate} • ⭐ {d.rating?.toFixed(1) || '5.0'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setPreferredDriver(d);
+                              setShowDriverPickerModal(false);
+                              setToastMessage(`⭐ เลือกพี่วิน "${d.nickname || d.name}" เป็นวินประจำแล้ว!`);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                              isSelected
+                                ? 'bg-amber-500 text-[#041a12]'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                            }`}
+                          >
+                            {isSelected ? 'เลือกอยู่' : 'เลือก'}
+                          </button>
+                          <button
+                            onClick={() => removeFavoriteDriver(d.id)}
+                            className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/40 transition-colors"
+                            title="ลบออกจากรายการ"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Suggested Drivers in Station / Area */}
+            {suggestedDrivers.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  แนะนำพี่วินเรตติ้งดีในพื้นที่:
+                </span>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                  {suggestedDrivers.map((d) => (
+                    <div
+                      key={d.id}
+                      className="bg-slate-900 border border-slate-800 p-2 rounded-xl shrink-0 w-36 text-center space-y-1"
+                    >
+                      <div className="text-xs font-bold text-white truncate">{d.nickname || d.name}</div>
+                      <div className="text-[10px] text-amber-400 font-bold">⭐ {d.rating?.toFixed(1) || '5.0'}</div>
+                      <div className="text-[9px] text-slate-400 truncate">{d.plate}</div>
+                      <button
+                        onClick={() => {
+                          saveFavoriteDriver(d);
+                          setPreferredDriver(d);
+                          setShowDriverPickerModal(false);
+                          setToastMessage(`⭐ เลือกพี่วิน "${d.nickname || d.name}" เป็นวินประจำแล้ว!`);
+                        }}
+                        className="w-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold py-1 rounded text-[9px]"
+                      >
+                        เลือกคนนี้
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={() => {
+                  setPreferredDriver(null);
+                  setShowDriverPickerModal(false);
+                  setToastMessage('🛵 ใช้วินทั่วไปตามคิวมาตรฐาน');
+                }}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-xl text-xs transition-colors"
+              >
+                ใช้วินทั่วไปตามคิว (ไม่เจาะจงคนขับ)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 12. OVERLAY: ACTIVE SCHEDULED TRIP CONFIRMATION */}
+      {rideStatus === 'SCHEDULED' && (
+        <div className="absolute inset-0 z-50 bg-[#07131d]/90 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center text-white">
+          <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 text-emerald-400 flex items-center justify-center text-3xl mb-4 shadow-xl shadow-emerald-900/30 animate-bounce">
+            ⏱️
+          </div>
+          <h3 className="text-xl font-black mb-1 tracking-tight">นัดหมายเวลาล่วงหน้าสำเร็จ!</h3>
+          <p className="text-slate-300 text-xs max-w-xs mb-4">
+            ระบบบันทึกเวลาและการเดินทางของคุณเรียบร้อยแล้ว คนขับจะเตรียมมารับตามเวลาที่กำหนด
+          </p>
+
+          <div className="bg-[#091b27] border border-emerald-500/40 rounded-2xl p-4 text-xs text-left w-full max-w-xs space-y-2.5 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="text-slate-400 text-[11px]">สถานะ:</span>
+              <span className="text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40 text-[10px]">
+                ⏱️ นัดหมายล่วงหน้า (SCHEDULED)
+              </span>
+            </div>
+            {scheduledDisplay && (
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-[11px]">เวลานัดหมาย:</span>
+                <span className="font-extrabold text-white text-xs">{scheduledDisplay}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 text-[11px]">จุดรับ:</span>
+              <span className="font-medium text-slate-200 text-[11px] truncate max-w-[170px]">{currentAddress}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 text-[11px]">คนขับ:</span>
+              <span className="font-bold text-amber-300 text-[11px]">
+                {preferredDriver ? `${preferredDriver.name} (${preferredDriver.plate})` : 'ระบบคิวมาตรฐาน'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+              <span className="text-slate-400 text-[11px]">ค่าบริการ:</span>
+              <span className="font-extrabold text-[#00e58b]">{tripPoints} แต้ม ({tripPoints} บาท)</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 mt-5 w-full max-w-xs">
+            <button
+              onClick={cancelRide}
+              className="flex-1 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-2xl text-xs font-bold transition-all active:scale-95"
+            >
+              ยกเลิกนัดหมาย
+            </button>
+            <button
+              onClick={() => {
+                // Keep the active scheduled booking recorded
+                useRideStore.getState().setIsSearching(false);
+                setToastMessage('✅ นัดหมายเวลาล่วงหน้าไว้เรียบร้อยแล้ว');
+              }}
+              className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-lg shadow-emerald-900/40"
+            >
+              รับทราบ
+            </button>
           </div>
         </div>
       )}

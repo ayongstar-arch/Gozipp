@@ -284,6 +284,14 @@ export class RideRequestDto {
   @IsBoolean()
   @IsOptional()
   isEmergency?: boolean;
+
+  @IsString()
+  @IsOptional()
+  scheduledAt?: string;
+
+  @IsString()
+  @IsOptional()
+  preferredDriverId?: string;
 }
 
 // --- Credit System DTOs ---

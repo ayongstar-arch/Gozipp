@@ -241,6 +241,21 @@ export class DatabaseMigrationService implements OnModuleInit {
       );
     `);
 
+    // Trips table additional columns & status enum
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;`);
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS preferred_driver_id VARCHAR(50);`);
+    await this.safeQuery(`
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'trip_status') THEN
+          BEGIN
+            ALTER TYPE trip_status ADD VALUE IF NOT EXISTS 'SCHEDULED';
+          EXCEPTION
+            WHEN duplicate_object THEN null;
+          END;
+        END IF;
+      END $$;
+    `);
+
     // 9. Promotions
     await this.safeQuery(`
       CREATE TABLE IF NOT EXISTS promotions (

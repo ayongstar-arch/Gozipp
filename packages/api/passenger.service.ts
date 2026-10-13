@@ -9,6 +9,7 @@ import { MapService } from './map.service';
 import { SmsService } from './sms.service';
 import { PassengerEntity } from './entities/passenger.entity';
 import { TripEntity } from './entities/trip.entity';
+import { DriverEntity } from './entities/driver.entity';
 import { AuthService, DeviceMetadata } from './auth/auth.service';
 import { normalizeThaiMobileNumber } from './common/phone.util';
 import { hashPin } from './common/pin-crypto';
@@ -26,6 +27,8 @@ export class PassengerService implements OnModuleInit {
     private passengerRepo: Repository<PassengerEntity>,
     @InjectRepository(TripEntity)
     private tripRepo: Repository<TripEntity>,
+    @InjectRepository(DriverEntity)
+    private driverRepo: Repository<DriverEntity>,
     private creditService: CreditService,
     private mapService: MapService,
     private smsService: SmsService,
@@ -339,6 +342,18 @@ export class PassengerService implements OnModuleInit {
       }
     }
 
+    // Determine if advance ride scheduling
+    let tripStatus = 'SEARCHING';
+    let scheduledDate: Date | null = null;
+    if (dto.scheduledAt) {
+      const parsed = new Date(dto.scheduledAt);
+      if (isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+        throw new BadRequestException('เวลานัดหมายล่วงหน้าต้องเป็นเวลาในอนาคต');
+      }
+      scheduledDate = parsed;
+      tripStatus = 'SCHEDULED';
+    }
+
     const tripId = crypto.randomUUID();
     const tripFare = hasFreeRides ? 0 : pointsRequired;
 
@@ -355,14 +370,16 @@ export class PassengerService implements OnModuleInit {
       distance_km: route.distanceKm,
       fare: tripFare,
       credits_used: 0,
-      status: 'SEARCHING',
+      status: tripStatus,
+      scheduled_at: scheduledDate || undefined,
+      preferred_driver_id: dto.preferredDriverId || undefined,
     });
 
     // Cache in Redis for real-time operations
     await this.redis.hset(`trip:${tripId}`, {
       id: tripId,
       passengerId: dto.passengerId,
-      status: 'SEARCHING',
+      status: tripStatus,
       fare: tripFare,
       pickupLat: dto.pickupLat,
       pickupLng: dto.pickupLng,
@@ -371,18 +388,32 @@ export class PassengerService implements OnModuleInit {
       requestedAt: Date.now(),
       distanceKm: route.distanceKm,
       isEmergency: dto.isEmergency ? 'true' : 'false',
+      scheduledAt: scheduledDate ? scheduledDate.toISOString() : '',
+      preferredDriverId: dto.preferredDriverId || '',
     } as any);
 
-    await this.redis.publish('ride:requested', JSON.stringify(tripId));
-    this.setupTimeout(tripId);
+    if (tripStatus === 'SEARCHING') {
+      await this.redis.publish('ride:requested', JSON.stringify(tripId));
+      this.setupTimeout(tripId);
+    } else {
+      // Advance appointment: Broadcast scheduled event to drivers / preferred driver
+      await this.redis.publish('ride:scheduled', JSON.stringify({
+        tripId,
+        scheduledAt: scheduledDate?.toISOString(),
+        preferredDriverId: dto.preferredDriverId || null,
+        passengerId: dto.passengerId,
+      }));
+    }
 
     return {
       tripId,
-      status: 'SEARCHING',
+      status: tripStatus,
       fare: tripFare,
       isFreeRide: hasFreeRides,
       distance: route.distanceKm.toFixed(1) + ' กม.',
       eta: route.durationMins + ' นาที',
+      scheduledAt: scheduledDate ? scheduledDate.toISOString() : undefined,
+      preferredDriverId: dto.preferredDriverId || undefined,
     };
   }
 
@@ -393,11 +424,13 @@ export class PassengerService implements OnModuleInit {
     const status = await this.redis.hget(`trip:${tripId}`, 'status');
     const driverId = await this.redis.hget(`trip:${tripId}`, 'driverId');
 
-    if (!status) {
-      return { tripId, status: trip.status, driverId: trip.driver_id };
-    }
-
-    return { tripId, status, driverId: driverId || trip.driver_id };
+    return {
+      tripId,
+      status: status || trip.status,
+      driverId: driverId || trip.driver_id,
+      scheduledAt: trip.scheduled_at,
+      preferredDriverId: trip.preferred_driver_id,
+    };
   }
 
   async canAccessTrip(tripId: string, userId: string): Promise<boolean> {
@@ -419,13 +452,15 @@ export class PassengerService implements OnModuleInit {
       fare: Number(trip.fare),
       distanceKm: Number(trip.distance_km),
       requestedAt: trip.requested_at,
+      scheduledAt: trip.scheduled_at,
+      preferredDriverId: trip.preferred_driver_id,
     };
   }
 
   async cancelRide(tripId: string, passengerId: string) {
     const trip = await this.tripRepo.findOne({ where: { id: tripId, passenger_id: passengerId } });
     if (!trip) throw new NotFoundException('ไม่พบการเดินทาง');
-    if (!['SEARCHING', 'ACCEPTED'].includes(trip.status)) {
+    if (!['SEARCHING', 'SCHEDULED', 'ACCEPTED'].includes(trip.status)) {
       throw new BadRequestException('ไม่สามารถยกเลิกในสถานะนี้ได้');
     }
 
@@ -506,8 +541,57 @@ export class PassengerService implements OnModuleInit {
     return this.tripRepo.findOne({
       where: {
         passenger_id: passengerId,
-        status: In(['SEARCHING', 'ACCEPTED', 'DRIVER_ARRIVED', 'IN_PROGRESS'])
+        status: In(['SEARCHING', 'SCHEDULED', 'ACCEPTED', 'DRIVER_ARRIVED', 'IN_PROGRESS'])
       }
     });
+  }
+
+  // --- DRIVER LOOKUP FOR REGULAR / FAVORITE DRIVERS ---
+
+  async lookupDrivers(query: string) {
+    if (!query || query.trim().length === 0) return [];
+    const clean = query.trim();
+    const qb = this.driverRepo.createQueryBuilder('driver')
+      .where('driver.approval_status = :approved', { approved: 'APPROVED' });
+
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean)) {
+      qb.andWhere('driver.id = :id', { id: clean });
+    } else {
+      qb.andWhere(
+        '(driver.name ILIKE :q OR driver.nickname ILIKE :q OR driver.plate ILIKE :q OR driver.phone ILIKE :q)',
+        { q: `%${clean}%` }
+      );
+    }
+
+    const drivers = await qb.take(8).getMany();
+    return drivers.map((d) => ({
+      id: d.id,
+      name: d.name,
+      nickname: d.nickname || d.name,
+      plate: d.plate,
+      phone: d.phone,
+      rating: Number(d.rating || 5),
+      stationId: d.station_id,
+      totalTrips: d.total_trips,
+    }));
+  }
+
+  async getFavoriteCandidates(stationId?: string) {
+    const qb = this.driverRepo.createQueryBuilder('driver')
+      .where('driver.approval_status = :approved', { approved: 'APPROVED' });
+    if (stationId) {
+      qb.andWhere('driver.station_id = :stationId', { stationId });
+    }
+    const drivers = await qb.orderBy('driver.rating', 'DESC').take(6).getMany();
+    return drivers.map((d) => ({
+      id: d.id,
+      name: d.name,
+      nickname: d.nickname || d.name,
+      plate: d.plate,
+      phone: d.phone,
+      rating: Number(d.rating || 5),
+      stationId: d.station_id,
+      totalTrips: d.total_trips,
+    }));
   }
 }
