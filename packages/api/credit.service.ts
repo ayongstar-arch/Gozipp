@@ -336,6 +336,11 @@ export class CreditService {
     );
 
     await queryRunner.query(
+      `UPDATE passengers SET points_balance = points_balance + $1 WHERE id = $2`,
+      [totalPoints, passengerId]
+    );
+
+    await queryRunner.query(
       `INSERT INTO ${TABLE_WALLET_TXN}
        (passenger_id, type, point_change, amount_baht, reference_id, status, signature, note, created_at)
        VALUES ($1, 'TOPUP', $2, $3, $4, 'SUCCESS', $5, $6, NOW())`,
@@ -361,7 +366,7 @@ export class CreditService {
     return totalPoints;
   }
 
-  async deductForRide(passengerId: string, tripId: string, amount: number): Promise<boolean> {
+  async deductForRide(passengerId: string, tripId: string, amount: number, allowOverdraft = false): Promise<boolean> {
     if (amount <= 0) return true;
 
     const locked = await this.acquireLock(passengerId);
@@ -385,7 +390,7 @@ export class CreditService {
       }
 
       const currentBalance = Number(rows[0].point_balance);
-      if (currentBalance < amount) {
+      if (!allowOverdraft && currentBalance < amount) {
         throw new BadRequestException('ยอดเงินคงเหลือไม่เพียงพอ');
       }
 
@@ -397,6 +402,13 @@ export class CreditService {
         [newBalance, passengerId]
       );
 
+      await queryRunner.query(
+        `UPDATE passengers
+         SET points_balance = $1
+         WHERE id = $2`,
+        [newBalance, passengerId]
+      );
+
       const txPayload = { userId: passengerId, type: 'DEDUCT', change: -amount, tripId };
       const signature = signTransaction(txPayload, this.txSecret);
 
@@ -404,7 +416,7 @@ export class CreditService {
         `INSERT INTO ${TABLE_WALLET_TXN}
          (passenger_id, type, point_change, reference_id, trip_id, status, signature, note, created_at)
          VALUES ($1, 'DEDUCT', $2, $3, $4, 'SUCCESS', $5, $6, NOW())`,
-        [passengerId, -amount, tripId, tripId, signature, 'Ride charge']
+        [passengerId, -amount, tripId, tripId, signature, allowOverdraft && currentBalance < amount ? 'Emergency ride overdraft' : 'Ride charge']
       );
 
       await queryRunner.commitTransaction();

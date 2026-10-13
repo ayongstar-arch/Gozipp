@@ -253,7 +253,8 @@ export class DriverService implements OnModuleInit {
     const passengerId = await this.redis.hget(`trip:${dto.tripId}`, 'passengerId');
     const tripFare = parseFloat(await this.redis.hget(`trip:${dto.tripId}`, 'fare') || '2');
     const shouldCharge = tripFare > 0;
-    const deductionSuccess = shouldCharge ? await this.creditService.deductForRide(passengerId, dto.tripId, tripFare) : true;
+    const isEmergency = (await this.redis.hget(`trip:${dto.tripId}`, 'isEmergency')) === 'true';
+    const deductionSuccess = shouldCharge ? await this.creditService.deductForRide(passengerId, dto.tripId, tripFare, isEmergency) : true;
 
     if (!deductionSuccess) {
       await this.redis.del(lockKey);

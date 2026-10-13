@@ -320,7 +320,13 @@ export class PassengerService implements OnModuleInit {
     const canAfford = hasFreeRides || balance >= pointsRequired;
 
     if (!canAfford) {
-      throw new BadRequestException('แต้มไม่เพียงพอ กรุณาเติมเงิน');
+      if (dto.isEmergency) {
+        if (balance < -100) {
+          throw new BadRequestException('ยอดแต้มติดลบฉุกเฉินสะสมเกินกำหนด (-100 แต้ม) กรุณาเติมแต้มก่อนใช้งานต่อ');
+        }
+      } else {
+        throw new BadRequestException('แต้มไม่เพียงพอ กรุณาเติมแต้ม หรือเลือกใช้งานฉุกเฉิน');
+      }
     }
 
     const tripId = crypto.randomUUID();
@@ -354,6 +360,7 @@ export class PassengerService implements OnModuleInit {
       destLng: dto.destLng,
       requestedAt: Date.now(),
       distanceKm: route.distanceKm,
+      isEmergency: dto.isEmergency ? 'true' : 'false',
     } as any);
 
     await this.redis.publish('ride:requested', JSON.stringify(tripId));

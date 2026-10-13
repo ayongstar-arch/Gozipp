@@ -11,6 +11,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useRide } from '../../hooks/useRide';
 import { STATION_ZONES } from '@/constants';
+import { apiFetch } from '../../services/api';
 import {
   MapPin,
   LocateFixed,
@@ -28,6 +29,11 @@ import {
   Store,
   Building,
   Navigation,
+  Coins,
+  AlertTriangle,
+  CreditCard,
+  Sparkles,
+  Plus,
 } from 'lucide-react';
 
 // Dynamic import for Leaflet map to prevent SSR errors
@@ -40,6 +46,9 @@ const PassengerHomeMap = dynamic(() => import('@/components/PassengerHomeMap'), 
     </div>
   ),
 });
+
+// Base fee points per trip
+const TRIP_POINTS = 25;
 
 // Default coords fallback
 const DEFAULT_COORDS = { lat: 13.738, lng: 100.562 };
@@ -60,6 +69,10 @@ export default function HomeView() {
   const [showWinDetails, setShowWinDetails] = useState(false);
   const [showSafetyModal, setShowSafetyModal] = useState(false);
   const [showPickupPickerModal, setShowPickupPickerModal] = useState(false);
+  const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
+  const [showQuickTopupModal, setShowQuickTopupModal] = useState(false);
+  const [selectedTopupAmount, setSelectedTopupAmount] = useState<number | null>(100);
+  const [isTopupLoading, setIsTopupLoading] = useState(false);
 
   // Dynamic Location-Aware Pickup Chips (Adapts to user's real GPS position)
   const [dynamicChips, setDynamicChips] = useState<string[]>([
@@ -207,6 +220,21 @@ export default function HomeView() {
     }
   }, [error, setToastMessage]);
 
+  // Sync latest user profile and points balance from API
+  useEffect(() => {
+    apiFetch('/api/v1/passenger/me')
+      .then((res) => {
+        if (res?.user && useAuthStore.getState().user) {
+          useAuthStore.getState().setUser({
+            ...useAuthStore.getState().user!,
+            pointsBalance: res.user.pointsBalance !== undefined ? res.user.pointsBalance : useAuthStore.getState().user!.pointsBalance,
+            freeRidesRemaining: res.user.freeRidesRemaining !== undefined ? res.user.freeRidesRemaining : useAuthStore.getState().user!.freeRidesRemaining,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const mapCenter = myLocation || DEFAULT_COORDS;
 
   // Re-center handler: triggers GPS refresh and pans map
@@ -262,8 +290,19 @@ export default function HomeView() {
     setToastMessage(`🎙️ บันทึกเสียง: "${chosen}"`);
   }, [setToastMessage]);
 
-  // Main Call Win handler
+  // Main Call Win handler with point comparison check
   const handleCallWin = async () => {
+    const currentPoints = user?.pointsBalance ?? 0;
+    const freeRides = user?.freeRidesRemaining ?? 0;
+    const hasFreeRides = freeRides > 0;
+    const canAfford = hasFreeRides || currentPoints >= TRIP_POINTS;
+
+    // Check if points are sufficient
+    if (!canAfford) {
+      setShowInsufficientPointsModal(true);
+      return;
+    }
+
     const lat = myLocation?.lat || DEFAULT_COORDS.lat;
     const lng = myLocation?.lng || DEFAULT_COORDS.lng;
     const fullPickup = pickupNote ? `${currentAddress} (${pickupNote})` : currentAddress;
@@ -272,7 +311,78 @@ export default function HomeView() {
     const destLng = lng + 0.004;
     const destAddress = 'แจ้งคนขับเมื่อขึ้นรถ (วินใกล้คุณ)';
 
-    await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress);
+    const success = await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress, false);
+    if (success) {
+      if (hasFreeRides) {
+        useAuthStore.getState().setUser({
+          ...user!,
+          freeRidesRemaining: Math.max(0, freeRides - 1),
+        });
+        setToastMessage(`🎁 เรียกวินสำเร็จ! ใช้ฟรีไรด์ (เหลือ ${freeRides - 1} เที่ยว)`);
+      } else {
+        const remaining = currentPoints - TRIP_POINTS;
+        useAuthStore.getState().updatePointsBalance(remaining);
+        setToastMessage(`🛵 เรียกวินสำเร็จ! หัก ${TRIP_POINTS} แต้ม (คงเหลือ ${remaining} แต้ม)`);
+      }
+    }
+  };
+
+  // Emergency Ride Handler (Allows ride with overdraft / negative balance)
+  const handleEmergencyCall = async () => {
+    const currentPoints = user?.pointsBalance ?? 0;
+
+    // Overdraft limit guard: max negative limit -100 points
+    if (currentPoints < -100) {
+      setToastMessage('❌ คุณมียอดค้างชำระฉุกเฉินสะสมเกินกำหนด (-100 แต้ม) กรุณาเติมแต้มก่อนใช้งานต่อ');
+      return;
+    }
+
+    setShowInsufficientPointsModal(false);
+
+    const lat = myLocation?.lat || DEFAULT_COORDS.lat;
+    const lng = myLocation?.lng || DEFAULT_COORDS.lng;
+    const fullPickup = pickupNote ? `${currentAddress} (${pickupNote})` : currentAddress;
+
+    const destLat = lat + 0.006;
+    const destLng = lng + 0.004;
+    const destAddress = 'แจ้งคนขับเมื่อขึ้นรถ (วินใกล้คุณ)';
+
+    const success = await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress, true);
+    if (success) {
+      const newNegativeBalance = currentPoints - TRIP_POINTS;
+      useAuthStore.getState().updatePointsBalance(newNegativeBalance);
+      setToastMessage(
+        `🚨 เรียกวินในโหมดฉุกเฉินแล้ว! บันทึกยอดแต้มติดลบ ${newNegativeBalance} แต้ม (ระบบจะ Balance หักลบอัตโนมัติเมื่อเติมแต้มครั้งถัดไป)`
+      );
+    }
+  };
+
+  // Quick Topup Handler (Supports promptpay topup and automatic deficit rebalancing)
+  const handleQuickTopup = async (amount: number) => {
+    setIsTopupLoading(true);
+    try {
+      const data = await apiFetch('/api/v1/credit/topup', {
+        method: 'POST',
+        body: JSON.stringify({ amount, paymentMethod: 'PROMPTPAY' }),
+      });
+      const prevBal = user?.pointsBalance ?? 0;
+      const newBal = data.balance !== undefined ? data.balance : prevBal + amount;
+      useAuthStore.getState().updatePointsBalance(newBal);
+
+      if (prevBal < 0) {
+        setToastMessage(
+          `✅ เติมเงิน +${amount} ฿ สำเร็จ! ระบบนำไปหักล้างยอดติดลบ ${prevBal} แต้มแล้ว แต้มคงเหลือสุทธิ: ${newBal} แต้ม`
+        );
+      } else {
+        setToastMessage(`✅ เติมเงินสำเร็จ +${data.pointsAdded || amount} แต้ม (คงเหลือรวม: ${newBal} แต้ม)`);
+      }
+      setShowQuickTopupModal(false);
+      setShowInsufficientPointsModal(false);
+    } catch (err: any) {
+      setToastMessage('❌ ' + (err.message || 'การเติมเงินขัดข้อง กรุณาลองใหม่'));
+    } finally {
+      setIsTopupLoading(false);
+    }
   };
 
   return (
@@ -308,23 +418,56 @@ export default function HomeView() {
             </div>
           </div>
 
-          {/* Right Actions: Notification + Safety Badge */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Right Actions: Points Balance Pill + Safety Badge + Notification */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Passenger Points Balance Pill */}
             <button
-              onClick={() => setToastMessage('🔔 ไม่มีแจ้งเตือนใหม่')}
-              className="w-8 h-8 rounded-full bg-[#0a1e2d]/85 backdrop-blur-md border border-slate-700/60 flex items-center justify-center text-slate-200 hover:text-white transition-colors relative shadow-lg active:scale-95 shrink-0"
-              title="การแจ้งเตือน"
+              onClick={() => setShowQuickTopupModal(true)}
+              className={`backdrop-blur-md border px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 shadow-lg active:scale-95 transition-all ${
+                (user?.pointsBalance ?? 0) < 0
+                  ? 'bg-rose-950/80 border-rose-500/60 text-rose-300'
+                  : (user?.freeRidesRemaining ?? 0) > 0
+                  ? 'bg-amber-950/80 border-amber-500/60 text-amber-300'
+                  : 'bg-[#08221b]/90 border-[#00e58b]/50 text-[#00e58b]'
+              }`}
+              title="แต้มคงเหลือของคุณ (แตะเพื่อเติมแต้ม)"
             >
-              <Bell className="w-3.5 h-3.5" />
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 absolute top-1.5 right-1.5 ring-2 ring-[#0a1e2d]" />
+              {(user?.pointsBalance ?? 0) < 0 ? (
+                <>
+                  <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0 animate-pulse" />
+                  <span>{user?.pointsBalance} แต้ม</span>
+                </>
+              ) : (user?.freeRidesRemaining ?? 0) > 0 ? (
+                <>
+                  <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span>{user?.pointsBalance ?? 0} แต้ม (ฟรี {user?.freeRidesRemaining})</span>
+                </>
+              ) : (
+                <>
+                  <Coins className="w-3 h-3 text-[#00e58b] shrink-0" />
+                  <span>{user?.pointsBalance ?? 0} แต้ม</span>
+                </>
+              )}
+              <span className="w-3.5 h-3.5 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-[10px] ml-0.5 font-black">
+                +
+              </span>
             </button>
 
             <button
               onClick={() => setShowSafetyModal(true)}
-              className="bg-[#06241b]/90 backdrop-blur-md border border-emerald-500/50 text-[#00e58b] px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1 shadow-lg active:scale-95 transition-all shrink-0"
+              className="bg-[#06241b]/90 backdrop-blur-md border border-emerald-500/50 text-[#00e58b] px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1 shadow-lg active:scale-95 transition-all shrink-0"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-[#00e58b]" />
-              <span>ปลอดภัย</span>
+              <span className="hidden xs:inline">ปลอดภัย</span>
+            </button>
+
+            <button
+              onClick={() => setToastMessage('🔔 ไม่มีแจ้งเตือนใหม่')}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#0a1e2d]/85 backdrop-blur-md border border-slate-700/60 flex items-center justify-center text-slate-200 hover:text-white transition-colors relative shadow-lg active:scale-95 shrink-0"
+              title="การแจ้งเตือน"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 absolute top-1 right-1 ring-2 ring-[#0a1e2d]" />
             </button>
           </div>
         </div>
@@ -425,6 +568,36 @@ export default function HomeView() {
 
       {/* 3. BOTTOM FLOATING CONTROLS (Tightly anchored right above bottom navigation bar) */}
       <div className="relative z-20 px-3 pb-2 sm:px-4 sm:pb-2.5 space-y-1.5 pointer-events-none w-full max-w-full min-w-0 box-border">
+        {/* Fare & Points Deduction Indicator Strip */}
+        <div className="bg-[#091b27]/90 backdrop-blur-md rounded-2xl border border-slate-700/60 px-3 py-2 flex items-center justify-between text-xs pointer-events-auto shadow-xl">
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-300 font-medium text-[11px]">ค่าบริการเที่ยวนี้:</span>
+            <span className="text-[#00e58b] font-black text-xs">{TRIP_POINTS} แต้ม</span>
+            <span className="text-slate-500 text-[10px]">· ~20-25 ฿</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {(user?.freeRidesRemaining ?? 0) > 0 ? (
+              <span className="text-amber-300 font-bold bg-amber-950/70 border border-amber-600/40 px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1">
+                <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                <span>ฟรีไรด์เหลือ {user?.freeRidesRemaining} เที่ยว</span>
+              </span>
+            ) : (user?.pointsBalance ?? 0) >= TRIP_POINTS ? (
+              <span className="text-[#00e58b] font-medium bg-[#00e58b]/10 border border-[#00e58b]/30 px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1">
+                <CheckCircle2 className="w-2.5 h-2.5 text-[#00e58b]" />
+                <span>แต้มพอใช้งาน</span>
+              </span>
+            ) : (
+              <button
+                onClick={() => setShowInsufficientPointsModal(true)}
+                className="text-rose-400 font-bold bg-rose-950/80 border border-rose-500/50 px-2.5 py-0.5 rounded-full text-[10px] flex items-center gap-1 hover:brightness-110 active:scale-95 transition-all shadow-sm"
+              >
+                <AlertTriangle className="w-2.5 h-2.5 text-rose-400" />
+                <span>แต้มไม่พอ (ขาด {TRIP_POINTS - (user?.pointsBalance ?? 0)})</span>
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Nearby Win Card */}
         <div
           onClick={() => setShowWinDetails(!showWinDetails)}
@@ -692,6 +865,231 @@ export default function HomeView() {
             >
               รับทราบ
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 8. MODAL: INSUFFICIENT POINTS & EMERGENCY USE */}
+      {showInsufficientPointsModal && (
+        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+          <div className="bg-[#091b27] border-t sm:border border-amber-500/40 rounded-t-3xl sm:rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                  <AlertTriangle className="w-5 h-5 text-amber-400 animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-white">แต้มไม่เพียงพอต่อการใช้งาน</h4>
+                  <p className="text-[10px] text-slate-400">เปรียบเทียบค่าบริการและแต้มคงเหลือ</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowInsufficientPointsModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Comparison Details Card */}
+            <div className="bg-slate-900/80 rounded-2xl p-3.5 border border-slate-800 space-y-2 text-xs">
+              <div className="flex items-center justify-between text-slate-300">
+                <span>ค่าบริการเที่ยวนี้:</span>
+                <span className="font-extrabold text-[#00e58b]">{TRIP_POINTS} แต้ม</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-300">
+                <span>แต้มคงเหลือของคุณ:</span>
+                <span
+                  className={`font-extrabold ${
+                    (user?.pointsBalance ?? 0) < 0 ? 'text-rose-400' : 'text-slate-200'
+                  }`}
+                >
+                  {user?.pointsBalance ?? 0} แต้ม
+                </span>
+              </div>
+              <div className="border-t border-slate-800/80 pt-2 flex items-center justify-between text-rose-400 font-bold">
+                <span>แต้มที่ยังขาด:</span>
+                <span className="text-sm">{TRIP_POINTS - (user?.pointsBalance ?? 0)} แต้ม</span>
+              </div>
+            </div>
+
+            {/* Overdraft debt notice if already negative */}
+            {(user?.pointsBalance ?? 0) < 0 && (
+              <div className="bg-rose-950/40 border border-rose-500/30 rounded-xl p-2.5 text-[11px] text-rose-300 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">มียอดค้างชำระฉุกเฉินเดิม: {user?.pointsBalance} แต้ม</p>
+                  <p className="text-[10px] text-rose-400/80 mt-0.5">
+                    เมื่อเติมเงิน ระบบจะนำไป Balance หักลบยอดหนี้เดิมโดยอัตโนมัติ
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Primary Action: Top Up Now */}
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={() => {
+                  setShowInsufficientPointsModal(false);
+                  setShowQuickTopupModal(true);
+                }}
+                className="w-full py-3 px-4 rounded-xl font-black text-xs text-[#041a12] bg-gradient-to-r from-[#00f293] to-[#00b865] hover:brightness-105 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#00e58b]/20"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>เติมแต้มทันที (PromptPay)</span>
+              </button>
+
+              {/* Secondary Action: Emergency Ride Overdraft */}
+              {(user?.pointsBalance ?? 0) >= -100 ? (
+                <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-3 space-y-2 text-left">
+                  <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>จำเป็นเร่งด่วน? ใช้สิทธิ์เดินทางฉุกเฉินได้</span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 leading-relaxed">
+                    ระบบจะอนุญาตให้คุณเดินทางได้ทันที โดยจะบันทึกเป็น{' '}
+                    <span className="text-amber-300 font-bold">
+                      แต้มติดลบ ({(user?.pointsBalance ?? 0) - TRIP_POINTS} แต้ม)
+                    </span>{' '}
+                    ไว้ในบัญชี และจะนำไป Balance หักลบอัตโนมัติเมื่อคุณเติมแต้มครั้งถัดไป
+                  </p>
+                  <button
+                    onClick={handleEmergencyCall}
+                    disabled={isLoading}
+                    className="w-full py-2.5 px-3 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 font-black rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                  >
+                    <span>🚨 กดยืนยันใช้งานฉุกเฉิน (ยอมรับแต้มติดลบ)</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-rose-950/50 border border-rose-500/40 rounded-xl p-3 text-[11px] text-rose-300 text-center">
+                  ⚠️ คุณมียอดติดลบสะสมเกินวงเงินฉุกเฉิน (-100 แต้ม) กรุณาเติมแต้มก่อนใช้งานต่อ
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowInsufficientPointsModal(false)}
+                className="w-full py-2 text-slate-400 hover:text-white font-medium text-xs transition-colors"
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 9. MODAL: QUICK TOP-UP (PROMPTPAY & AUTO BALANCE) */}
+      {showQuickTopupModal && (
+        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+          <div className="bg-[#091b27] border-t sm:border border-[#00e58b]/40 rounded-t-3xl sm:rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-[#00e58b]/10 text-[#00e58b] flex items-center justify-center border border-[#00e58b]/30">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-white">เติมแต้มกระเป๋าเงิน GoZipp</h4>
+                  <p className="text-[10px] text-slate-400">ชำระผ่าน PromptPay QR อัตโนมัติ</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowQuickTopupModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Current Balance & Deficit Notice */}
+            <div className="bg-slate-900/90 rounded-2xl p-3.5 border border-slate-800 text-xs flex items-center justify-between">
+              <div>
+                <span className="text-slate-400 block text-[10px]">แต้มคงเหลือปัจจุบัน</span>
+                <span
+                  className={`text-base font-black ${
+                    (user?.pointsBalance ?? 0) < 0 ? 'text-rose-400' : 'text-[#00e58b]'
+                  }`}
+                >
+                  {(user?.pointsBalance ?? 0).toLocaleString()} แต้ม
+                </span>
+              </div>
+              {(user?.pointsBalance ?? 0) < 0 && (
+                <div className="text-right">
+                  <span className="text-rose-400 bg-rose-950/70 border border-rose-500/40 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                    มียอดค้างชำระฉุกเฉิน
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Amount Selection Grid */}
+            <div>
+              <span className="text-[11px] font-bold text-slate-300 block mb-2">
+                เลือกจำนวนเงินที่ต้องการเติม
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                {[50, 100, 200, 500].map((amt) => {
+                  const isSelected = selectedTopupAmount === amt;
+                  const projectedBalance = (user?.pointsBalance ?? 0) + amt;
+                  return (
+                    <button
+                      key={amt}
+                      onClick={() => setSelectedTopupAmount(amt)}
+                      className={`p-3 rounded-2xl border text-center transition-all ${
+                        isSelected
+                          ? 'border-[#00e58b] bg-[#00e58b]/15 text-white shadow-lg shadow-[#00e58b]/20 scale-[1.02]'
+                          : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-base font-black">{amt} ฿</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">≈ +{amt} แต้ม</div>
+                      {(user?.pointsBalance ?? 0) < 0 && (
+                        <div className="text-[9px] text-[#00e58b] font-medium mt-1 truncate">
+                          คงเหลือสุทธิ: {projectedBalance}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Balance Projection Explainer */}
+            {(user?.pointsBalance ?? 0) < 0 && selectedTopupAmount && (
+              <div className="bg-[#00e58b]/10 border border-[#00e58b]/30 rounded-xl p-2.5 text-[11px] text-emerald-300">
+                <span className="font-bold">ระบบจะ Balance หักล้างยอดหนี้อัตโนมัติ:</span>
+                <div className="mt-1 text-[10px] text-slate-300">
+                  ยอดติดลบ {user?.pointsBalance} + เติม {selectedTopupAmount} = แต้มคงเหลือสุทธิ{' '}
+                  <span className="text-[#00e58b] font-bold">
+                    {(user?.pointsBalance ?? 0) + selectedTopupAmount} แต้ม
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Top-up Confirm Button */}
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={() => selectedTopupAmount && handleQuickTopup(selectedTopupAmount)}
+                disabled={!selectedTopupAmount || isTopupLoading}
+                className="w-full py-3.5 px-4 rounded-xl font-black text-xs text-[#041a12] bg-gradient-to-r from-[#00f293] to-[#00b865] hover:brightness-105 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-[#00e58b]/20"
+              >
+                {isTopupLoading ? (
+                  <div className="w-4 h-4 border-2 border-[#041a12]/30 border-t-[#041a12] rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <CreditCard className="w-4 h-4" />
+                    <span>ยืนยันเติม {selectedTopupAmount} ฿ (PromptPay)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => setShowQuickTopupModal(false)}
+                className="w-full py-2 text-slate-400 hover:text-white font-medium text-xs transition-colors"
+              >
+                ปิดหน้าต่าง
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -280,6 +280,10 @@ export class RideRequestDto {
   @IsString()
   @IsNotEmpty()
   destAddress: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isEmergency?: boolean;
 }
 
 // --- Credit System DTOs ---

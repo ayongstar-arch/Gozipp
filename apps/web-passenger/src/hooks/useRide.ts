@@ -129,6 +129,7 @@ export const useRide = () => {
     destLat: number,
     destLng: number,
     destAddress: string,
+    isEmergency = false,
   ): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
@@ -143,6 +144,7 @@ export const useRide = () => {
           destLat,
           destLng,
           destAddress,
+          isEmergency,
         }),
       });
 

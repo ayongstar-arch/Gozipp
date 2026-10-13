@@ -63,8 +63,10 @@ const WalletView: React.FC = () => {
         body: JSON.stringify({ amount, paymentMethod: 'PROMPTPAY' }),
       });
       useAuthStore.getState().updatePointsBalance(data.balance);
-      if (data.status === 'CONFIRMED') {
-        setToastMessage(`✅ เติมเงินสำเร็จ +${data.pointsAdded} แต้ม`);
+      if (balance < 0) {
+        setToastMessage(`✅ เติมเงินสำเร็จ นำไปหักลบยอดติดลบ ${balance} แต้มแล้ว แต้มคงเหลือสุทธิ: ${data.balance} แต้ม`);
+      } else if (data.status === 'CONFIRMED') {
+        setToastMessage(`✅ เติมเงินสำเร็จ +${data.pointsAdded || amount} แต้ม`);
       } else {
         setToastMessage(`⏳ สร้างรายการเติมเงินแล้ว รอชำระ: ${data.paymentRef}`);
       }
@@ -83,26 +85,41 @@ const WalletView: React.FC = () => {
       <h2 className="text-2xl font-black text-slate-800 mb-6">กระเป๋าเงิน</h2>
 
       {/* Balance Card */}
-      <div className="bg-gradient-to-br from-emerald-500 to-green-700 rounded-[32px] p-8 text-white shadow-2xl mb-6 relative overflow-hidden">
+      <div className={`rounded-[32px] p-8 text-white shadow-2xl mb-6 relative overflow-hidden ${
+        balance < 0
+          ? 'bg-gradient-to-br from-rose-600 via-rose-700 to-slate-900'
+          : 'bg-gradient-to-br from-emerald-500 to-green-700'
+      }`}>
         <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-white/5 rounded-full" />
         <div className="relative z-10">
-          <div className="text-xs font-bold opacity-70 mb-1 uppercase tracking-widest">แต้มคงเหลือ</div>
+          <div className="text-xs font-bold opacity-70 mb-1 uppercase tracking-widest">
+            {balance < 0 ? 'แต้มติดลบ (ค้างชำระฉุกเฉิน)' : 'แต้มคงเหลือ'}
+          </div>
           <div className="text-6xl font-black mb-1">
             {balance.toLocaleString()} <span className="text-xl opacity-60">แต้ม</span>
           </div>
+          {balance < 0 && (
+            <div className="inline-flex items-center gap-1.5 bg-black/30 border border-white/20 rounded-full px-3 py-1 text-xs font-bold mb-4">
+              ⚠️ มียอดค้างชำระฉุกเฉิน เมื่อเติมเงินจะหักลบยอดหนี้อัตโนมัติ
+            </div>
+          )}
           {freeRides > 0 && (
             <div className="inline-flex items-center gap-2 bg-white/20 rounded-full px-3 py-1 text-xs font-bold mb-6">
               🎁 ฟรีไรด์เหลือ {freeRides} เที่ยว
             </div>
           )}
-          {!freeRides && <div className="mb-6" />}
+          {!freeRides && balance >= 0 && <div className="mb-6" />}
           <button
             id="btn-topup"
             onClick={() => setShowTopup(true)}
-            className="w-full bg-white text-green-700 font-black py-4 rounded-2xl shadow-lg hover:bg-green-50 transition-colors flex items-center justify-center gap-2 text-sm"
+            className={`w-full font-black py-4 rounded-2xl shadow-lg transition-colors flex items-center justify-center gap-2 text-sm ${
+              balance < 0
+                ? 'bg-white text-rose-700 hover:bg-rose-50'
+                : 'bg-white text-green-700 hover:bg-green-50'
+            }`}
           >
-            <span>➕</span> เติมเงิน / ซื้อแต้ม
+            <span>➕</span> {balance < 0 ? 'เติมเงินเพื่อเคลียร์ยอดหนี้' : 'เติมเงิน / ซื้อแต้ม'}
           </button>
         </div>
       </div>
