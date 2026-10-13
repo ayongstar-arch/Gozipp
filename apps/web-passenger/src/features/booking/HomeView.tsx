@@ -657,26 +657,13 @@ export default function HomeView() {
       <div className="relative z-20 px-3 pt-2 sm:px-4 sm:pt-2.5 space-y-1.5 pointer-events-none w-full max-w-full min-w-0 box-border">
         {/* Header Bar */}
         <div className="flex items-center justify-between pointer-events-auto w-full max-w-full min-w-0">
-          {/* Logo */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="flex items-center">
-              <div className="flex flex-col gap-0.5 mr-1">
-                <div className="w-2 h-[2px] bg-[#00e58b] rounded-full shadow-[0_0_6px_#00e58b]" />
-                <div className="w-1.5 h-[2px] bg-[#00e58b] rounded-full shadow-[0_0_6px_#00e58b]" />
-              </div>
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#00f293] to-[#00b865] flex items-center justify-center shadow-lg shadow-[#00e58b]/20">
-                <div className="w-2 h-2 rounded-full bg-white ring-2 ring-[#07131d]" />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-baseline leading-none">
-                <span className="text-xl sm:text-2xl font-black tracking-tight text-white">Go</span>
-                <span className="text-xl sm:text-2xl font-black tracking-tight text-[#00e58b]">Zipp</span>
-              </div>
-              <div className="text-[9px] sm:text-[10px] text-slate-400 font-medium tracking-tight mt-0.5">
-                วินใกล้คุณ ไปได้ทุกที่
-              </div>
-            </div>
+          {/* Logo (Official GoZipp Branding - Transparent) */}
+          <div className="flex items-center shrink-0">
+            <img
+              src="/brand/logo-gozipp-transparent.png"
+              alt="GOZIPP - RIDE FAST. MOVE SMART."
+              className="h-8 sm:h-9 w-auto object-contain drop-shadow-[0_2px_10px_rgba(0,229,139,0.25)] select-none pointer-events-none"
+            />
           </div>
 
           {/* Right Actions: Points Balance Pill + Safety Badge + Notification */}
