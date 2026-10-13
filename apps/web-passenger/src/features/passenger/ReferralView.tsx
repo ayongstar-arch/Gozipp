@@ -46,10 +46,10 @@ const ReferralView: React.FC<ReferralViewProps> = ({ onClose }) => {
     }
   };
 
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(inviteUrl)}&color=059669&bgcolor=0f172a`;
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(inviteUrl)}&margin=10`;
 
   return (
-    <div className="flex-1 bg-slate-950 font-sans p-6 overflow-y-auto min-h-screen animate-in slide-in-from-right duration-300">
+    <div className="flex-1 bg-slate-950 font-kanit p-6 overflow-y-auto min-h-screen animate-in slide-in-from-right duration-300">
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
         <button 
@@ -60,7 +60,7 @@ const ReferralView: React.FC<ReferralViewProps> = ({ onClose }) => {
         </button>
         <div>
           <h2 className="text-2xl font-black text-white tracking-tighter uppercase">ชวนเพื่อน (Referral)</h2>
-          <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Invite friends & earn rewards</p>
+          <p className="text-emerald-400 font-bold tracking-wider text-[11px]">ชวนเพื่อนสมัครใช้งาน รับสิทธิ์นั่งฟรีและแต้มสะสม</p>
         </div>
       </div>
 
@@ -83,21 +83,20 @@ const ReferralView: React.FC<ReferralViewProps> = ({ onClose }) => {
       {/* QR Code Container */}
       <div className="bg-slate-900 p-8 rounded-3xl border border-white/5 flex flex-col items-center text-center mb-8 shadow-2xl relative">
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gozipp-green text-slate-950 text-[10px] font-black tracking-widest uppercase px-4 py-1.5 rounded-full shadow-lg shadow-gozipp-green/20">
-          QR Code แนะนำ
+          QR Code แนะนำเพื่อน
         </div>
 
-        <div className="bg-slate-950 p-4 rounded-3xl border border-white/5 shadow-inner mb-6 mt-2 relative group overflow-hidden">
-          <div className="absolute inset-0 bg-gozipp-green/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          {/* QR Code Image */}
+        <div className="bg-white p-3.5 rounded-2xl border-4 border-slate-800 shadow-xl mb-5 mt-2 relative group overflow-hidden">
+          {/* QR Code Image - High contrast for real camera scanning */}
           <img 
             src={qrImageUrl} 
             alt="Referral QR Code" 
-            className="w-48 h-48 rounded-xl object-contain bg-slate-950 relative z-10"
+            className="w-48 h-48 rounded-xl object-contain relative z-10"
           />
         </div>
 
-        <div className="text-slate-400 text-xs font-bold mb-6">
-          ให้เพื่อนของคุณสแกนเพื่อลงทะเบียนได้ทันที
+        <div className="text-slate-300 text-xs font-bold mb-6">
+          เปิดกล้องมือถือ, LINE หรือแอปธนาคาร เพื่อสแกนลงทะเบียนได้ทันที
         </div>
 
         {/* Copy Referral Code Section */}
