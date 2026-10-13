@@ -271,9 +271,14 @@ const ProfileView: React.FC = () => {
     <div className="flex-1 bg-slate-950 font-kanit p-4 sm:p-6 overflow-y-auto min-h-screen">
       {/* 1. Profile Header & User Info */}
       <div className="flex flex-col items-center pt-4 pb-6 animate-in fade-in zoom-in duration-300">
-        <div className="w-20 h-20 bg-gradient-to-tr from-emerald-600 to-teal-500 rounded-3xl flex items-center justify-center text-3xl font-black text-white shadow-xl shadow-emerald-500/20 border-2 border-emerald-400/30 mb-3 relative group">
-          <span>{user?.name ? user.name.slice(0, 1) : '👤'}</span>
-          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-slate-900 border-2 border-emerald-500 flex items-center justify-center text-[10px]">
+        {/* Official GoZipp Brand Avatar (Image 2) */}
+        <div className="w-24 h-24 bg-[#02050c] rounded-3xl flex items-center justify-center p-2 shadow-2xl shadow-emerald-500/20 border-2 border-emerald-500/40 mb-3 relative group overflow-hidden">
+          <img
+            src="/brand/logo-profile-avatar-dark.png"
+            alt="GoZipp Logo"
+            className="w-full h-full object-contain select-none pointer-events-none drop-shadow-[0_2px_12px_rgba(0,229,139,0.3)]"
+          />
+          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-slate-900 border-2 border-emerald-500 flex items-center justify-center text-[10px] shadow-md">
             ⚡
           </div>
         </div>
