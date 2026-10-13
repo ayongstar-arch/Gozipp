@@ -23,6 +23,12 @@ export class PassengerController {
 
   // --- PUBLIC ENDPOINTS (No Auth Required) ---
 
+  /** GET /api/v1/passenger/pricing-config */
+  @Get('pricing-config')
+  async getPricingConfig() {
+    return this.passengerService.getPricingConfig();
+  }
+
   /** POST /api/v1/passenger/otp */
   @Post('otp')
   @HttpCode(HttpStatus.OK)

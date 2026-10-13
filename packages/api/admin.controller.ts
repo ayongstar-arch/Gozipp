@@ -181,6 +181,35 @@ export class AdminController {
     return { success: true, message: 'Referral reward points updated successfully.' };
   }
 
+  // --- Trip Pricing & Overdraft Configuration ---
+
+  @Get('config/pricing')
+  @Roles('ADMIN')
+  async getPricingConfig() {
+    return this.adminService.getPricingConfig();
+  }
+
+  @Post('config/pricing')
+  @Roles('ADMIN')
+  async setPricingConfig(
+    @Body() body: { baseFarePoints?: number; perKmPoints?: number; emergencyOverdraftLimit?: number },
+    @Req() req: any
+  ) {
+    const updated = await this.adminService.setPricingConfig(body);
+
+    await this.auditLogService.logAdminAction({
+      actorId: req.user?.id,
+      actorRole: req.user?.roles?.[0] || 'ADMIN',
+      action: AdminAction.CONFIG_CHANGED,
+      resourceType: 'CONFIG',
+      resourceId: 'trip_pricing',
+      metadata: body,
+      ipAddress: req.ip,
+    });
+
+    return { success: true, message: 'บันทึกการตั้งค่าค่าบริการหักแต้มสำเร็จ', config: updated };
+  }
+
   // ===================================================================
   // Phase 5: Dashboard & Audit Log Endpoints
   // ===================================================================

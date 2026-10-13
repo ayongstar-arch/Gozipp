@@ -53,6 +53,12 @@ const AdminRateDashboard: React.FC = () => {
   const [referralPoints, setReferralPoints] = useState<number>(50);
   const [isReferralSaving, setIsReferralSaving] = useState(false);
 
+  // Pricing Policy State (Configured by Admin)
+  const [baseFarePoints, setBaseFarePoints] = useState<number>(25);
+  const [perKmPoints, setPerKmPoints] = useState<number>(5);
+  const [emergencyOverdraftLimit, setEmergencyOverdraftLimit] = useState<number>(100);
+  const [isPricingSaving, setIsPricingSaving] = useState(false);
+
   const fetchAiSummary = async () => {
       setIsAiLoading(true);
       try {
@@ -82,6 +88,22 @@ const AdminRateDashboard: React.FC = () => {
       }
   };
 
+  const fetchPricingConfig = async () => {
+      try {
+          const response = await fetch('/api/v1/admin/config/pricing', {
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          if (response.ok) {
+              const data = await response.json();
+              if (data.baseFarePoints !== undefined) setBaseFarePoints(data.baseFarePoints);
+              if (data.perKmPoints !== undefined) setPerKmPoints(data.perKmPoints);
+              if (data.emergencyOverdraftLimit !== undefined) setEmergencyOverdraftLimit(data.emergencyOverdraftLimit);
+          }
+      } catch (error) {
+          console.error("Failed to fetch pricing config", error);
+      }
+  };
+
   const handleSaveReferralConfig = async () => {
       setIsReferralSaving(true);
       try {
@@ -103,6 +125,34 @@ const AdminRateDashboard: React.FC = () => {
           alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
       } finally {
           setIsReferralSaving(false);
+      }
+  };
+
+  const handleSavePricingConfig = async () => {
+      setIsPricingSaving(true);
+      try {
+          const response = await fetch('/api/v1/admin/config/pricing', {
+              method: 'POST',
+              headers: {
+                  'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                  baseFarePoints,
+                  perKmPoints,
+                  emergencyOverdraftLimit,
+              })
+          });
+          if (response.ok) {
+              alert('บันทึกการตั้งค่าค่าบริการหักแต้มต่อเที่ยวและวงเงินฉุกเฉินสำเร็จ');
+          } else {
+              alert('ไม่สามารถบันทึกการตั้งค่าค่าบริการได้');
+          }
+      } catch (error) {
+          console.error("Failed to save pricing config", error);
+          alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+      } finally {
+          setIsPricingSaving(false);
       }
   };
 
@@ -172,6 +222,7 @@ const AdminRateDashboard: React.FC = () => {
           fetchPendingDrivers();
       } else if (activeTab === 'FINANCE') {
           fetchReferralConfig();
+          fetchPricingConfig();
       }
   }, [activeTab]);
 
@@ -431,6 +482,59 @@ const AdminRateDashboard: React.FC = () => {
                               className="w-full bg-gozipp-green hover:bg-green-400 disabled:opacity-50 text-slate-950 font-black py-4 rounded-xl transition-all shadow-xl shadow-gozipp-green/15 active:scale-[0.98]"
                           >
                               {isReferralSaving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า (Save Config)'}
+                          </button>
+                      </div>
+                  </div>
+
+                  {/* Trip Pricing & Overdraft Points Policy Card */}
+                  <div className="bg-slate-900 p-8 rounded-3xl border border-white/5 flex flex-col gap-6">
+                      <div>
+                          <h3 className="text-xl font-black text-white mb-2">นโยบายค่าบริการหักแต้มต่อเที่ยว (Trip Fare Policy)</h3>
+                          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">กำหนดแต้มหักต่อเที่ยว และวงเงินฉุกเฉินสำหรับผู้โดยสาร</p>
+                      </div>
+                      
+                      <div className="space-y-4">
+                          <div>
+                              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">ค่าบริการหักแต้มเริ่มต้นต่อเที่ยว (Base Points / Trip)</label>
+                              <input
+                                  type="number"
+                                  value={baseFarePoints}
+                                  onChange={(e) => setBaseFarePoints(Math.max(0, parseInt(e.target.value) || 0))}
+                                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-lg focus:outline-none focus:border-gozipp-green"
+                                  min="0"
+                              />
+                              <p className="text-[10px] text-slate-500 mt-1">แต้มที่ระบบจะหักผู้โดยสารเมื่อเรียกวินเริ่มต้น (ค่าเริ่มต้น: 25 แต้ม)</p>
+                          </div>
+
+                          <div>
+                              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">ค่าบริการตามระยะทางต่อกิโลเมตร (Points / Km)</label>
+                              <input
+                                  type="number"
+                                  value={perKmPoints}
+                                  onChange={(e) => setPerKmPoints(Math.max(0, parseInt(e.target.value) || 0))}
+                                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-lg focus:outline-none focus:border-gozipp-green"
+                                  min="0"
+                              />
+                          </div>
+
+                          <div>
+                              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">วงเงินแต้มติดลบฉุกเฉินสูงสุด (Max Emergency Overdraft Limit)</label>
+                              <input
+                                  type="number"
+                                  value={emergencyOverdraftLimit}
+                                  onChange={(e) => setEmergencyOverdraftLimit(Math.max(0, parseInt(e.target.value) || 0))}
+                                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-lg focus:outline-none focus:border-gozipp-green"
+                                  min="0"
+                              />
+                              <p className="text-[10px] text-slate-500 mt-1">ผู้โดยสารสามารถใช้สิทธิ์ฉุกเฉินติดลบได้ไม่เกินวงเงินนี้ (ค่าเริ่มต้น: 100 แต้ม)</p>
+                          </div>
+
+                          <button
+                              onClick={handleSavePricingConfig}
+                              disabled={isPricingSaving}
+                              className="w-full bg-gozipp-green hover:bg-green-400 disabled:opacity-50 text-slate-950 font-black py-4 rounded-xl transition-all shadow-xl shadow-gozipp-green/15 active:scale-[0.98]"
+                          >
+                              {isPricingSaving ? 'กำลังบันทึก...' : 'บันทึกนโยบายค่าบริการ (Save Pricing Policy)'}
                           </button>
                       </div>
                   </div>

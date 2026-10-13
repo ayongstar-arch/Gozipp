@@ -47,9 +47,6 @@ const PassengerHomeMap = dynamic(() => import('@/components/PassengerHomeMap'), 
   ),
 });
 
-// Base fee points per trip
-const TRIP_POINTS = 25;
-
 // Default coords fallback
 const DEFAULT_COORDS = { lat: 13.738, lng: 100.562 };
 const DEFAULT_ADDRESS = 'กำลังระบุตำแหน่งของคุณ...';
@@ -60,6 +57,10 @@ export default function HomeView() {
   const { user } = useAuthStore();
   const { setToastMessage } = useUIStore();
   const { requestRide, cancelRide, isLoading, error } = useRide();
+
+  // Dynamic Pricing configured by Admin (Default: 25 points / overdraft max 100)
+  const [tripPoints, setTripPoints] = useState(25);
+  const [emergencyLimit, setEmergencyLimit] = useState(100);
 
   // State
   const [currentAddress, setCurrentAddress] = useState(DEFAULT_ADDRESS);
@@ -233,6 +234,14 @@ export default function HomeView() {
         }
       })
       .catch(() => {});
+
+    // Fetch dynamic pricing configured in Admin
+    apiFetch('/api/v1/passenger/pricing-config')
+      .then((cfg) => {
+        if (cfg?.baseFarePoints) setTripPoints(cfg.baseFarePoints);
+        if (cfg?.emergencyOverdraftLimit) setEmergencyLimit(cfg.emergencyOverdraftLimit);
+      })
+      .catch(() => {});
   }, []);
 
   const mapCenter = myLocation || DEFAULT_COORDS;
@@ -295,7 +304,7 @@ export default function HomeView() {
     const currentPoints = user?.pointsBalance ?? 0;
     const freeRides = user?.freeRidesRemaining ?? 0;
     const hasFreeRides = freeRides > 0;
-    const canAfford = hasFreeRides || currentPoints >= TRIP_POINTS;
+    const canAfford = hasFreeRides || currentPoints >= tripPoints;
 
     // Check if points are sufficient
     if (!canAfford) {
@@ -320,9 +329,9 @@ export default function HomeView() {
         });
         setToastMessage(`🎁 เรียกวินสำเร็จ! ใช้ฟรีไรด์ (เหลือ ${freeRides - 1} เที่ยว)`);
       } else {
-        const remaining = currentPoints - TRIP_POINTS;
+        const remaining = currentPoints - tripPoints;
         useAuthStore.getState().updatePointsBalance(remaining);
-        setToastMessage(`🛵 เรียกวินสำเร็จ! หัก ${TRIP_POINTS} แต้ม (คงเหลือ ${remaining} แต้ม)`);
+        setToastMessage(`🛵 เรียกวินสำเร็จ! หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
       }
     }
   };
@@ -331,9 +340,9 @@ export default function HomeView() {
   const handleEmergencyCall = async () => {
     const currentPoints = user?.pointsBalance ?? 0;
 
-    // Overdraft limit guard: max negative limit -100 points
-    if (currentPoints < -100) {
-      setToastMessage('❌ คุณมียอดค้างชำระฉุกเฉินสะสมเกินกำหนด (-100 แต้ม) กรุณาเติมแต้มก่อนใช้งานต่อ');
+    // Overdraft limit guard: configured by Admin
+    if (currentPoints < -emergencyLimit) {
+      setToastMessage(`❌ คุณมียอดค้างชำระฉุกเฉินสะสมเกินกำหนด (-${emergencyLimit} แต้ม) กรุณาเติมแต้มก่อนใช้งานต่อ`);
       return;
     }
 
@@ -349,7 +358,7 @@ export default function HomeView() {
 
     const success = await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress, true);
     if (success) {
-      const newNegativeBalance = currentPoints - TRIP_POINTS;
+      const newNegativeBalance = currentPoints - tripPoints;
       useAuthStore.getState().updatePointsBalance(newNegativeBalance);
       setToastMessage(
         `🚨 เรียกวินในโหมดฉุกเฉินแล้ว! บันทึกยอดแต้มติดลบ ${newNegativeBalance} แต้ม (ระบบจะ Balance หักลบอัตโนมัติเมื่อเติมแต้มครั้งถัดไป)`
@@ -572,7 +581,7 @@ export default function HomeView() {
         <div className="bg-[#091b27]/90 backdrop-blur-md rounded-2xl border border-slate-700/60 px-3 py-2 flex items-center justify-between text-xs pointer-events-auto shadow-xl">
           <div className="flex items-center gap-1.5">
             <span className="text-slate-300 font-medium text-[11px]">ค่าบริการเที่ยวนี้:</span>
-            <span className="text-[#00e58b] font-black text-xs">{TRIP_POINTS} แต้ม</span>
+            <span className="text-[#00e58b] font-black text-xs">{tripPoints} แต้ม</span>
             <span className="text-slate-500 text-[10px]">· ~20-25 ฿</span>
           </div>
           <div className="flex items-center gap-1">
@@ -581,7 +590,7 @@ export default function HomeView() {
                 <Sparkles className="w-2.5 h-2.5 text-amber-400" />
                 <span>ฟรีไรด์เหลือ {user?.freeRidesRemaining} เที่ยว</span>
               </span>
-            ) : (user?.pointsBalance ?? 0) >= TRIP_POINTS ? (
+            ) : (user?.pointsBalance ?? 0) >= tripPoints ? (
               <span className="text-[#00e58b] font-medium bg-[#00e58b]/10 border border-[#00e58b]/30 px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1">
                 <CheckCircle2 className="w-2.5 h-2.5 text-[#00e58b]" />
                 <span>แต้มพอใช้งาน</span>
@@ -592,7 +601,7 @@ export default function HomeView() {
                 className="text-rose-400 font-bold bg-rose-950/80 border border-rose-500/50 px-2.5 py-0.5 rounded-full text-[10px] flex items-center gap-1 hover:brightness-110 active:scale-95 transition-all shadow-sm"
               >
                 <AlertTriangle className="w-2.5 h-2.5 text-rose-400" />
-                <span>แต้มไม่พอ (ขาด {TRIP_POINTS - (user?.pointsBalance ?? 0)})</span>
+                <span>แต้มไม่พอ (ขาด {tripPoints - (user?.pointsBalance ?? 0)})</span>
               </button>
             )}
           </div>
@@ -895,7 +904,7 @@ export default function HomeView() {
             <div className="bg-slate-900/80 rounded-2xl p-3.5 border border-slate-800 space-y-2 text-xs">
               <div className="flex items-center justify-between text-slate-300">
                 <span>ค่าบริการเที่ยวนี้:</span>
-                <span className="font-extrabold text-[#00e58b]">{TRIP_POINTS} แต้ม</span>
+                <span className="font-extrabold text-[#00e58b]">{tripPoints} แต้ม</span>
               </div>
               <div className="flex items-center justify-between text-slate-300">
                 <span>แต้มคงเหลือของคุณ:</span>
@@ -909,7 +918,7 @@ export default function HomeView() {
               </div>
               <div className="border-t border-slate-800/80 pt-2 flex items-center justify-between text-rose-400 font-bold">
                 <span>แต้มที่ยังขาด:</span>
-                <span className="text-sm">{TRIP_POINTS - (user?.pointsBalance ?? 0)} แต้ม</span>
+                <span className="text-sm">{tripPoints - (user?.pointsBalance ?? 0)} แต้ม</span>
               </div>
             </div>
 
@@ -940,7 +949,7 @@ export default function HomeView() {
               </button>
 
               {/* Secondary Action: Emergency Ride Overdraft */}
-              {(user?.pointsBalance ?? 0) >= -100 ? (
+              {(user?.pointsBalance ?? 0) >= -emergencyLimit ? (
                 <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-3 space-y-2 text-left">
                   <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
                     <Sparkles className="w-3.5 h-3.5" />
@@ -949,7 +958,7 @@ export default function HomeView() {
                   <p className="text-[10px] text-slate-300 leading-relaxed">
                     ระบบจะอนุญาตให้คุณเดินทางได้ทันที โดยจะบันทึกเป็น{' '}
                     <span className="text-amber-300 font-bold">
-                      แต้มติดลบ ({(user?.pointsBalance ?? 0) - TRIP_POINTS} แต้ม)
+                      แต้มติดลบ ({(user?.pointsBalance ?? 0) - tripPoints} แต้ม)
                     </span>{' '}
                     ไว้ในบัญชี และจะนำไป Balance หักลบอัตโนมัติเมื่อคุณเติมแต้มครั้งถัดไป
                   </p>
@@ -963,7 +972,7 @@ export default function HomeView() {
                 </div>
               ) : (
                 <div className="bg-rose-950/50 border border-rose-500/40 rounded-xl p-3 text-[11px] text-rose-300 text-center">
-                  ⚠️ คุณมียอดติดลบสะสมเกินวงเงินฉุกเฉิน (-100 แต้ม) กรุณาเติมแต้มก่อนใช้งานต่อ
+                  ⚠️ คุณมียอดติดลบสะสมเกินวงเงินฉุกเฉิน (-{emergencyLimit} แต้ม) กรุณาเติมแต้มก่อนใช้งานต่อ
                 </div>
               )}
 

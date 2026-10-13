@@ -303,6 +303,17 @@ export class PassengerService implements OnModuleInit {
     };
   }
 
+  async getPricingConfig() {
+    const baseFare = await this.redis.get('config:trip_base_fare_points');
+    const perKm = await this.redis.get('config:trip_per_km_points');
+    const overdraftLimit = await this.redis.get('config:emergency_overdraft_limit');
+    return {
+      baseFarePoints: baseFare ? parseInt(baseFare, 10) : 25,
+      perKmPoints: perKm ? parseInt(perKm, 10) : 5,
+      emergencyOverdraftLimit: overdraftLimit ? parseInt(overdraftLimit, 10) : 100,
+    };
+  }
+
   // --- RIDE OPERATIONS ---
 
   async requestRide(dto: RideRequestDto) {
@@ -311,7 +322,8 @@ export class PassengerService implements OnModuleInit {
       dto.destLat, dto.destLng
     );
 
-    const estimatedFare = 20 + (route.distanceKm * 5);
+    const pricing = await this.getPricingConfig();
+    const estimatedFare = pricing.baseFarePoints + (route.distanceKm * pricing.perKmPoints);
     const pointsRequired = Math.ceil(estimatedFare);
 
     const balance = await this.creditService.getBalance(dto.passengerId);
@@ -321,8 +333,8 @@ export class PassengerService implements OnModuleInit {
 
     if (!canAfford) {
       if (dto.isEmergency) {
-        if (balance < -100) {
-          throw new BadRequestException('ยอดแต้มติดลบฉุกเฉินสะสมเกินกำหนด (-100 แต้ม) กรุณาเติมแต้มก่อนใช้งานต่อ');
+        if (balance < -pricing.emergencyOverdraftLimit) {
+          throw new BadRequestException(`ยอดแต้มติดลบฉุกเฉินสะสมเกินกำหนด (-${pricing.emergencyOverdraftLimit} แต้ม) กรุณาเติมแต้มก่อนใช้งานต่อ`);
         }
       } else {
         throw new BadRequestException('แต้มไม่เพียงพอ กรุณาเติมแต้ม หรือเลือกใช้งานฉุกเฉิน');
