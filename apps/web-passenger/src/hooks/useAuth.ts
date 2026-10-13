@@ -121,10 +121,22 @@ export const useAuth = () => {
         throw new Error('PIN ต้องเป็นตัวเลข 6 หลัก');
       }
       const userId = user?.id || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_passenger_id') : undefined);
-      await apiFetch('/api/v1/auth/set-pin', {
+      const data = await apiFetch('/api/v1/auth/set-pin', {
         method: 'POST',
         body: JSON.stringify({ pin, role: 'PASSENGER', userId }),
       });
+
+      if (typeof window !== 'undefined') {
+        if (data?.accessToken) {
+          localStorage.setItem('gozipp_access_token', data.accessToken);
+        }
+        const phone = user?.phone || localStorage.getItem('gozipp_saved_phone');
+        if (phone) localStorage.setItem('gozipp_saved_phone', phone);
+        if (user?.name) localStorage.setItem('gozipp_saved_name', user.name);
+        localStorage.setItem('gozipp_has_pin', 'true');
+        sessionStorage.setItem('gozipp_pin_passed', 'true');
+        sessionStorage.removeItem('gozipp_explicit_switch');
+      }
 
       setToastMessage('ตั้ง PIN สำเร็จ!');
       return true;
@@ -134,7 +146,7 @@ export const useAuth = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [setIsLoading, setToastMessage]);
+  }, [setIsLoading, setToastMessage, user?.id, user?.phone, user?.name]);
 
   // --- STEP 3 ALT: Login with PIN (returning user) ---
   const loginWithPin = useCallback(async (phoneNumber: string, pin: string): Promise<boolean> => {
@@ -159,7 +171,14 @@ export const useAuth = () => {
         freeRidesRemaining: data.user.freeRidesRemaining ?? 0,
       });
       if (typeof window !== 'undefined') {
+        if (data?.accessToken) {
+          localStorage.setItem('gozipp_access_token', data.accessToken);
+        }
         sessionStorage.setItem('gozipp_pin_passed', 'true');
+        localStorage.setItem('gozipp_saved_phone', data.user.phone);
+        if (data.user.name) localStorage.setItem('gozipp_saved_name', data.user.name);
+        localStorage.setItem('gozipp_has_pin', 'true');
+        sessionStorage.removeItem('gozipp_explicit_switch');
       }
       setAuthStep('APP_SHELL');
       return true;
@@ -261,6 +280,13 @@ export const useAuth = () => {
 
   // --- Restore Session ---
   const restoreSession = useCallback(async (): Promise<boolean> => {
+    const savedPhone =
+      (typeof window !== 'undefined' ? localStorage.getItem('gozipp_saved_phone') : null) ||
+      user?.phone ||
+      useAuthStore.getState().user?.phone;
+    const isExplicitSwitch =
+      typeof window !== 'undefined' && sessionStorage.getItem('gozipp_explicit_switch') === 'true';
+
     try {
       const data = await apiFetch('/api/v1/passenger/me', {
         method: 'GET',
@@ -275,6 +301,11 @@ export const useAuth = () => {
           pointsBalance: data.user.pointsBalance ?? 0,
           freeRidesRemaining: data.user.freeRidesRemaining ?? 0,
         });
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('gozipp_saved_phone', data.user.phone);
+          if (data.user.name) localStorage.setItem('gozipp_saved_name', data.user.name);
+          localStorage.setItem('gozipp_has_pin', 'true');
+        }
         const isPinPassed = typeof window !== 'undefined' && sessionStorage.getItem('gozipp_pin_passed') === 'true';
         if (isPinPassed) {
           setAuthStep('APP_SHELL');
@@ -285,10 +316,26 @@ export const useAuth = () => {
       }
       return false;
     } catch {
-      if (useAuthStore.getState().authStep === 'APP_SHELL') storeLogout();
+      if (savedPhone && !isExplicitSwitch) {
+        if (!useAuthStore.getState().user?.phone) {
+          const savedName = typeof window !== 'undefined' ? localStorage.getItem('gozipp_saved_name') || '' : '';
+          setUser({
+            id: '',
+            name: savedName,
+            phone: savedPhone,
+            email: '',
+            avatarSeed: 'user',
+            pointsBalance: 0,
+            freeRidesRemaining: 0,
+          });
+        }
+        setAuthStep('LOGIN_PIN');
+      } else if (useAuthStore.getState().authStep === 'APP_SHELL') {
+        storeLogout();
+      }
       return false;
     }
-  }, [setUser, setAuthStep, storeLogout]);
+  }, [setUser, setAuthStep, storeLogout, user?.phone]);
 
   // --- Logout ---
   const logout = useCallback(async () => {

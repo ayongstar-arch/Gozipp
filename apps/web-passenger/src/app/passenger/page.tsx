@@ -31,8 +31,32 @@ export default function PassengerPage() {
   const isTracking = Boolean(currentTripId && ['ACCEPTED', 'DRIVER_ARRIVED', 'IN_PROGRESS'].includes(rideStatus || ''));
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
   const setOtpPurpose = useAuthStore((state) => state.setOtpPurpose);
+  const setUser = useAuthStore((state) => state.setUser);
 
   React.useEffect(() => {
+    // If returning user has registered on this device, route immediately to LOGIN_PIN
+    if (typeof window !== 'undefined') {
+      const savedPhone = localStorage.getItem('gozipp_saved_phone');
+      const explicitSwitch = sessionStorage.getItem('gozipp_explicit_switch') === 'true';
+      const isPinPassed = sessionStorage.getItem('gozipp_pin_passed') === 'true';
+
+      if (savedPhone && !explicitSwitch && !isPinPassed) {
+        const savedName = localStorage.getItem('gozipp_saved_name') || '';
+        if (!user?.phone) {
+          setUser({
+            id: '',
+            name: savedName,
+            phone: savedPhone,
+            email: '',
+            avatarSeed: 'user',
+            pointsBalance: 0,
+            freeRidesRemaining: 0,
+          });
+        }
+        setAuthStep('LOGIN_PIN');
+      }
+    }
+
     restoreSession();
 
     // Capture referral code from URL if arriving via referral link/QR
@@ -50,7 +74,7 @@ export default function PassengerPage() {
 
     const timer = setTimeout(() => setIsBooting(false), 1200);
     return () => clearTimeout(timer);
-  }, [restoreSession]);
+  }, [restoreSession, setAuthStep, setUser, user?.phone]);
 
   if (isBooting) {
     return (
@@ -77,11 +101,19 @@ export default function PassengerPage() {
           {authStep === 'REGISTER_METHOD' && <RegisterMethodView />}
           {authStep === 'REGISTER' && <RegisterView />}
           {authStep === 'OTP' && <OtpView phoneNumber={user?.phone || ''} isRegistering={otpPurpose === 'REGISTER'} name={user?.name} />}
-          {authStep === 'LOGIN_PIN' && <PinView mode="LOGIN" phoneNumber={user?.phone} onForgotPin={async () => {
-            if (!user?.phone) return;
-            await requestOtp(user.phone, true, undefined, 'RESET_PIN');
-            setAuthStep('OTP');
-          }} />}
+          {authStep === 'LOGIN_PIN' && (
+            <PinView
+              mode="LOGIN"
+              phoneNumber={user?.phone || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_saved_phone') : null)}
+              onForgotPin={async () => {
+                const phone = user?.phone || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_saved_phone') : null);
+                if (!phone) return;
+                await requestOtp(phone, true, undefined, 'RESET_PIN');
+                setOtpPurpose('RESET_PIN');
+                setAuthStep('OTP');
+              }}
+            />
+          )}
           {authStep === 'SETUP_PIN' && <PinView mode="SETUP" userId={user?.id} />}
         </div>
       ) : (

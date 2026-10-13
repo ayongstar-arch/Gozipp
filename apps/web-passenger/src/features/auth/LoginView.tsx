@@ -13,6 +13,25 @@ const LoginView: React.FC = () => {
 
   const setUser = useAuthStore((state) => state.setUser);
 
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const savedPhone = localStorage.getItem('gozipp_saved_phone');
+    const explicitSwitch = sessionStorage.getItem('gozipp_explicit_switch') === 'true';
+    if (savedPhone && !explicitSwitch) {
+      const savedName = localStorage.getItem('gozipp_saved_name') || '';
+      setUser({
+        id: '',
+        name: savedName,
+        phone: savedPhone,
+        email: '',
+        avatarSeed: 'user',
+        pointsBalance: 0,
+        freeRidesRemaining: 0,
+      });
+      setAuthStep('LOGIN_PIN');
+    }
+  }, [setAuthStep, setUser]);
+
   const formatPhone = (raw: string) => {
     if (raw.length <= 3) return raw;
     if (raw.length <= 6) return `${raw.slice(0, 3)}-${raw.slice(3)}`;
@@ -58,6 +77,11 @@ const LoginView: React.FC = () => {
 
       if ((statusData.isRegistered || statusData.exists) && statusData.hasPin) {
           setUser({ id: '', name: '', phone: rawPhone, email: '', avatarSeed: 'user', pointsBalance: 0, freeRidesRemaining: 0 });
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('gozipp_saved_phone', rawPhone);
+            localStorage.setItem('gozipp_has_pin', 'true');
+            sessionStorage.removeItem('gozipp_explicit_switch');
+          }
           setAuthStep('LOGIN_PIN');
           useUIStore.getState().setIsLoading(false);
           return;

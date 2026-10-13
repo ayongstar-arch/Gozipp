@@ -1,6 +1,7 @@
 /**
  * authStore.ts — Zustand Auth State (Production)
  * Persisted to localStorage for session continuity with PIN lock enforcement
+ * Automatically defaults to LOGIN_PIN for registered users with a PIN
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -40,6 +41,7 @@ interface AuthState {
   setOtpPurpose: (purpose: OtpPurpose) => void;
   updatePointsBalance: (balance: number) => void;
   logout: () => void;
+  switchAccount: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -49,7 +51,14 @@ export const useAuthStore = create<AuthState>()(
       authStep: 'LOGIN',
       otpPurpose: 'REGISTER',
 
-      setUser: (user) => set({ user }),
+      setUser: (user) => {
+        if (typeof window !== 'undefined' && user?.phone) {
+          localStorage.setItem('gozipp_saved_phone', user.phone);
+          if (user.name) localStorage.setItem('gozipp_saved_name', user.name);
+          localStorage.setItem('gozipp_has_pin', 'true');
+        }
+        set({ user });
+      },
       setAuthStep: (authStep) => set({ authStep }),
       setOtpPurpose: (otpPurpose) => set({ otpPurpose }),
       updatePointsBalance: (balance) =>
@@ -61,6 +70,26 @@ export const useAuthStore = create<AuthState>()(
           sessionStorage.removeItem('gozipp_pin_passed');
           localStorage.removeItem('gozipp_pin_passed');
         }
+        // Retain saved phone on device so returning user enters PIN directly
+        set((state) => {
+          const hasSavedPhone =
+            Boolean(state.user?.phone) ||
+            (typeof window !== 'undefined' && Boolean(localStorage.getItem('gozipp_saved_phone')));
+          return {
+            authStep: hasSavedPhone ? 'LOGIN_PIN' : 'LOGIN',
+            otpPurpose: 'REGISTER',
+          };
+        });
+      },
+      switchAccount: () => {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('gozipp_pin_passed');
+          localStorage.removeItem('gozipp_pin_passed');
+          localStorage.removeItem('gozipp_saved_phone');
+          localStorage.removeItem('gozipp_saved_name');
+          localStorage.removeItem('gozipp_has_pin');
+          sessionStorage.setItem('gozipp_explicit_switch', 'true');
+        }
         set({
           user: null,
           authStep: 'LOGIN',
@@ -70,11 +99,16 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'gozipp-auth-storage',
-      partialize: (state) => ({
-        user: state.user,
-        // Always require PIN verification on returning sessions if a user exists
-        authStep: state.user?.phone ? 'LOGIN_PIN' : 'LOGIN',
-      }),
+      partialize: (state) => {
+        const hasSavedPhone =
+          Boolean(state.user?.phone) ||
+          (typeof window !== 'undefined' && Boolean(localStorage.getItem('gozipp_saved_phone')));
+        return {
+          user: state.user,
+          // Always require PIN verification on returning sessions if a user exists
+          authStep: hasSavedPhone ? 'LOGIN_PIN' : 'LOGIN',
+        };
+      },
     }
   )
 );

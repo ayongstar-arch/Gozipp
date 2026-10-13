@@ -7,7 +7,27 @@ import { motion } from 'framer-motion';
 
 const OnboardingView: React.FC = () => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
+  const setUser = useAuthStore((state) => state.setUser);
   const setToastMessage = useUIStore((state) => state.setToastMessage);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const savedPhone = localStorage.getItem('gozipp_saved_phone');
+    const explicitSwitch = sessionStorage.getItem('gozipp_explicit_switch') === 'true';
+    if (savedPhone && !explicitSwitch) {
+      const savedName = localStorage.getItem('gozipp_saved_name') || '';
+      setUser({
+        id: '',
+        name: savedName,
+        phone: savedPhone,
+        email: '',
+        avatarSeed: 'user',
+        pointsBalance: 0,
+        freeRidesRemaining: 0,
+      });
+      setAuthStep('LOGIN_PIN');
+    }
+  }, [setAuthStep, setUser]);
 
   const containerVariants = {
     hidden: { opacity: 0 },

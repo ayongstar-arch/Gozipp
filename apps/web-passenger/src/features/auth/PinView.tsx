@@ -14,8 +14,12 @@ interface PinViewProps {
 
 const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPin }) => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
+  const switchAccount = useAuthStore((state) => state.switchAccount);
   const user = useAuthStore((state) => state.user);
-  const targetPhone = phoneNumber || user?.phone || '';
+  const targetPhone =
+    phoneNumber ||
+    user?.phone ||
+    (typeof window !== 'undefined' ? localStorage.getItem('gozipp_saved_phone') || '' : '');
   const { isLoading } = useUIStore();
   const { setupPin, loginWithPin, redeemRecoveryTicket, error, setError } = useAuth();
   const { registerPasskey, authenticatePasskey } = useWebAuthn();
@@ -60,6 +64,9 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPi
       }
       const success = await setupPin(pinCode);
       if (success) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('gozipp_pin_passed', 'true');
+        }
         // Show biometric setup prompt
         setShowBiometricPrompt(true);
       }
@@ -90,17 +97,24 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPi
   };
 
   const handleSetupBiometrics = async () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('gozipp_pin_passed', 'true');
+    }
     await registerPasskey('PASSENGER');
     setAuthStep('APP_SHELL'); // Continue to app
   };
 
   const handleSkipBiometrics = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('gozipp_pin_passed', 'true');
+    }
     setAuthStep('APP_SHELL'); // Continue to app
   };
 
   const handleLoginBiometrics = async () => {
-    if (!phoneNumber) return;
-    await authenticatePasskey(phoneNumber, 'PASSENGER');
+    const phone = targetPhone || phoneNumber;
+    if (!phone) return;
+    await authenticatePasskey(phone, 'PASSENGER');
   };
 
   const handleBack = () => {
@@ -108,6 +122,10 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPi
       setFirstPin(null);
       setPin(['', '', '', '', '', '']);
       setError(null);
+      return;
+    }
+    if (mode === 'LOGIN') {
+      switchAccount();
       return;
     }
     setAuthStep('LOGIN');
@@ -211,7 +229,7 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPi
               {mode === 'LOGIN' && (
                 <button
                   type="button"
-                  onClick={() => setAuthStep('LOGIN')}
+                  onClick={() => switchAccount()}
                   className="text-xs text-[#00e58b] hover:underline font-bold mt-1 inline-block"
                 >
                   เข้าสู่ระบบด้วยเบอร์อื่น
