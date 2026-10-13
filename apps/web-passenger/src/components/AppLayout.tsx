@@ -27,10 +27,10 @@ const AppLayout: React.FC<{ children: React.ReactNode; hideNavigation?: boolean 
             initial={{ opacity: 0, y: -40 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -40 }}
-            className="absolute top-4 left-4 right-4 z-[2000]"
+            className="absolute top-3 left-3 right-3 z-[2000]"
           >
-            <div className="bg-[#0e2433]/95 backdrop-blur-xl text-white px-4 py-2.5 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.6)] flex items-center gap-2.5 border border-[#00e58b]/30">
-              <div className="w-7 h-7 rounded-full bg-[#00e58b]/20 flex items-center justify-center shrink-0">
+            <div className="bg-[#0e2433]/95 backdrop-blur-xl text-white px-3.5 py-2 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.6)] flex items-center gap-2 border border-[#00e58b]/30">
+              <div className="w-6 h-6 rounded-full bg-[#00e58b]/20 flex items-center justify-center shrink-0">
                 <span className="text-[#00e58b] text-xs">✨</span>
               </div>
               <span className="font-medium text-xs text-slate-100 truncate">{toastMessage}</span>
@@ -39,18 +39,18 @@ const AppLayout: React.FC<{ children: React.ReactNode; hideNavigation?: boolean 
         )}
       </AnimatePresence>
 
-      {/* Main Content Area */}
+      {/* Main Content Area - flex-1 fills exactly between top and bottom nav */}
       <main
         className={`flex-1 min-h-0 relative z-10 w-full max-w-full overflow-hidden ${
-          activeTab === 'HOME' ? 'h-full' : 'overflow-y-auto pb-20 custom-scrollbar'
+          activeTab === 'HOME' ? 'h-full flex flex-col' : 'overflow-y-auto custom-scrollbar'
         }`}
       >
         {children}
       </main>
 
-      {/* Bottom Navigation */}
+      {/* Bottom Navigation - flex child directly below main, never overlays content */}
       {!hideNavigation && (
-        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#07131d]/95 backdrop-blur-2xl border-t border-slate-800/80 flex justify-around items-center px-2 py-1.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] z-[1000] box-border">
+        <nav className="shrink-0 w-full bg-[#07131d] border-t border-slate-800 flex justify-around items-center px-2 py-1 pb-[max(0.6rem,env(safe-area-inset-bottom))] z-[1000] box-border">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -58,13 +58,13 @@ const AppLayout: React.FC<{ children: React.ReactNode; hideNavigation?: boolean 
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`relative flex flex-col items-center gap-0.5 transition-all duration-200 w-16 py-0.5 ${
+                className={`relative flex flex-col items-center gap-0.5 transition-all duration-200 w-16 py-1 ${
                   isActive ? 'text-[#00e58b]' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <div className="relative flex items-center justify-center w-6 h-6">
                   <Icon
-                    className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-200 ${
+                    className={`w-5 h-5 transition-transform duration-200 ${
                       isActive ? 'scale-110 stroke-[2.4]' : 'stroke-[1.8]'
                     }`}
                   />

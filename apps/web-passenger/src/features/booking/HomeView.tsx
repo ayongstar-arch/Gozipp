@@ -1,7 +1,7 @@
 /**
  * HomeView.tsx — GoZipp Passenger Home Screen
- * Real GPS Geolocation + Reverse Geocoding (Thai address) + Mobile responsive layout
- * Designed to fit perfectly without overflow on all smartphone viewports.
+ * Native App Experience: Full-screen interactive map, responsive floating cards,
+ * 100% visible CTA action, real-time GPS tracking, and Thai address reverse geocoding.
  */
 'use client';
 
@@ -28,18 +28,18 @@ import {
   X,
 } from 'lucide-react';
 
-// Dynamic import for Leaflet map to prevent SSR window errors
+// Dynamic import for Leaflet map to prevent SSR errors
 const PassengerHomeMap = dynamic(() => import('@/components/PassengerHomeMap'), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full bg-[#07131d] flex flex-col items-center justify-center text-slate-500 gap-3">
-      <div className="w-7 h-7 border-2 border-[#00e58b]/30 border-t-[#00e58b] rounded-full animate-spin" />
-      <span className="text-[11px] font-medium text-slate-400">กำลังเชื่อมต่อแผนที่ GoZipp...</span>
+    <div className="w-full h-full bg-[#1c1d1e] flex flex-col items-center justify-center text-slate-400 gap-2">
+      <div className="w-6 h-6 border-2 border-[#00e58b]/30 border-t-[#00e58b] rounded-full animate-spin" />
+      <span className="text-[11px] font-medium text-slate-400">กำลังโหลดแผนที่ GoZipp...</span>
     </div>
   ),
 });
 
-// Sukhumvit 23 fallback
+// Default coords fallback (Sukhumvit 23)
 const DEFAULT_COORDS = { lat: 13.738, lng: 100.562 };
 const DEFAULT_ADDRESS = 'ซอยสุขุมวิท 23, คลองเตยเหนือ';
 
@@ -80,20 +80,24 @@ export default function HomeView() {
         const data = await res.json();
         const addr = data.address;
         if (addr) {
-          const road = addr.road || addr.pedestrian || addr.suburb || '';
-          const district = addr.subdistrict || addr.district || addr.city_district || addr.city || '';
+          const road = addr.road || addr.pedestrian || addr.suburb || addr.hamlet || '';
+          const district =
+            addr.subdistrict || addr.district || addr.city_district || addr.city || '';
           if (road && district) {
             setCurrentAddress(`${road}, ${district}`);
             return;
+          } else if (district) {
+            setCurrentAddress(district);
+            return;
           } else if (data.display_name) {
             const parts = data.display_name.split(',').map((s: string) => s.trim());
-            setCurrentAddress(`${parts[0] || 'ตำแหน่งของคุณ'}, ${parts[1] || ''}`);
+            setCurrentAddress(`${parts[0] || 'ตำแหน่งปัจจุบันของคุณ'}`);
             return;
           }
         }
       }
     } catch {
-      // Keep sensible fallback
+      // Keep existing address
     }
   }, []);
 
@@ -106,7 +110,7 @@ export default function HomeView() {
 
     let isMounted = true;
 
-    // 1. Instant check with cache
+    // 1. Initial Quick Fetch
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (!isMounted) return;
@@ -117,12 +121,12 @@ export default function HomeView() {
         fetchAddressFromCoords(lat, lng);
       },
       () => {
-        // Fallback silently to default
+        // Fallback silently
       },
       { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
     );
 
-    // 2. Active continuous watcher
+    // 2. Continuous Active Watcher
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         if (!isMounted) return;
@@ -134,7 +138,6 @@ export default function HomeView() {
       },
       (err) => {
         if (err.code === 1) {
-          // Permission denied
           setIsGpsLocked(false);
         }
       },
@@ -174,7 +177,7 @@ export default function HomeView() {
           setIsGpsLocked(true);
           fetchAddressFromCoords(lat, lng);
           setTriggerRecenter((prev) => prev + 1);
-          setToastMessage('📍 อัปเดตพิกัด GPS สำเร็จ');
+          setToastMessage('📍 ตำแหน่งปัจจุบันของคุณ');
         },
         () => {
           setTriggerRecenter((prev) => prev + 1);
@@ -230,14 +233,14 @@ export default function HomeView() {
   };
 
   return (
-    <div className="relative w-full max-w-full h-full min-h-0 flex flex-col justify-between bg-[#07131d] overflow-hidden font-kanit box-border select-none">
+    <div className="relative w-full max-w-full h-full min-h-0 flex-1 flex flex-col justify-between overflow-hidden font-kanit box-border select-none">
       {/* 1. FULL BACKGROUND DARK MAP */}
       <div className="absolute inset-0 z-0 pointer-events-auto">
         <PassengerHomeMap center={mapCenter} triggerRecenter={triggerRecenter} />
       </div>
 
-      {/* 2. TOP FLOATING CARDS (Responsive & Compact to prevent mobile overflow) */}
-      <div className="relative z-20 px-3 pt-2 sm:px-4 sm:pt-3 space-y-2 pointer-events-none w-full max-w-full min-w-0 box-border">
+      {/* 2. TOP FLOATING CARDS (Sleek & Compact) */}
+      <div className="relative z-20 px-3 pt-2 sm:px-4 sm:pt-2.5 space-y-1.5 pointer-events-none w-full max-w-full min-w-0 box-border">
         {/* Header Bar */}
         <div className="flex items-center justify-between pointer-events-auto w-full max-w-full min-w-0">
           {/* Logo */}
@@ -284,19 +287,19 @@ export default function HomeView() {
         </div>
 
         {/* Current Location Card */}
-        <div className="bg-[#091b27]/85 backdrop-blur-md rounded-2xl border border-slate-700/60 p-2.5 sm:p-3 shadow-2xl flex items-center justify-between gap-2.5 pointer-events-auto w-full max-w-full min-w-0 box-border">
+        <div className="bg-[#091b27]/90 backdrop-blur-md rounded-2xl border border-slate-700/60 p-2 sm:p-2.5 shadow-2xl flex items-center justify-between gap-2.5 pointer-events-auto w-full max-w-full min-w-0 box-border">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#00d075] flex items-center justify-center text-white shrink-0 shadow-lg shadow-[#00d075]/30">
-              <MapPin className="w-4 h-4 sm:w-5 sm:h-5 fill-white/20" />
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#00d075] flex items-center justify-center text-white shrink-0 shadow-lg shadow-[#00d075]/30">
+              <MapPin className="w-4 h-4 fill-white/20" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] sm:text-[11px] text-slate-400 font-medium leading-none">
+              <div className="text-[10px] text-slate-400 font-medium leading-none">
                 ตำแหน่งปัจจุบันของคุณ
               </div>
               <div className="text-xs sm:text-sm font-bold text-white tracking-tight truncate mt-0.5 max-w-[210px] sm:max-w-[260px]">
                 {currentAddress}
               </div>
-              <div className="text-[9px] sm:text-[10px] text-[#00e58b] font-medium flex items-center gap-1 mt-0.5">
+              <div className="text-[9px] text-[#00e58b] font-medium flex items-center gap-1 mt-0.5">
                 <CheckCircle2 className="w-3 h-3 text-[#00e58b] shrink-0" />
                 <span>{isGpsLocked ? 'GPS พร้อมใช้งาน (พิกัดสด)' : 'GPS กำลังตรวจจับสัญญาณ'}</span>
               </div>
@@ -306,16 +309,16 @@ export default function HomeView() {
           {/* Recenter Button */}
           <button
             onClick={handleRecenter}
-            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#102433] border border-slate-700/60 flex items-center justify-center text-[#00e58b] hover:bg-[#163449] active:scale-95 transition-all shrink-0 shadow-md"
+            className="w-8 h-8 rounded-full bg-[#102433] border border-slate-700/60 flex items-center justify-center text-[#00e58b] hover:bg-[#163449] active:scale-95 transition-all shrink-0 shadow-md"
             title="ระบุตำแหน่งปัจจุบัน"
           >
-            <LocateFixed className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+            <LocateFixed className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tell Pickup Point Card */}
-        <div className="bg-[#091b27]/85 backdrop-blur-md rounded-2xl border border-[#00e58b]/30 p-2.5 sm:p-3 shadow-2xl space-y-2 pointer-events-auto w-full max-w-full min-w-0 box-border">
-          <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-300 font-medium">
+        <div className="bg-[#091b27]/90 backdrop-blur-md rounded-2xl border border-[#00e58b]/30 p-2 sm:p-2.5 shadow-2xl space-y-1.5 pointer-events-auto w-full max-w-full min-w-0 box-border">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
             <MessageSquare className="w-3.5 h-3.5 text-slate-300 shrink-0" />
             <span>บอกจุดรับ (สำหรับคนขับ)</span>
           </div>
@@ -331,14 +334,14 @@ export default function HomeView() {
             />
             <button
               onClick={handleVoiceInput}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#182836] flex items-center justify-center text-white hover:bg-slate-700 active:scale-95 transition-colors shrink-0 shadow-sm"
+              className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#182836] flex items-center justify-center text-white hover:bg-slate-700 active:scale-95 transition-colors shrink-0 shadow-sm"
               title="พูดบอกจุดรับ"
             >
               <Mic className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {/* Quick Chips Row (Scrollable, doesn't blowout container) */}
+          {/* Quick Chips Row */}
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5 w-full max-w-full min-w-0">
             {quickChips.map((chip, idx) => {
               const isSelected = pickupNote === chip;
@@ -346,7 +349,7 @@ export default function HomeView() {
                 <button
                   key={idx}
                   onClick={() => setPickupNote(isSelected ? '' : chip)}
-                  className={`text-[10px] sm:text-[11px] font-normal px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0 transition-all active:scale-95 whitespace-nowrap ${
+                  className={`text-[10px] font-normal px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0 transition-all active:scale-95 whitespace-nowrap ${
                     isSelected
                       ? 'bg-[#00e58b]/20 border border-[#00e58b] text-[#00e58b] font-medium'
                       : 'bg-[#102636] hover:bg-[#17374d] text-slate-300 border border-white/5'
@@ -364,30 +367,30 @@ export default function HomeView() {
         </div>
       </div>
 
-      {/* 3. BOTTOM FLOATING CONTROLS (Positioned tightly above bottom navigation) */}
-      <div className="relative z-20 px-3 pb-2 sm:px-4 sm:pb-3 space-y-2 pointer-events-none w-full max-w-full min-w-0 box-border">
+      {/* 3. BOTTOM FLOATING CONTROLS (Tightly anchored right above bottom navigation bar) */}
+      <div className="relative z-20 px-3 pb-2 sm:px-4 sm:pb-2.5 space-y-1.5 pointer-events-none w-full max-w-full min-w-0 box-border">
         {/* Nearby Win Card */}
         <div
           onClick={() => setShowWinDetails(!showWinDetails)}
-          className="bg-[#091b27]/90 backdrop-blur-md rounded-2xl border border-slate-700/60 p-2.5 sm:p-3 shadow-2xl flex items-center justify-between cursor-pointer hover:border-[#00e58b]/40 active:scale-[0.99] transition-all pointer-events-auto w-full max-w-full min-w-0 box-border"
+          className="bg-[#091b27]/90 backdrop-blur-md rounded-2xl border border-slate-700/60 p-2 sm:p-2.5 shadow-2xl flex items-center justify-between cursor-pointer hover:border-[#00e58b]/40 active:scale-[0.99] transition-all pointer-events-auto w-full max-w-full min-w-0 box-border"
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#102a3a] border border-[#00e58b]/20 flex items-center justify-center text-white shrink-0 shadow-inner">
-              <Bike className="w-5 h-5 text-white" />
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#102a3a] border border-[#00e58b]/20 flex items-center justify-center text-white shrink-0 shadow-inner">
+              <Bike className="w-4 h-4 text-white" />
             </div>
             <div className="min-w-0">
               <div className="text-xs sm:text-sm font-bold text-white tracking-tight leading-tight">
                 วินใกล้คุณ
               </div>
-              <div className="text-[10px] sm:text-xs text-slate-400 mt-0.5 truncate">
+              <div className="text-[10px] text-slate-400 mt-0.5 truncate">
                 มีคนขับพร้อมให้บริการหลายคัน
               </div>
             </div>
           </div>
-          <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 shrink-0" />
+          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
         </div>
 
-        {/* Main CTA Button: เรียกวินใกล้ฉัน */}
+        {/* Main CTA Button: เรียกวินใกล้ฉัน (100% visible, elevated right above nav bar) */}
         <div className="pointer-events-auto w-full max-w-full">
           <button
             onClick={handleCallWin}
@@ -402,8 +405,8 @@ export default function HomeView() {
           </button>
 
           {/* Subtext info */}
-          <div className="flex items-center justify-center gap-1.5 mt-1.5 text-[10px] sm:text-xs text-slate-400 font-normal">
-            <Info className="w-3 h-3 text-slate-400" />
+          <div className="flex items-center justify-center gap-1 mt-1 text-[10px] text-slate-400 font-normal">
+            <Info className="w-3 h-3 text-slate-400 shrink-0" />
             <span>ไม่ต้องระบุจุดหมายปลายทาง</span>
           </div>
         </div>
@@ -412,22 +415,22 @@ export default function HomeView() {
       {/* 4. MODAL: SEARCHING OVERLAY */}
       {isSearching && !activeDriver && (
         <div className="absolute inset-0 z-50 bg-[#07131d]/90 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center text-white">
-          <div className="relative mb-5">
-            <div className="w-24 h-24 border-4 border-[#00e58b]/20 border-t-[#00e58b] rounded-full animate-spin" />
-            <div className="absolute inset-0 flex items-center justify-center text-3xl">
+          <div className="relative mb-4">
+            <div className="w-20 h-20 border-4 border-[#00e58b]/20 border-t-[#00e58b] rounded-full animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center text-2xl">
               🛵
             </div>
           </div>
-          <h3 className="text-xl font-black mb-1.5 tracking-tight">กำลังหาพี่วิน...</h3>
+          <h3 className="text-xl font-black mb-1 tracking-tight">กำลังหาพี่วิน...</h3>
           <p className="text-slate-300 text-xs max-w-xs">
             กำลังแจ้งเตือนคนขับในพื้นที่ <strong className="text-[#00e58b]">{currentAddress}</strong>
           </p>
-          <div className="mt-4 bg-white/5 border border-white/10 rounded-2xl px-5 py-2.5 text-[11px] text-slate-300">
+          <div className="mt-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-2 text-[11px] text-slate-300">
             ไม่ต้องระบุจุดหมาย · ชำระตามมิเตอร์มาตรฐาน
           </div>
           <button
             onClick={cancelRide}
-            className="mt-6 px-7 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-2xl text-xs font-bold transition-all active:scale-95"
+            className="mt-5 px-6 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-2xl text-xs font-bold transition-all active:scale-95"
           >
             ยกเลิกการค้นหา
           </button>
@@ -436,7 +439,7 @@ export default function HomeView() {
 
       {/* 5. MODAL: ACTIVE DRIVER MATCHED */}
       {activeDriver && (
-        <div className="absolute bottom-16 left-3 right-3 z-50 bg-[#091b27]/95 backdrop-blur-xl border border-[#00e58b]/30 rounded-3xl p-4 shadow-2xl">
+        <div className="absolute bottom-4 left-3 right-3 z-50 bg-[#091b27]/95 backdrop-blur-xl border border-[#00e58b]/30 rounded-3xl p-4 shadow-2xl">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2.5">
               <div className="w-10 h-10 rounded-full bg-[#00d075]/20 text-[#00d075] flex items-center justify-center text-xl border border-[#00d075]/30">

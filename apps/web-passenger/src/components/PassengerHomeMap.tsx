@@ -83,36 +83,10 @@ const createDriverIcon = (distanceText: string) => {
   });
 };
 
-// Custom DivIcon for Landmarks
-const createLandmarkIcon = (name: string, type: 'hospital' | 'mall' | 'park') => {
-  const iconSvg =
-    type === 'hospital'
-      ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6ee7b7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12M6 12h12"/></svg>`
-      : type === 'mall'
-      ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#93c5fd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`
-      : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#86efac" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 14-6 6h20l-6-6"/><path d="m10 9-4 5h12l-4-5"/><path d="m12 3-3 6h6l-3-6"/><path d="M12 20v2"/></svg>`;
-
-  return L.divIcon({
-    className: 'gozipp-landmark-marker',
-    iconSize: [140, 44],
-    iconAnchor: [70, 22],
-    html: `
-      <div style="display: flex; flex-direction: column; align-items: center; text-align: center; pointer-events: none;">
-        <div style="margin-bottom: 2px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));">
-          ${iconSvg}
-        </div>
-        <div style="color: #94a3b8; font-size: 10px; font-weight: 600; white-space: nowrap; text-shadow: 0 1px 4px rgba(0,0,0,0.9); font-family: inherit; letter-spacing: -0.2px;">
-          ${name}
-        </div>
-      </div>
-    `,
-  });
-};
-
 export default function PassengerHomeMap({ center, triggerRecenter }: PassengerHomeMapProps) {
   const userIcon = useMemo(() => createUserIcon(), []);
 
-  // 4 Nearby Win Drivers dynamically clustered around user center
+  // 4 Nearby Win Drivers dynamically clustered around user's current GPS coordinates
   const drivers = useMemo(
     () => [
       {
@@ -143,36 +117,8 @@ export default function PassengerHomeMap({ center, triggerRecenter }: PassengerH
     [center.lat, center.lng]
   );
 
-  // Landmarks around current coordinates
-  const landmarks = useMemo(
-    () => [
-      {
-        id: 'samitivej',
-        name: 'โรงพยาบาล สมิติเวช สุขุมวิท',
-        type: 'hospital' as const,
-        lat: center.lat - 0.0006,
-        lng: center.lng - 0.0062,
-      },
-      {
-        id: 'terminal21',
-        name: 'Terminal 21',
-        type: 'mall' as const,
-        lat: center.lat + 0.0015,
-        lng: center.lng + 0.0065,
-      },
-      {
-        id: 'benjasiri',
-        name: 'สวนเบญจสิริ',
-        type: 'park' as const,
-        lat: center.lat - 0.0055,
-        lng: center.lng + 0.0035,
-      },
-    ],
-    [center.lat, center.lng]
-  );
-
   return (
-    <div className="w-full h-full relative bg-[#07131d] overflow-hidden">
+    <div className="w-full h-full relative bg-[#1c1d1e] overflow-hidden">
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={15}
@@ -180,15 +126,14 @@ export default function PassengerHomeMap({ center, triggerRecenter }: PassengerH
         zoomControl={false}
         attributionControl={false}
         className="w-full h-full"
-        style={{ width: '100%', height: '100%', background: '#07131d' }}
+        style={{ width: '100%', height: '100%', background: '#1c1d1e' }}
       >
         <MapController center={[center.lat, center.lng]} triggerRecenter={triggerRecenter} />
 
-        {/* Clean, unwatermarked Carto Fastly Dark Tiles */}
+        {/* ESRI World Dark Gray Canvas: High-speed, 100% Free, ZERO Watermark */}
         <TileLayer
-          url="https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png"
-          subdomains={['a', 'b', 'c', 'd']}
-          maxZoom={19}
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={16}
         />
 
         {/* Center User Location Marker with radar & tooltip */}
@@ -200,15 +145,6 @@ export default function PassengerHomeMap({ center, triggerRecenter }: PassengerH
             key={d.id}
             position={[d.lat, d.lng]}
             icon={createDriverIcon(d.distance)}
-          />
-        ))}
-
-        {/* Landmarks */}
-        {landmarks.map((lm) => (
-          <Marker
-            key={lm.id}
-            position={[lm.lat, lm.lng]}
-            icon={createLandmarkIcon(lm.name, lm.type)}
           />
         ))}
       </MapContainer>
@@ -230,7 +166,7 @@ export default function PassengerHomeMap({ center, triggerRecenter }: PassengerH
           }
         }
         .leaflet-container {
-          background-color: #07131d !important;
+          background-color: #1c1d1e !important;
           outline: none;
         }
       `}</style>
