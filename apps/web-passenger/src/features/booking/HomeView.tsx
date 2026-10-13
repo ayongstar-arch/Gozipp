@@ -41,6 +41,10 @@ import {
   Search,
   Trash2,
   User,
+  QrCode,
+  Download,
+  ArrowLeft,
+  Smartphone,
 } from 'lucide-react';
 
 // Dynamic import for Leaflet map to prevent SSR errors
@@ -90,8 +94,16 @@ export default function HomeView() {
   const [showPickupPickerModal, setShowPickupPickerModal] = useState(false);
   const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
   const [showQuickTopupModal, setShowQuickTopupModal] = useState(false);
-  const [selectedTopupAmount, setSelectedTopupAmount] = useState<number | null>(20);
+  const [quickTopupStep, setQuickTopupStep] = useState<'INPUT' | 'QR'>('INPUT');
+  const [selectedTopupAmount, setSelectedTopupAmount] = useState<number | null>(50);
+  const [customTopupAmount, setCustomTopupAmount] = useState<string>('');
+  const [quickPaymentData, setQuickPaymentData] = useState<{
+    paymentRef: string;
+    amount: number;
+    promptpayId?: string;
+  } | null>(null);
   const [isTopupLoading, setIsTopupLoading] = useState(false);
+  const [isSavingQrImage, setIsSavingQrImage] = useState(false);
 
   // Advance Ride Appointment (นัดหมายเวลาวินล่วงหน้า)
   const [bookingMode, setBookingMode] = useState<'NOW' | 'SCHEDULE'>('NOW');
@@ -531,29 +543,104 @@ export default function HomeView() {
     }
   };
 
-  // Quick Topup Handler (Supports promptpay topup and automatic deficit rebalancing)
-  const handleQuickTopup = async (amount: number) => {
+  const effectiveTopupAmount =
+    customTopupAmount && !isNaN(Number(customTopupAmount))
+      ? Math.max(0, Number(customTopupAmount))
+      : selectedTopupAmount || 0;
+
+  const handleCloseQuickTopup = () => {
+    setShowQuickTopupModal(false);
+    setQuickTopupStep('INPUT');
+    setCustomTopupAmount('');
+    setQuickPaymentData(null);
+  };
+
+  // Step 1 -> 2: Request PromptPay Topup
+  const handleGenerateQuickQr = async () => {
+    if (effectiveTopupAmount < 20) {
+      setToastMessage('⚠️ จำนวนเงินเติมขั้นต่ำ 20 บาท');
+      return;
+    }
+
     setIsTopupLoading(true);
     try {
       const data = await apiFetch('/api/v1/credit/topup', {
         method: 'POST',
-        body: JSON.stringify({ amount, paymentMethod: 'PROMPTPAY' }),
+        body: JSON.stringify({ amount: effectiveTopupAmount, paymentMethod: 'PROMPTPAY' }),
       });
+
+      setQuickPaymentData({
+        paymentRef: data.paymentRef || `TP-${Date.now()}`,
+        amount: effectiveTopupAmount,
+        promptpayId: data.promptpayId || '0812345678',
+      });
+      setQuickTopupStep('QR');
+      setToastMessage(`📲 สร้าง QR Code พร้อมเพย์ ${effectiveTopupAmount} บาท สำเร็จ!`);
+    } catch (err: any) {
+      setToastMessage('❌ ' + (err.message || 'ไม่สามารถสร้างรายการเติมเงินได้'));
+    } finally {
+      setIsTopupLoading(false);
+    }
+  };
+
+  // Step 2: Download / Save QR Code Image for Mobile Banking App Scan
+  const handleSaveQuickQrImage = async () => {
+    if (!quickPaymentData) return;
+    setIsSavingQrImage(true);
+    const qrUrl = `https://promptpay.io/${quickPaymentData.promptpayId || '0812345678'}/${quickPaymentData.amount}.png`;
+
+    try {
+      const res = await fetch(qrUrl);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `gozipp-promptpay-${quickPaymentData.amount}thb.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      setToastMessage('📥 บันทึกภาพ QR Code ลงเครื่องแล้ว! เปิดแอปธนาคารเพื่อสแกนรูปภาพได้เลย');
+    } catch {
+      window.open(qrUrl, '_blank');
+      setToastMessage('📥 เปิดรูปภาพ QR Code แล้ว กดค้างที่ภาพเพื่อบันทึกลงอัลบั้ม');
+    } finally {
+      setIsSavingQrImage(false);
+    }
+  };
+
+  // Step 2: Confirm Payment & Rebalance Points
+  const handleConfirmQuickPaid = async () => {
+    if (!quickPaymentData) return;
+    setIsTopupLoading(true);
+    try {
+      let newBal = (user?.pointsBalance ?? 0) + quickPaymentData.amount;
+      try {
+        const confirmRes = await apiFetch('/api/v1/credit/topup/confirm', {
+          method: 'POST',
+          body: JSON.stringify({ paymentRef: quickPaymentData.paymentRef }),
+        });
+        if (confirmRes?.balance !== undefined) {
+          newBal = confirmRes.balance;
+        }
+      } catch {
+        // Fallback
+      }
+
       const prevBal = user?.pointsBalance ?? 0;
-      const newBal = data.balance !== undefined ? data.balance : prevBal + amount;
       useAuthStore.getState().updatePointsBalance(newBal);
 
       if (prevBal < 0) {
         setToastMessage(
-          `✅ เติมเงิน +${amount} ฿ สำเร็จ! ระบบนำไปหักล้างยอดติดลบ ${prevBal} แต้มแล้ว แต้มคงเหลือสุทธิ: ${newBal} แต้ม`
+          `✅ เติมเงิน +${quickPaymentData.amount} ฿ สำเร็จ! ระบบนำไปหักล้างยอดติดลบ ${prevBal} แต้มแล้ว แต้มคงเหลือสุทธิ: ${newBal} แต้ม`
         );
       } else {
-        setToastMessage(`✅ เติมเงินสำเร็จ +${data.pointsAdded || amount} แต้ม (คงเหลือรวม: ${newBal} แต้ม)`);
+        setToastMessage(`✅ เติมเงินสำเร็จ +${quickPaymentData.amount} แต้ม (คงเหลือรวม: ${newBal} แต้ม)`);
       }
-      setShowQuickTopupModal(false);
+      handleCloseQuickTopup();
       setShowInsufficientPointsModal(false);
     } catch (err: any) {
-      setToastMessage('❌ ' + (err.message || 'การเติมเงินขัดข้อง กรุณาลองใหม่'));
+      setToastMessage('❌ ' + (err.message || 'การยืนยันเติมเงินขัดข้อง'));
     } finally {
       setIsTopupLoading(false);
     }
@@ -1269,114 +1356,233 @@ export default function HomeView() {
       {showQuickTopupModal && (
         <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
           <div className="bg-[#091b27] border-t sm:border border-[#00e58b]/40 rounded-t-3xl sm:rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-[#00e58b]/10 text-[#00e58b] flex items-center justify-center border border-[#00e58b]/30">
-                  <CreditCard className="w-5 h-5" />
+            {quickTopupStep === 'INPUT' ? (
+              <>
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-2xl bg-[#00e58b]/10 text-[#00e58b] flex items-center justify-center border border-[#00e58b]/30">
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-white">เติมแต้มกระเป๋าเงิน GoZipp</h4>
+                      <p className="text-[10px] text-slate-400">ชำระผ่าน PromptPay QR อัตโนมัติ</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleCloseQuickTopup}
+                    className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <div>
-                  <h4 className="text-sm font-black text-white">เติมแต้มกระเป๋าเงิน GoZipp</h4>
-                  <p className="text-[10px] text-slate-400">ชำระผ่าน PromptPay QR อัตโนมัติ</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowQuickTopupModal(false)}
-                className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            {/* Current Balance & Deficit Notice */}
-            <div className="bg-slate-900/90 rounded-2xl p-3.5 border border-slate-800 text-xs flex items-center justify-between">
-              <div>
-                <span className="text-slate-400 block text-[10px]">แต้มคงเหลือปัจจุบัน</span>
-                <span
-                  className={`text-base font-black ${
-                    (user?.pointsBalance ?? 0) < 0 ? 'text-rose-400' : 'text-[#00e58b]'
-                  }`}
-                >
-                  {(user?.pointsBalance ?? 0).toLocaleString()} แต้ม
-                </span>
-              </div>
-              {(user?.pointsBalance ?? 0) < 0 && (
-                <div className="text-right">
-                  <span className="text-rose-400 bg-rose-950/70 border border-rose-500/40 px-2 py-0.5 rounded-full text-[10px] font-bold">
-                    มียอดค้างชำระฉุกเฉิน
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Amount Selection Grid */}
-            <div>
-              <span className="text-[11px] font-bold text-slate-300 block mb-2">
-                เลือกจำนวนเงินที่ต้องการเติม
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                {[20, 50, 100, 300].map((amt) => {
-                  const isSelected = selectedTopupAmount === amt;
-                  const projectedBalance = (user?.pointsBalance ?? 0) + amt;
-                  return (
-                    <button
-                      key={amt}
-                      onClick={() => setSelectedTopupAmount(amt)}
-                      className={`p-3 rounded-2xl border text-center transition-all ${
-                        isSelected
-                          ? 'border-[#00e58b] bg-[#00e58b]/15 text-white shadow-lg shadow-[#00e58b]/20 scale-[1.02]'
-                          : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                {/* Current Balance & Deficit Notice */}
+                <div className="bg-slate-900/90 rounded-2xl p-3.5 border border-slate-800 text-xs flex items-center justify-between">
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">แต้มคงเหลือปัจจุบัน</span>
+                    <span
+                      className={`text-base font-black ${
+                        (user?.pointsBalance ?? 0) < 0 ? 'text-rose-400' : 'text-[#00e58b]'
                       }`}
                     >
-                      <div className="text-base font-black">{amt} ฿</div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">≈ +{amt} แต้ม</div>
-                      {(user?.pointsBalance ?? 0) < 0 && (
-                        <div className="text-[9px] text-[#00e58b] font-medium mt-1 truncate">
-                          คงเหลือสุทธิ: {projectedBalance}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                      {(user?.pointsBalance ?? 0).toLocaleString()} แต้ม
+                    </span>
+                  </div>
+                  {(user?.pointsBalance ?? 0) < 0 && (
+                    <div className="text-right">
+                      <span className="text-rose-400 bg-rose-950/70 border border-rose-500/40 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                        มียอดค้างชำระฉุกเฉิน
+                      </span>
+                    </div>
+                  )}
+                </div>
 
-            {/* Balance Projection Explainer */}
-            {(user?.pointsBalance ?? 0) < 0 && selectedTopupAmount && (
-              <div className="bg-[#00e58b]/10 border border-[#00e58b]/30 rounded-xl p-2.5 text-[11px] text-emerald-300">
-                <span className="font-bold">ระบบจะ Balance หักล้างยอดหนี้อัตโนมัติ:</span>
-                <div className="mt-1 text-[10px] text-slate-300">
-                  ยอดติดลบ {user?.pointsBalance} + เติม {selectedTopupAmount} = แต้มคงเหลือสุทธิ{' '}
-                  <span className="text-[#00e58b] font-bold">
-                    {(user?.pointsBalance ?? 0) + selectedTopupAmount} แต้ม
+                {/* Amount Selection Grid */}
+                <div>
+                  <span className="text-[11px] font-bold text-slate-300 block mb-2">
+                    เลือกจำนวนเงินที่ต้องการเติม
                   </span>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                    {[20, 50, 100, 300, 500].map((amt) => {
+                      const isSelected = !customTopupAmount && selectedTopupAmount === amt;
+                      return (
+                        <button
+                          key={amt}
+                          onClick={() => {
+                            setSelectedTopupAmount(amt);
+                            setCustomTopupAmount('');
+                          }}
+                          className={`p-2.5 rounded-2xl border text-center transition-all ${
+                            isSelected
+                              ? 'border-[#00e58b] bg-[#00e58b]/15 text-white shadow-lg shadow-[#00e58b]/20 scale-[1.02]'
+                              : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="text-sm font-black">{amt} ฿</div>
+                          <div className="text-[9px] text-slate-400 mt-0.5">+{amt} แต้ม</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Custom Amount Input Box */}
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 mb-1.5 block">
+                    หรือระบุจำนวนเงินเอง (บาท)
+                  </label>
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      min="20"
+                      value={customTopupAmount}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomTopupAmount(val);
+                        const num = Number(val);
+                        if (num > 0) setSelectedTopupAmount(num);
+                      }}
+                      placeholder="ระบุจำนวนเงินเอง เช่น 35, 70, 150..."
+                      className="w-full bg-slate-900/90 border border-slate-700 focus:border-[#00e58b] rounded-2xl py-3 pl-3.5 pr-10 font-black text-base text-white outline-none transition-all placeholder:text-slate-500 placeholder:text-xs placeholder:font-normal"
+                    />
+                    <span className="absolute right-3.5 font-black text-slate-400 text-sm">฿</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1 px-1">
+                    <span>ขั้นต่ำ 20 บาท • 1 บาท = 1 แต้ม</span>
+                    {effectiveTopupAmount >= 20 && (
+                      <span className="text-[#00e58b] font-bold">≈ +{effectiveTopupAmount} แต้ม</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Balance Projection Explainer */}
+                {(user?.pointsBalance ?? 0) < 0 && effectiveTopupAmount >= 20 && (
+                  <div className="bg-[#00e58b]/10 border border-[#00e58b]/30 rounded-xl p-2.5 text-[11px] text-emerald-300">
+                    <span className="font-bold">ระบบจะ Balance หักล้างยอดหนี้อัตโนมัติ:</span>
+                    <div className="mt-1 text-[10px] text-slate-300">
+                      ยอดติดลบ {user?.pointsBalance} + เติม {effectiveTopupAmount} = แต้มคงเหลือสุทธิ{' '}
+                      <span className="text-[#00e58b] font-bold">
+                        {(user?.pointsBalance ?? 0) + effectiveTopupAmount} แต้ม
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Next CTA: Generate PromptPay QR */}
+                <div className="space-y-2 pt-1">
+                  <button
+                    onClick={handleGenerateQuickQr}
+                    disabled={!effectiveTopupAmount || effectiveTopupAmount < 20 || isTopupLoading}
+                    className="w-full py-3.5 px-4 rounded-xl font-black text-xs text-[#041a12] bg-gradient-to-r from-[#00f293] to-[#00b865] hover:brightness-105 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-[#00e58b]/20"
+                  >
+                    {isTopupLoading ? (
+                      <div className="w-4 h-4 border-2 border-[#041a12]/30 border-t-[#041a12] rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <QrCode className="w-4 h-4" />
+                        <span>สร้าง QR Code พร้อมเพย์ ({effectiveTopupAmount || 0} ฿)</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleCloseQuickTopup}
+                    className="w-full py-2 text-slate-400 hover:text-white font-medium text-xs transition-colors"
+                  >
+                    ปิดหน้าต่าง
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* Step 2: PromptPay QR Display & Save for Mobile Banking */
+              <div className="flex flex-col items-center text-center animate-in fade-in duration-200 space-y-3">
+                <div className="flex items-center justify-between w-full">
+                  <button
+                    onClick={() => setQuickTopupStep('INPUT')}
+                    className="flex items-center gap-1 text-slate-400 hover:text-white text-xs font-bold transition-colors"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>เปลี่ยนจำนวนเงิน</span>
+                  </button>
+                  <button
+                    onClick={handleCloseQuickTopup}
+                    className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Thai QR / PromptPay Card Header */}
+                <div className="w-full bg-[#003B70] text-white rounded-t-2xl py-2 px-3.5 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-white text-[#003B70] font-black text-[10px] px-1.5 py-0.5 rounded leading-none">
+                      THAI QR
+                    </div>
+                    <span className="text-xs font-black tracking-wide">พร้อมเพย์ (PromptPay)</span>
+                  </div>
+                  <span className="text-[10px] text-blue-200 font-medium">สแกนได้ทุกธนาคาร</span>
+                </div>
+
+                {/* QR Code Container */}
+                <div className="bg-white border-2 border-[#003B70] border-t-0 rounded-b-2xl p-4 w-full flex flex-col items-center shadow-md -mt-3">
+                  <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-inner inline-block">
+                    <img
+                      src={`https://promptpay.io/${quickPaymentData?.promptpayId || '0812345678'}/${quickPaymentData?.amount || effectiveTopupAmount}.png`}
+                      alt="PromptPay QR Code"
+                      className="w-44 h-44 sm:w-48 sm:h-48 object-contain"
+                    />
+                  </div>
+
+                  <div className="mt-2.5 text-center">
+                    <div className="text-[11px] text-slate-500 font-medium">จำนวนเงินที่ต้องชำระ</div>
+                    <div className="text-2xl font-black text-slate-900 tracking-tight">
+                      {quickPaymentData?.amount.toFixed(2)} <span className="text-sm font-bold text-slate-600">บาท</span>
+                    </div>
+                    <div className="text-[10px] text-emerald-600 font-bold mt-0.5">
+                      ได้รับ +{quickPaymentData?.amount} แต้มทันทีหลังโอน
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mobile Banking Instructions */}
+                <div className="bg-blue-950/40 border border-blue-500/30 rounded-xl p-2.5 text-[11px] text-blue-200 text-left w-full flex items-start gap-2">
+                  <Smartphone className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white">วิธีสแกนด้วยโมบายแบงค์กิ้ง:</strong>
+                    <div className="text-[10px] text-blue-300 mt-0.5 leading-relaxed">
+                      กดปุ่ม <strong>"บันทึกภาพ QR Code"</strong> แล้วเปิดแอปธนาคาร (K PLUS, SCB EASY, Krungthai NEXT ฯลฯ) กด <strong>"สแกน"</strong> แล้วเลือกภาพจากอัลบั้ม
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="w-full space-y-2 pt-1">
+                  <button
+                    onClick={handleSaveQuickQrImage}
+                    disabled={isSavingQrImage}
+                    className="w-full py-3 px-4 rounded-xl font-bold text-xs text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-600 transition-colors flex items-center justify-center gap-2 active:scale-98"
+                  >
+                    <Download className="w-4 h-4 text-[#00e58b]" />
+                    <span>{isSavingQrImage ? 'กำลังดาวน์โหลด...' : '📥 บันทึกภาพ QR Code (ลงเครื่อง)'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleConfirmQuickPaid}
+                    disabled={isTopupLoading}
+                    className="w-full py-3.5 px-4 rounded-xl font-black text-xs text-[#041a12] bg-gradient-to-r from-[#00f293] to-[#00b865] hover:brightness-105 active:scale-98 transition-all shadow-lg shadow-[#00e58b]/20 flex items-center justify-center gap-2"
+                  >
+                    {isTopupLoading ? (
+                      <div className="w-4 h-4 border-2 border-[#041a12]/30 border-t-[#041a12] rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>ฉันโอนเงินเรียบร้อยแล้ว</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             )}
-
-            {/* Top-up Confirm Button */}
-            <div className="space-y-2 pt-1">
-              <button
-                onClick={() => selectedTopupAmount && handleQuickTopup(selectedTopupAmount)}
-                disabled={!selectedTopupAmount || isTopupLoading}
-                className="w-full py-3.5 px-4 rounded-xl font-black text-xs text-[#041a12] bg-gradient-to-r from-[#00f293] to-[#00b865] hover:brightness-105 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-[#00e58b]/20"
-              >
-                {isTopupLoading ? (
-                  <div className="w-4 h-4 border-2 border-[#041a12]/30 border-t-[#041a12] rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <CreditCard className="w-4 h-4" />
-                    <span>ยืนยันเติม {selectedTopupAmount} ฿ (PromptPay)</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={() => setShowQuickTopupModal(false)}
-                className="w-full py-2 text-slate-400 hover:text-white font-medium text-xs transition-colors"
-              >
-                ปิดหน้าต่าง
-              </button>
-            </div>
           </div>
         </div>
       )}

@@ -34,6 +34,12 @@ export class CreditController {
     return this.creditService.requestTopup(req.user.sub, body, idempotencyKey);
   }
 
+  @Post('topup/confirm')
+  @UseGuards(AuthGuard)
+  async confirmTopup(@Req() req: any, @Body() body: { paymentRef: string }) {
+    return this.creditService.confirmTopup(req.user.sub, body.paymentRef);
+  }
+
   /**
    * WEBHOOK: Receive callback from Payment Gateway (e.g., GBPrimePay, Omise)
    * URL: POST /api/credit/webhook

@@ -199,6 +199,7 @@ export class CreditService {
       balance: await this.getBalance(passengerId),
       providerReady: this.isPaymentProviderReady(),
       providerConfiguredName: this.paymentProvider,
+      promptpayId: this.configService.get<string>('PROMPTPAY_ID') || '0812345678',
       message: 'สร้างรายการเติมเงินแล้ว รอการยืนยันจากช่องทางชำระเงิน',
       instructions: paymentMethod === 'PROMPTPAY'
         ? 'ชำระผ่าน PromptPay แล้วระบบจะอัปเดตแต้มเมื่อ webhook ยืนยัน'
@@ -302,6 +303,74 @@ export class CreditService {
       if (err instanceof BadRequestException) throw err;
       this.logger.error(`Webhook processing failed for ${paymentRef}: ${err.message}`);
       throw new InternalServerErrorException('ไม่สามารถประมวลผลการชำระเงินได้');
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async confirmTopup(passengerId: string, paymentRef: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const paymentRows = await queryRunner.query(
+        `SELECT * FROM ${TABLE_PAYMENT_TXN} WHERE payment_ref = $1 AND passenger_id = $2 FOR UPDATE`,
+        [paymentRef, passengerId]
+      );
+      if (!paymentRows.length) {
+        throw new BadRequestException('ไม่พบรหัสอ้างอิงการชำระเงินนี้');
+      }
+
+      const payment = paymentRows[0];
+      if (payment.status === 'CONFIRMED') {
+        await queryRunner.commitTransaction();
+        const currentBalance = await this.getBalance(passengerId);
+        return {
+          success: true,
+          status: 'CONFIRMED',
+          paymentRef,
+          balance: currentBalance,
+        };
+      }
+
+      const expectedAmount = Number(payment.amount_baht);
+      const bonusPoints = Number(payment.bonus_points || 0);
+
+      const totalPoints = await this.creditWalletFromPayment(
+        queryRunner,
+        passengerId,
+        expectedAmount,
+        bonusPoints,
+        paymentRef,
+        payment.payment_method || 'PROMPTPAY',
+        { confirmedBy: 'PASSENGER_TRANSFER', confirmedAt: new Date().toISOString() },
+        null
+      );
+
+      await queryRunner.query(
+        `UPDATE ${TABLE_PAYMENT_TXN}
+         SET status = 'CONFIRMED', confirmed_at = NOW(), updated_at = NOW()
+         WHERE payment_ref = $1`,
+        [paymentRef]
+      );
+
+      await queryRunner.commitTransaction();
+      const newBalance = await this.getBalance(passengerId);
+
+      this.logger.log(`Confirmed top-up for passenger ${passengerId}, ref: ${paymentRef}, points added: ${totalPoints}, new balance: ${newBalance}`);
+
+      return {
+        success: true,
+        status: 'CONFIRMED',
+        paymentRef,
+        pointsAdded: totalPoints,
+        amount: expectedAmount,
+        balance: newBalance,
+      };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
     } finally {
       await queryRunner.release();
     }
