@@ -158,6 +158,9 @@ export const useAuth = () => {
         pointsBalance: data.user.pointsBalance ?? 0,
         freeRidesRemaining: data.user.freeRidesRemaining ?? 0,
       });
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('gozipp_pin_passed', 'true');
+      }
       setAuthStep('APP_SHELL');
       return true;
     } catch (err: any) {
@@ -272,7 +275,12 @@ export const useAuth = () => {
           pointsBalance: data.user.pointsBalance ?? 0,
           freeRidesRemaining: data.user.freeRidesRemaining ?? 0,
         });
-        setAuthStep('APP_SHELL');
+        const isPinPassed = typeof window !== 'undefined' && sessionStorage.getItem('gozipp_pin_passed') === 'true';
+        if (isPinPassed) {
+          setAuthStep('APP_SHELL');
+        } else {
+          setAuthStep('LOGIN_PIN');
+        }
         return true;
       }
       return false;

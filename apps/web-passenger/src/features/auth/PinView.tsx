@@ -14,6 +14,8 @@ interface PinViewProps {
 
 const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPin }) => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
+  const user = useAuthStore((state) => state.user);
+  const targetPhone = phoneNumber || user?.phone || '';
   const { isLoading } = useUIStore();
   const { setupPin, loginWithPin, redeemRecoveryTicket, error, setError } = useAuth();
   const { registerPasskey, authenticatePasskey } = useWebAuthn();
@@ -61,8 +63,12 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPi
         // Show biometric setup prompt
         setShowBiometricPrompt(true);
       }
-    } else if (mode === 'LOGIN' && phoneNumber) {
-      await loginWithPin(phoneNumber, pinCode);
+    } else if (mode === 'LOGIN') {
+      if (!targetPhone) {
+        setAuthStep('LOGIN');
+        return;
+      }
+      await loginWithPin(targetPhone, pinCode);
     }
   };
 
@@ -194,8 +200,23 @@ const PinView: React.FC<PinViewProps> = ({ mode, userId, phoneNumber, onForgotPi
             <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight">
               {mode === 'SETUP' ? (firstPin ? 'ยืนยันรหัส PIN' : 'ตั้งรหัส PIN') : 'กรอกรหัส PIN'}
             </h2>
-            <div className="text-gray-400 font-medium text-xs space-y-0.5 leading-relaxed">
-              <p>{mode === 'SETUP' ? (firstPin ? 'กรอกรหัสเดิมอีกครั้งให้ตรงกัน' : 'ใช้ตัวเลข 6 หลักที่คุณจำได้') : 'ใช้ PIN 6 หลัก'}</p>
+            <div className="text-gray-400 font-medium text-xs space-y-1 leading-relaxed">
+              <p>
+                {mode === 'SETUP'
+                  ? (firstPin ? 'กรอกรหัสเดิมอีกครั้งให้ตรงกัน' : 'ใช้ตัวเลข 6 หลักที่คุณจำได้')
+                  : targetPhone
+                  ? `เบอร์โทรศัพท์: ${targetPhone}`
+                  : 'กรอกรหัส PIN 6 หลักเพื่อเข้าใช้งาน'}
+              </p>
+              {mode === 'LOGIN' && (
+                <button
+                  type="button"
+                  onClick={() => setAuthStep('LOGIN')}
+                  className="text-xs text-[#00e58b] hover:underline font-bold mt-1 inline-block"
+                >
+                  เข้าสู่ระบบด้วยเบอร์อื่น
+                </button>
+              )}
             </div>
           </motion.div>
 

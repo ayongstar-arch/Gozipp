@@ -1,6 +1,6 @@
 /**
  * authStore.ts — Zustand Auth State (Production)
- * Persisted to localStorage for session continuity
+ * Persisted to localStorage for session continuity with PIN lock enforcement
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -46,8 +46,8 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      authStep: 'ONBOARDING',
-  otpPurpose: 'REGISTER',
+      authStep: 'LOGIN',
+      otpPurpose: 'REGISTER',
 
       setUser: (user) => set({ user }),
       setAuthStep: (authStep) => set({ authStep }),
@@ -56,18 +56,24 @@ export const useAuthStore = create<AuthState>()(
         set((state) => ({
           user: state.user ? { ...state.user, pointsBalance: balance } : null,
         })),
-      logout: () =>
+      logout: () => {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('gozipp_pin_passed');
+          localStorage.removeItem('gozipp_pin_passed');
+        }
         set({
           user: null,
           authStep: 'LOGIN',
           otpPurpose: 'REGISTER',
-        }),
+        });
+      },
     }),
     {
       name: 'gozipp-auth-storage',
       partialize: (state) => ({
         user: state.user,
-        authStep: state.authStep === 'APP_SHELL' ? 'APP_SHELL' : 'ONBOARDING',
+        // Always require PIN verification on returning sessions if a user exists
+        authStep: state.user?.phone ? 'LOGIN_PIN' : 'LOGIN',
       }),
     }
   )

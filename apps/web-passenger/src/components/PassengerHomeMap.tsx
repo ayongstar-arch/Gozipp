@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -10,14 +10,25 @@ interface PassengerHomeMapProps {
   triggerRecenter?: number;
 }
 
-// Controller to smoothly pan map on GPS recenter button click
-const MapController: React.FC<{ center: [number, number]; triggerRecenter?: number }> = ({ center, triggerRecenter }) => {
+// Controller to smoothly pan map when GPS coordinates update or recenter is clicked
+const MapController: React.FC<{ center: [number, number]; triggerRecenter?: number }> = ({
+  center,
+  triggerRecenter,
+}) => {
   const map = useMap();
+  const prevCenterRef = useRef<[number, number]>(center);
+
   useEffect(() => {
-    if (triggerRecenter && triggerRecenter > 0) {
-      map.flyTo(center, 16, { duration: 1.2 });
+    const [lat, lng] = center;
+    const [prevLat, prevLng] = prevCenterRef.current;
+    const hasMoved = Math.abs(lat - prevLat) > 0.0001 || Math.abs(lng - prevLng) > 0.0001;
+
+    if (hasMoved || (triggerRecenter && triggerRecenter > 0)) {
+      map.flyTo([lat, lng], 16, { duration: 1.2 });
+      prevCenterRef.current = [lat, lng];
     }
-  }, [triggerRecenter, center, map]);
+  }, [center, triggerRecenter, map]);
+
   return null;
 };
 
@@ -72,7 +83,7 @@ const createDriverIcon = (distanceText: string) => {
   });
 };
 
-// Custom DivIcon for Landmarks (Samitivej Hospital, Terminal 21, Benjasiri Park)
+// Custom DivIcon for Landmarks
 const createLandmarkIcon = (name: string, type: 'hospital' | 'mall' | 'park') => {
   const iconSvg =
     type === 'hospital'
@@ -101,7 +112,7 @@ const createLandmarkIcon = (name: string, type: 'hospital' | 'mall' | 'park') =>
 export default function PassengerHomeMap({ center, triggerRecenter }: PassengerHomeMapProps) {
   const userIcon = useMemo(() => createUserIcon(), []);
 
-  // 4 Nearby Win Drivers matching the screenshot distances: 1.2 กม., 850 ม., 600 ม., 1.5 กม.
+  // 4 Nearby Win Drivers dynamically clustered around user center
   const drivers = useMemo(
     () => [
       {
@@ -132,7 +143,7 @@ export default function PassengerHomeMap({ center, triggerRecenter }: PassengerH
     [center.lat, center.lng]
   );
 
-  // Landmarks around Sukhumvit 23 area
+  // Landmarks around current coordinates
   const landmarks = useMemo(
     () => [
       {
@@ -173,9 +184,9 @@ export default function PassengerHomeMap({ center, triggerRecenter }: PassengerH
       >
         <MapController center={[center.lat, center.lng]} triggerRecenter={triggerRecenter} />
 
-        {/* CartoDB Dark Matter base tiles */}
+        {/* Clean, unwatermarked Carto Fastly Dark Tiles */}
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url="https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png"
           subdomains={['a', 'b', 'c', 'd']}
           maxZoom={19}
         />
