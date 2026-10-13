@@ -1,7 +1,6 @@
 /**
  * HomeView.tsx — GoZipp Passenger Home Screen
- * Native App Experience: Full-screen interactive map, responsive floating cards,
- * 100% visible CTA action, real-time GPS tracking, and Thai address reverse geocoding.
+ * Dynamic Localized Pickup Points + Real GPS Tracking + Thai Reverse Geocoding + Full Screen Mobile UX
  */
 'use client';
 
@@ -26,6 +25,9 @@ import {
   CheckCircle2,
   Phone,
   X,
+  Store,
+  Building,
+  Navigation,
 } from 'lucide-react';
 
 // Dynamic import for Leaflet map to prevent SSR errors
@@ -39,9 +41,9 @@ const PassengerHomeMap = dynamic(() => import('@/components/PassengerHomeMap'), 
   ),
 });
 
-// Default coords fallback (Sukhumvit 23)
+// Default coords fallback
 const DEFAULT_COORDS = { lat: 13.738, lng: 100.562 };
-const DEFAULT_ADDRESS = 'ซอยสุขุมวิท 23, คลองเตยเหนือ';
+const DEFAULT_ADDRESS = 'กำลังระบุตำแหน่งของคุณ...';
 
 export default function HomeView() {
   const { myLocation, setMyLocation, isSearching, activeDriver, stationId, setStationId } =
@@ -57,12 +59,19 @@ export default function HomeView() {
   const [triggerRecenter, setTriggerRecenter] = useState(0);
   const [showWinDetails, setShowWinDetails] = useState(false);
   const [showSafetyModal, setShowSafetyModal] = useState(false);
+  const [showPickupPickerModal, setShowPickupPickerModal] = useState(false);
 
-  // Quick Chips
-  const quickChips = useMemo(
-    () => ['หน้าคอนโด', 'ร้านกาแฟ Amazon', 'ปากซอยสุขุมวิท 23'],
-    []
-  );
+  // Dynamic Location-Aware Pickup Chips (Adapts to user's real GPS position)
+  const [dynamicChips, setDynamicChips] = useState<string[]>([
+    'หน้าปากซอย',
+    'หน้าคอนโด / หมู่บ้าน',
+    'หน้าร้าน 7-Eleven',
+    'ป้อม รปภ. / ใต้ตึก',
+  ]);
+
+  // Detected road & area for modal
+  const [detectedRoad, setDetectedRoad] = useState<string>('');
+  const [detectedArea, setDetectedArea] = useState<string>('');
 
   // Reverse Geocoding helper (Thai Language)
   const fetchAddressFromCoords = useCallback(async (lat: number, lng: number) => {
@@ -80,24 +89,58 @@ export default function HomeView() {
         const data = await res.json();
         const addr = data.address;
         if (addr) {
-          const road = addr.road || addr.pedestrian || addr.suburb || addr.hamlet || '';
+          const road = addr.road || addr.pedestrian || addr.highway || '';
           const district =
-            addr.subdistrict || addr.district || addr.city_district || addr.city || '';
+            addr.subdistrict || addr.suburb || addr.municipality || addr.district || addr.city_district || addr.city || '';
+
+          if (road) setDetectedRoad(road);
+          if (district) setDetectedArea(district);
+
+          // Update main address banner
           if (road && district) {
             setCurrentAddress(`${road}, ${district}`);
-            return;
           } else if (district) {
             setCurrentAddress(district);
-            return;
           } else if (data.display_name) {
             const parts = data.display_name.split(',').map((s: string) => s.trim());
-            setCurrentAddress(`${parts[0] || 'ตำแหน่งปัจจุบันของคุณ'}`);
-            return;
+            setCurrentAddress(`${parts[0] || 'ตำแหน่งของคุณ'}`);
           }
+
+          // DYNAMICALLY GENERATE RELEVANT LOCAL PICKUP CHIPS
+          const chips: string[] = [];
+
+          if (road) {
+            if (road.includes('ซอย')) {
+              chips.push(`ปาก${road}`);
+            } else if (road.includes('ถนน')) {
+              chips.push(`ริม${road}`);
+            } else {
+              chips.push(`ปากซอย ${road}`);
+            }
+          } else {
+            chips.push('หน้าปากซอย');
+          }
+
+          if (district) {
+            const cleanArea = district
+              .replace('เทศบาลตำบล', '')
+              .replace('เทศบาลนคร', '')
+              .replace('ตำบล', '')
+              .trim();
+            if (cleanArea) {
+              chips.push(`หน้า ${cleanArea}`);
+            }
+          }
+
+          chips.push('หน้าคอนโด / หมู่บ้าน');
+          chips.push('หน้าร้าน 7-Eleven');
+          chips.push('ป้อม รปภ. / ใต้ตึก');
+
+          setDynamicChips(chips);
         }
       }
     } catch {
-      // Keep existing address
+      // Keep sensible fallback
     }
   }, []);
 
@@ -318,9 +361,18 @@ export default function HomeView() {
 
         {/* Tell Pickup Point Card */}
         <div className="bg-[#091b27]/90 backdrop-blur-md rounded-2xl border border-[#00e58b]/30 p-2 sm:p-2.5 shadow-2xl space-y-1.5 pointer-events-auto w-full max-w-full min-w-0 box-border">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
-            <MessageSquare className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-            <span>บอกจุดรับ (สำหรับคนขับ)</span>
+          <div className="flex items-center justify-between text-[11px] text-slate-300 font-medium">
+            <div className="flex items-center gap-1.5">
+              <MessageSquare className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+              <span>บอกจุดรับ (สำหรับคนขับ)</span>
+            </div>
+            <button
+              onClick={() => setShowPickupPickerModal(true)}
+              className="text-[10px] text-[#00e58b] hover:underline flex items-center gap-0.5"
+            >
+              <span>เลือกจุดในพื้นที่</span>
+              <ChevronRight className="w-3 h-3" />
+            </button>
           </div>
 
           {/* White Input Pill */}
@@ -329,7 +381,7 @@ export default function HomeView() {
               type="text"
               value={pickupNote}
               onChange={(e) => setPickupNote(e.target.value)}
-              placeholder="เช่น หน้าคอนโด, ร้านกาแฟ, บริษัท..."
+              placeholder="เช่น หน้าคอนโด, ร้านกาแฟ, ปากซอย..."
               className="text-xs text-slate-800 placeholder-slate-400 font-medium outline-none bg-transparent flex-1 w-full min-w-0 pr-1.5"
             />
             <button
@@ -341,9 +393,9 @@ export default function HomeView() {
             </button>
           </div>
 
-          {/* Quick Chips Row */}
+          {/* Dynamic Quick Chips Row (Adapts to real location) */}
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5 w-full max-w-full min-w-0">
-            {quickChips.map((chip, idx) => {
+            {dynamicChips.map((chip, idx) => {
               const isSelected = pickupNote === chip;
               return (
                 <button
@@ -360,9 +412,13 @@ export default function HomeView() {
                 </button>
               );
             })}
-            <div className="text-slate-500 pl-0.5 shrink-0">
+            <button
+              onClick={() => setShowPickupPickerModal(true)}
+              className="text-slate-400 hover:text-[#00e58b] pl-1 pr-1 shrink-0 flex items-center"
+              title="ดูตัวเลือกจุดรับเพิ่มเติม"
+            >
               <ChevronRight className="w-3.5 h-3.5" />
-            </div>
+            </button>
           </div>
         </div>
       </div>
@@ -390,7 +446,7 @@ export default function HomeView() {
           <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
         </div>
 
-        {/* Main CTA Button: เรียกวินใกล้ฉัน (100% visible, elevated right above nav bar) */}
+        {/* Main CTA Button: เรียกวินใกล้ฉัน */}
         <div className="pointer-events-auto w-full max-w-full">
           <button
             onClick={handleCallWin}
@@ -480,7 +536,121 @@ export default function HomeView() {
         </div>
       )}
 
-      {/* 6. MODAL: SAFETY GUARANTEE */}
+      {/* 6. MODAL: LOCALIZED PICKUP LOCATION PICKER */}
+      {showPickupPickerModal && (
+        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+          <div className="bg-[#091b27] border-t sm:border border-[#00e58b]/30 rounded-t-3xl sm:rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-[#00e58b]/10 text-[#00e58b] flex items-center justify-center">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">เลือกจุดรับในพื้นที่ของคุณ</h4>
+                  <p className="text-[10px] text-slate-400 truncate max-w-[200px]">{currentAddress}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPickupPickerModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              {/* Category: Roads & Soi */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
+                  <Navigation className="w-3 h-3 text-[#00e58b]" />
+                  จุดริมถนน / ปากซอย
+                </span>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {[
+                    detectedRoad ? `ปาก${detectedRoad}` : 'หน้าปากซอย',
+                    detectedRoad ? `กลาง${detectedRoad}` : 'หัวมุมถนน',
+                    detectedRoad ? `ริม${detectedRoad}` : 'จุดกลับรถ',
+                  ].map((option, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setPickupNote(option);
+                        setShowPickupPickerModal(false);
+                      }}
+                      className="text-left bg-slate-800/60 hover:bg-[#00e58b]/10 hover:border-[#00e58b]/40 border border-slate-700/50 p-2.5 rounded-xl text-slate-200 transition-colors flex items-center justify-between"
+                    >
+                      <span>{option}</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category: Residential */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
+                  <Building className="w-3 h-3 text-[#00e58b]" />
+                  ที่พักอาศัย / อาคาร
+                </span>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {['หน้าคอนโด', 'หน้าทางเข้าหมู่บ้าน', 'ป้อม รปภ. ประตูหลัก', 'ล็อบบี้ใต้อาคาร'].map(
+                    (option, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setPickupNote(option);
+                          setShowPickupPickerModal(false);
+                        }}
+                        className="text-left bg-slate-800/60 hover:bg-[#00e58b]/10 hover:border-[#00e58b]/40 border border-slate-700/50 p-2.5 rounded-xl text-slate-200 transition-colors flex items-center justify-between"
+                      >
+                        <span>{option}</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+
+              {/* Category: Landmarks / Convenience */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
+                  <Store className="w-3 h-3 text-[#00e58b]" />
+                  ร้านสะดวกซื้อ / จุดนัดพบ
+                </span>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {[
+                    'หน้าร้าน 7-Eleven',
+                    'หน้าร้าน CJ MORE / ซูเปอร์มาร์เก็ต',
+                    detectedArea ? `หน้า${detectedArea.replace('เทศบาลตำบล', '').replace('ตำบล', '')}` : 'หน้าตลาดใกล้เคียง',
+                    'ป้ายรถเมล์ / ศาลารอรถ',
+                  ].map((option, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setPickupNote(option);
+                        setShowPickupPickerModal(false);
+                      }}
+                      className="text-left bg-slate-800/60 hover:bg-[#00e58b]/10 hover:border-[#00e58b]/40 border border-slate-700/50 p-2.5 rounded-xl text-slate-200 transition-colors flex items-center justify-between"
+                    >
+                      <span>{option}</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowPickupPickerModal(false)}
+              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2.5 rounded-xl text-xs mt-2"
+            >
+              ปิดหน้าต่าง
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 7. MODAL: SAFETY GUARANTEE */}
       {showSafetyModal && (
         <div className="absolute inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-5">
           <div className="bg-[#091b27] border border-[#00e58b]/30 rounded-3xl p-5 max-w-sm w-full space-y-3.5 shadow-2xl relative">
