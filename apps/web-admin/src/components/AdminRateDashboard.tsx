@@ -54,8 +54,8 @@ const AdminRateDashboard: React.FC = () => {
   const [isReferralSaving, setIsReferralSaving] = useState(false);
 
   // Pricing Policy State (Configured by Admin - Flat Fee per Trip)
-  const [baseFarePoints, setBaseFarePoints] = useState<number>(25);
-  const [emergencyOverdraftLimit, setEmergencyOverdraftLimit] = useState<number>(100);
+  const [baseFarePoints, setBaseFarePoints] = useState<number>(2);
+  const [emergencyOverdraftLimit, setEmergencyOverdraftLimit] = useState<number>(5);
   const [isPricingSaving, setIsPricingSaving] = useState(false);
 
   const fetchAiSummary = async () => {
@@ -493,26 +493,36 @@ const AdminRateDashboard: React.FC = () => {
                       <div className="space-y-4">
                           <div>
                               <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">ค่าบริการหักแต้มเริ่มต้นต่อเที่ยว (Base Points / Trip)</label>
-                              <input
-                                  type="number"
-                                  value={baseFarePoints}
-                                  onChange={(e) => setBaseFarePoints(Math.max(0, parseInt(e.target.value) || 0))}
-                                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-lg focus:outline-none focus:border-gozipp-green"
-                                  min="0"
-                              />
-                               <p className="text-[10px] text-slate-500 mt-1">แต้มที่ระบบจะหักผู้โดยสารแบบเหมาจ่ายต่อเที่ยว (ค่าเริ่มต้น: 25 แต้ม)</p>
+                              <div className="relative">
+                                  <input
+                                      type="number"
+                                      value={baseFarePoints}
+                                      onChange={(e) => setBaseFarePoints(Math.max(0, parseInt(e.target.value) || 0))}
+                                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-lg focus:outline-none focus:border-gozipp-green pr-28"
+                                      min="0"
+                                  />
+                                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                                      {baseFarePoints} แต้ม ({baseFarePoints} บาท)
+                                  </div>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1">แต้มที่ระบบจะหักผู้โดยสารแบบเหมาจ่ายต่อเที่ยว (ค่าเริ่มต้น: 2 บาท / 2 แต้ม)</p>
                           </div>
 
                           <div>
                               <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">วงเงินแต้มติดลบฉุกเฉินสูงสุด (Max Emergency Overdraft Limit)</label>
-                              <input
-                                  type="number"
-                                  value={emergencyOverdraftLimit}
-                                  onChange={(e) => setEmergencyOverdraftLimit(Math.max(0, parseInt(e.target.value) || 0))}
-                                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-lg focus:outline-none focus:border-gozipp-green"
-                                  min="0"
-                              />
-                              <p className="text-[10px] text-slate-500 mt-1">ผู้โดยสารสามารถใช้สิทธิ์ฉุกเฉินติดลบได้ไม่เกินวงเงินนี้ (ค่าเริ่มต้น: 100 แต้ม)</p>
+                              <div className="relative">
+                                  <input
+                                      type="number"
+                                      value={emergencyOverdraftLimit}
+                                      onChange={(e) => setEmergencyOverdraftLimit(Math.max(0, parseInt(e.target.value) || 0))}
+                                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-lg focus:outline-none focus:border-gozipp-green pr-28"
+                                      min="0"
+                                  />
+                                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                                      {emergencyOverdraftLimit} แต้ม ({emergencyOverdraftLimit} บาท)
+                                  </div>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1">ผู้โดยสารสามารถใช้สิทธิ์ฉุกเฉินติดลบได้ไม่เกินวงเงินนี้ (ค่าเริ่มต้น: 5 บาท / 5 แต้ม)</p>
                           </div>
 
                           <button

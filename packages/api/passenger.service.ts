@@ -307,8 +307,8 @@ export class PassengerService implements OnModuleInit {
     const baseFare = await this.redis.get('config:trip_base_fare_points');
     const overdraftLimit = await this.redis.get('config:emergency_overdraft_limit');
     return {
-      baseFarePoints: baseFare ? parseInt(baseFare, 10) : 25,
-      emergencyOverdraftLimit: overdraftLimit ? parseInt(overdraftLimit, 10) : 100,
+      baseFarePoints: baseFare ? parseInt(baseFare, 10) : 2,
+      emergencyOverdraftLimit: overdraftLimit ? parseInt(overdraftLimit, 10) : 5,
     };
   }
 

@@ -58,9 +58,9 @@ export default function HomeView() {
   const { setToastMessage } = useUIStore();
   const { requestRide, cancelRide, isLoading, error } = useRide();
 
-  // Dynamic Pricing configured by Admin (Default: 25 points / overdraft max 100)
-  const [tripPoints, setTripPoints] = useState(25);
-  const [emergencyLimit, setEmergencyLimit] = useState(100);
+  // Dynamic Pricing configured by Admin (Default: 2 points (2 บาท) / overdraft max 5 points (5 บาท))
+  const [tripPoints, setTripPoints] = useState(2);
+  const [emergencyLimit, setEmergencyLimit] = useState(5);
 
   // State
   const [currentAddress, setCurrentAddress] = useState(DEFAULT_ADDRESS);
@@ -72,7 +72,7 @@ export default function HomeView() {
   const [showPickupPickerModal, setShowPickupPickerModal] = useState(false);
   const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
   const [showQuickTopupModal, setShowQuickTopupModal] = useState(false);
-  const [selectedTopupAmount, setSelectedTopupAmount] = useState<number | null>(100);
+  const [selectedTopupAmount, setSelectedTopupAmount] = useState<number | null>(20);
   const [isTopupLoading, setIsTopupLoading] = useState(false);
 
   // Dynamic Location-Aware Pickup Chips (Adapts to user's real GPS position)
@@ -238,8 +238,8 @@ export default function HomeView() {
     // Fetch dynamic pricing configured in Admin
     apiFetch('/api/v1/passenger/pricing-config')
       .then((cfg) => {
-        if (cfg?.baseFarePoints) setTripPoints(cfg.baseFarePoints);
-        if (cfg?.emergencyOverdraftLimit) setEmergencyLimit(cfg.emergencyOverdraftLimit);
+        if (cfg?.baseFarePoints !== undefined) setTripPoints(cfg.baseFarePoints);
+        if (cfg?.emergencyOverdraftLimit !== undefined) setEmergencyLimit(cfg.emergencyOverdraftLimit);
       })
       .catch(() => {});
   }, []);
@@ -582,7 +582,7 @@ export default function HomeView() {
           <div className="flex items-center gap-1.5">
             <span className="text-slate-300 font-medium text-[11px]">ค่าบริการเที่ยวนี้:</span>
             <span className="text-[#00e58b] font-black text-xs">{tripPoints} แต้ม</span>
-            <span className="text-slate-500 text-[10px]">· ~20-25 ฿</span>
+            <span className="text-slate-400 text-[10px]">({tripPoints} บาท)</span>
           </div>
           <div className="flex items-center gap-1">
             {(user?.freeRidesRemaining ?? 0) > 0 ? (
@@ -904,7 +904,7 @@ export default function HomeView() {
             <div className="bg-slate-900/80 rounded-2xl p-3.5 border border-slate-800 space-y-2 text-xs">
               <div className="flex items-center justify-between text-slate-300">
                 <span>ค่าบริการเที่ยวนี้:</span>
-                <span className="font-extrabold text-[#00e58b]">{tripPoints} แต้ม</span>
+                <span className="font-extrabold text-[#00e58b]">{tripPoints} แต้ม ({tripPoints} บาท)</span>
               </div>
               <div className="flex items-center justify-between text-slate-300">
                 <span>แต้มคงเหลือของคุณ:</span>
@@ -958,7 +958,7 @@ export default function HomeView() {
                   <p className="text-[10px] text-slate-300 leading-relaxed">
                     ระบบจะอนุญาตให้คุณเดินทางได้ทันที โดยจะบันทึกเป็น{' '}
                     <span className="text-amber-300 font-bold">
-                      แต้มติดลบ ({(user?.pointsBalance ?? 0) - tripPoints} แต้ม)
+                      แต้มติดลบ ({(user?.pointsBalance ?? 0) - tripPoints} แต้ม / {Math.abs((user?.pointsBalance ?? 0) - tripPoints)} บาท)
                     </span>{' '}
                     ไว้ในบัญชี และจะนำไป Balance หักลบอัตโนมัติเมื่อคุณเติมแต้มครั้งถัดไป
                   </p>
@@ -972,7 +972,7 @@ export default function HomeView() {
                 </div>
               ) : (
                 <div className="bg-rose-950/50 border border-rose-500/40 rounded-xl p-3 text-[11px] text-rose-300 text-center">
-                  ⚠️ คุณมียอดติดลบสะสมเกินวงเงินฉุกเฉิน (-{emergencyLimit} แต้ม) กรุณาเติมแต้มก่อนใช้งานต่อ
+                  ⚠️ คุณมียอดติดลบสะสมเกินวงเงินฉุกเฉิน (-{emergencyLimit} แต้ม / {emergencyLimit} บาท) กรุณาเติมแต้มก่อนใช้งานต่อ
                 </div>
               )}
 
@@ -1036,7 +1036,7 @@ export default function HomeView() {
                 เลือกจำนวนเงินที่ต้องการเติม
               </span>
               <div className="grid grid-cols-2 gap-2">
-                {[50, 100, 200, 500].map((amt) => {
+                {[20, 50, 100, 300].map((amt) => {
                   const isSelected = selectedTopupAmount === amt;
                   const projectedBalance = (user?.pointsBalance ?? 0) + amt;
                   return (

@@ -78,7 +78,7 @@ const WalletView: React.FC = () => {
     }
   };
 
-  const TOPUP_OPTIONS = [50, 100, 200, 500];
+  const TOPUP_OPTIONS = [20, 50, 100, 300];
 
   return (
     <div className="p-6 pb-24">
