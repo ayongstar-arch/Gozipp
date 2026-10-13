@@ -2,6 +2,7 @@ import React from 'react';
 import type { Metadata } from 'next';
 import { Noto_Sans_Thai, Inter, Prompt, Kanit } from 'next/font/google';
 import './globals.css';
+import 'leaflet/dist/leaflet.css';
 import Providers from './providers';
 
 const notoThai = Noto_Sans_Thai({ 
