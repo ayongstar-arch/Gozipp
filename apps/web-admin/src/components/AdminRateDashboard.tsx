@@ -96,6 +96,8 @@ export interface PromotionRule {
   points: number;
   description: string;
   isActive: boolean;
+  startDate?: string;
+  endDate?: string;
   maxUsageLimit?: number;
   currentUsage: number;
   updatedAt: string;
@@ -165,6 +167,8 @@ export default function AdminRateDashboard() {
       points: 50,
       description: 'ผู้โดยสารใหม่ลงทะเบียนสำเร็จ รับแต้มเข้ากระเป๋าทันที 50 แต้ม เพื่อใช้เดินทาง',
       isActive: true,
+      startDate: '2026-10-01',
+      endDate: '2026-12-31',
       maxUsageLimit: 10000,
       currentUsage: 1482,
       updatedAt: new Date().toISOString(),
@@ -177,6 +181,8 @@ export default function AdminRateDashboard() {
       points: 50,
       description: 'รับแต้ม 50 แต้ม เมื่อเพื่อนที่คุณชวนสมัครและเดินทางเที่ยวแรกสำเร็จ',
       isActive: true,
+      startDate: '2026-10-01',
+      endDate: '2026-12-31',
       maxUsageLimit: 50000,
       currentUsage: 860,
       updatedAt: new Date().toISOString(),
@@ -189,6 +195,8 @@ export default function AdminRateDashboard() {
       points: 20,
       description: 'เดินทางเที่ยวแรกสำเร็จ รับแต้มเงินคืน 20 แต้ม',
       isActive: true,
+      startDate: '2026-10-15',
+      endDate: '2026-11-30',
       maxUsageLimit: 5000,
       currentUsage: 622,
       updatedAt: new Date().toISOString(),
@@ -201,6 +209,7 @@ export default function AdminRateDashboard() {
       points: 10,
       description: 'เติมเงินตั้งแต่ 100 บาทขึ้นไป รับแต้มเพิ่มพิเศษ 10 แต้ม',
       isActive: true,
+      startDate: '2026-10-01',
       maxUsageLimit: 2000,
       currentUsage: 310,
       updatedAt: new Date().toISOString(),
@@ -211,6 +220,42 @@ export default function AdminRateDashboard() {
   const [isCreatingPromotion, setIsCreatingPromotion] = useState(false);
   const [promotionToast, setPromotionToast] = useState<string | null>(null);
   const [promoTypeFilter, setPromoTypeFilter] = useState<string>('ALL');
+
+  // Promotion Date Status Helper
+  const formatDateThai = (dateStr?: string) => {
+    if (!dateStr) return '';
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const [y, m, d] = parts;
+        const yearThai = parseInt(y) + 543;
+        return `${parseInt(d)}/${parseInt(m)}/${yearThai}`;
+      }
+      return dateStr;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const getPromotionDateStatus = (startDate?: string, endDate?: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    if (startDate && today < startDate) {
+      return { status: 'UPCOMING', label: `เริ่ม ${formatDateThai(startDate)}`, badgeClass: 'bg-amber-500/15 text-amber-400 border-amber-500/20' };
+    }
+    if (endDate && today > endDate) {
+      return { status: 'EXPIRED', label: `หมดอายุแล้ว (${formatDateThai(endDate)})`, badgeClass: 'bg-red-500/15 text-red-400 border-red-500/20' };
+    }
+    if (startDate && endDate) {
+      return { status: 'ACTIVE', label: `${formatDateThai(startDate)} - ${formatDateThai(endDate)}`, badgeClass: 'bg-white/5 text-slate-300 border-white/10' };
+    }
+    if (startDate) {
+      return { status: 'ACTIVE', label: `ตั้งแต่ ${formatDateThai(startDate)} (ตลอดไป)`, badgeClass: 'bg-white/5 text-slate-300 border-white/10' };
+    }
+    if (endDate) {
+      return { status: 'ACTIVE', label: `ถึง ${formatDateThai(endDate)}`, badgeClass: 'bg-white/5 text-slate-300 border-white/10' };
+    }
+    return { status: 'ACTIVE', label: 'ไม่มีกำหนดสิ้นสุด (ตลอดไป)', badgeClass: 'bg-white/5 text-slate-400 border-white/10' };
+  };
 
   // AI Analyst State
   const [aiReport, setAiReport] = useState<string | null>(null);
@@ -1584,6 +1629,22 @@ export default function AdminRateDashboard() {
                         <div className="text-base font-bold text-white font-mono">{promo.currentUsage.toLocaleString()} คน</div>
                       </div>
                     </div>
+
+                    {/* Campaign Date Display */}
+                    {(() => {
+                      const dateInfo = getPromotionDateStatus(promo.startDate, promo.endDate);
+                      return (
+                        <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-950/70 border border-white/5 text-xs">
+                          <div className="flex items-center gap-1.5 text-slate-400">
+                            <Calendar className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                            <span className="text-[11px] font-bold">ระยะเวลาแคมเปญ:</span>
+                          </div>
+                          <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border ${dateInfo.badgeClass}`}>
+                            {dateInfo.label}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Actions Bar */}
@@ -2339,6 +2400,27 @@ export default function AdminRateDashboard() {
                 <p className="text-[10px] text-slate-500 mt-1">แอดมินสามารถปรับเปลี่ยนจำนวนแต้มที่แจกได้ตลอดเวลา</p>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1.5">วันที่เริ่มต้นแคมเปญ (Start Date)</label>
+                  <input
+                    type="date"
+                    value={editingPromotion.startDate || ''}
+                    onChange={(e) => setEditingPromotion({ ...editingPromotion, startDate: e.target.value })}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1.5">วันที่สิ้นสุดแคมเปญ (End Date)</label>
+                  <input
+                    type="date"
+                    value={editingPromotion.endDate || ''}
+                    onChange={(e) => setEditingPromotion({ ...editingPromotion, endDate: e.target.value })}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block font-bold text-slate-300 mb-1.5">คำอธิบายและเงื่อนไขโปรโมชั่น</label>
                 <textarea
@@ -2556,6 +2638,8 @@ function CreatePromotionModal({
   const [code, setCode] = useState('');
   const [type, setType] = useState<PromotionRule['type']>('NEW_PASSENGER');
   const [points, setPoints] = useState(50);
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState('');
   const [description, setDescription] = useState('');
   const [maxUsageLimit, setMaxUsageLimit] = useState<number | undefined>(undefined);
 
@@ -2570,6 +2654,8 @@ function CreatePromotionModal({
       code: generatedCode.toUpperCase(),
       type,
       points: Math.max(0, points),
+      startDate: startDate ? startDate.trim() : undefined,
+      endDate: endDate ? endDate.trim() : undefined,
       description: description.trim() || `โปรโมชั่น ${name.trim()} รับทันที ${points} แต้ม`,
       isActive: true,
       maxUsageLimit: maxUsageLimit || undefined,
@@ -2655,6 +2741,28 @@ function CreatePromotionModal({
               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                 แต้ม (฿{points})
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-slate-300 mb-1.5">วันที่เริ่มต้นแคมเปญ (Start Date)</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-slate-300 mb-1.5">วันที่สิ้นสุดแคมเปญ (End Date)</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
+                placeholder="เว้นว่างหากไม่มีกำหนดสิ้นสุด"
+              />
             </div>
           </div>
 

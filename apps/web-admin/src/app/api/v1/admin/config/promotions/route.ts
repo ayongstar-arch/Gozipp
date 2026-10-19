@@ -9,6 +9,8 @@ export interface PromotionRule {
   points: number;
   description: string;
   isActive: boolean;
+  startDate?: string;
+  endDate?: string;
   maxUsageLimit?: number;
   currentUsage: number;
   updatedAt: string;
@@ -24,6 +26,8 @@ let cachedPromotions: PromotionRule[] = [
     points: 50,
     description: 'ผู้โดยสารใหม่ลงทะเบียนสำเร็จ รับแต้มเข้ากระเป๋าทันที 50 แต้มเพื่อใช้เดินทาง',
     isActive: true,
+    startDate: '2026-10-01',
+    endDate: '2026-12-31',
     maxUsageLimit: 10000,
     currentUsage: 1482,
     updatedAt: new Date().toISOString(),
@@ -36,6 +40,8 @@ let cachedPromotions: PromotionRule[] = [
     points: 50,
     description: 'รับแต้ม 50 แต้ม เมื่อเพื่อนที่คุณชวนสมัครและเดินทางเที่ยวแรกสำเร็จ',
     isActive: true,
+    startDate: '2026-10-01',
+    endDate: '2026-12-31',
     maxUsageLimit: 50000,
     currentUsage: 860,
     updatedAt: new Date().toISOString(),
@@ -48,6 +54,8 @@ let cachedPromotions: PromotionRule[] = [
     points: 20,
     description: 'เดินทางเที่ยวแรกสำเร็จ รับแต้มเงินคืน 20 แต้ม',
     isActive: true,
+    startDate: '2026-10-15',
+    endDate: '2026-11-30',
     maxUsageLimit: 5000,
     currentUsage: 622,
     updatedAt: new Date().toISOString(),
@@ -60,6 +68,7 @@ let cachedPromotions: PromotionRule[] = [
     points: 10,
     description: 'เติมเงินตั้งแต่ 100 บาทขึ้นไป รับแต้มเพิ่มพิเศษ 10 แต้ม',
     isActive: true,
+    startDate: '2026-10-01',
     maxUsageLimit: 2000,
     currentUsage: 310,
     updatedAt: new Date().toISOString(),
@@ -116,6 +125,8 @@ export async function POST(req: NextRequest) {
       points: typeof p.points === 'number' ? Math.max(0, p.points) : 0,
       description: String(p.description || '').trim(),
       isActive: Boolean(p.isActive),
+      startDate: p.startDate ? String(p.startDate).trim() : undefined,
+      endDate: p.endDate ? String(p.endDate).trim() : undefined,
       maxUsageLimit: typeof p.maxUsageLimit === 'number' ? p.maxUsageLimit : undefined,
       currentUsage: typeof p.currentUsage === 'number' ? p.currentUsage : 0,
       updatedAt: new Date().toISOString(),
