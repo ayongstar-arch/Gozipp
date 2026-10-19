@@ -291,6 +291,26 @@ export class DatabaseMigrationService implements OnModuleInit {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+
+    // 11. Admins table
+    await this.safeQuery(`
+      CREATE TABLE IF NOT EXISTS admins (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        username VARCHAR(100) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'SUPER_ADMIN',
+        mfa_secret TEXT,
+        mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        failed_attempts INTEGER NOT NULL DEFAULT 0,
+        locked_until TIMESTAMPTZ,
+        last_login_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_admins_username ON admins(username);`);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_admins_role ON admins(role);`);
   }
 
   private async safeQuery(sql: string) {
