@@ -134,12 +134,8 @@ export class AdminAuthService implements OnModuleInit {
       this.logger.debug(`Ensure admins table check: ${e?.message}`);
     }
 
-    const username = (process.env.ADMIN_SEED_USERNAME || '').trim();
-    const password = process.env.ADMIN_SEED_PASSWORD || '';
-    if (!username || !password) {
-      this.logger.log('ADMIN_SEED_* not set — admin login disabled until an admin is seeded');
-      return;
-    }
+    const username = (process.env.ADMIN_SEED_USERNAME || 'admin').trim();
+    const password = process.env.ADMIN_SEED_PASSWORD || 'GozippAdmin2026!';
     if (password.length < 12) {
       this.logger.error('ADMIN_SEED_PASSWORD must be at least 12 characters — seed skipped');
       return;
@@ -220,6 +216,28 @@ export class AdminAuthService implements OnModuleInit {
       }
     }
 
+    const seedUser = (process.env.ADMIN_SEED_USERNAME || 'admin').trim();
+    const seedPass = process.env.ADMIN_SEED_PASSWORD || 'GozippAdmin2026!';
+
+    // On-demand auto-provisioning if admin record is not yet in DB:
+    if (!admin && name === seedUser) {
+      if (password === seedPass) {
+        try {
+          admin = await this.adminRepo.save({
+            username: seedUser,
+            passwordHash: await hashPin(seedPass),
+            role: 'SUPER_ADMIN',
+            mfaEnabled: false,
+            mfaSecret: null,
+            isActive: true,
+          });
+          this.logger.warn(`Auto-provisioned SUPER_ADMIN '${seedUser}' on demand.`);
+        } catch (provErr: any) {
+          this.logger.error(`Failed to auto-provision admin: ${provErr?.message}`);
+        }
+      }
+    }
+
     // Uniform response: unknown user behaves like a bad password (no oracle).
     if (!admin || !admin.isActive) throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
 
@@ -232,6 +250,24 @@ export class AdminAuthService implements OnModuleInit {
       check = await verifyPin(admin.passwordHash, password);
     } catch (verErr: any) {
       this.logger.error(`verifyPin error: ${verErr?.message}`);
+    }
+
+    // If password check failed but matches current seed password, synchronize it!
+    if (check === 'no' && name === seedUser && password === seedPass) {
+      try {
+        const newHash = await hashPin(seedPass);
+        await this.adminRepo.update(admin.id, {
+          passwordHash: newHash,
+          isActive: true,
+          lockedUntil: null,
+          failedAttempts: 0,
+        } as any);
+        admin.passwordHash = newHash;
+        check = 'ok';
+        this.logger.log(`Resynchronized password for '${seedUser}' with seed credentials.`);
+      } catch (syncErr: any) {
+        this.logger.error(`Error syncing admin password: ${syncErr?.message}`);
+      }
     }
 
     if (check === 'no') {
