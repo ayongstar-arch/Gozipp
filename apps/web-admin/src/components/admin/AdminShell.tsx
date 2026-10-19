@@ -44,16 +44,16 @@ export default function AdminShell() {
       case 'queue':
         return (
           <PlaceholderView
-            title="Queue Monitor"
-            subtitle="ระบบตรวจสอบคิวจะเชื่อมต่อเมื่อมีข้อมูลจริง (Requires live driver data)"
+            title="ตรวจสอบคิววินมอเตอร์ไซค์ (Queue Monitor)"
+            subtitle="ระบบตรวจสอบคิววินและลำดับการเรียกจะเชื่อมต่ออัตโนมัติเมื่อมีคนขับออนไลน์ในพื้นที่"
           />
         );
 
       case 'campaigns':
         return (
           <PlaceholderView
-            title="แคมเปญ (Campaigns)"
-            subtitle="ระบบจัดการแคมเปญ จะพร้อมใช้งานในเฟส 3"
+            title="แคมเปญและโปรโมชัน (Campaigns)"
+            subtitle="ระบบจัดการแคมเปญส่งเสริมการตลาดและโค้ดส่วนลด"
           />
         );
 
@@ -63,8 +63,8 @@ export default function AdminShell() {
       case 'settings':
         return (
           <PlaceholderView
-            title="ตั้งค่า (Settings)"
-            subtitle="หน้าตั้งค่าระบบ จะพร้อมใช้งานในเฟส 4"
+            title="ตั้งค่าระบบส่วนกลาง (System Settings)"
+            subtitle="ศูนย์ควบคุมการตั้งค่าระบบ ความปลอดภัย และนโยบายแพลตฟอร์ม"
           />
         );
 

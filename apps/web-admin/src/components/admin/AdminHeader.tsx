@@ -5,15 +5,15 @@ import { Search, Bell, ChevronRight } from 'lucide-react';
 import { useAdminStore, type AdminSection } from '@/stores/adminStore';
 
 const SECTION_META: Record<AdminSection, { title: string; breadcrumb: string[] }> = {
-  dashboard: { title: 'Operations Dashboard', breadcrumb: ['Admin', 'Operations'] },
-  drivers: { title: 'จัดการคนขับ', breadcrumb: ['Admin', 'Operations', 'Drivers'] },
-  queue: { title: 'Queue Monitor', breadcrumb: ['Admin', 'Operations', 'Queue'] },
-  campaigns: { title: 'แคมเปญ', breadcrumb: ['Admin', 'Growth', 'Campaigns'] },
-  referrals: { title: 'ระบบแนะนำเพื่อน', breadcrumb: ['Admin', 'Growth', 'Referrals'] },
-  finance: { title: 'การเงิน', breadcrumb: ['Admin', 'System', 'Finance'] },
-  ai: { title: 'AI Analyst', breadcrumb: ['Admin', 'System', 'AI'] },
-  audit: { title: 'Audit Log', breadcrumb: ['Admin', 'System', 'Audit'] },
-  settings: { title: 'ตั้งค่า', breadcrumb: ['Admin', 'System', 'Settings'] },
+  dashboard: { title: 'ภาพรวมการดำเนินงานระบบ (Operations Dashboard)', breadcrumb: ['ระบบ Admin', 'การดำเนินงาน'] },
+  drivers: { title: 'จัดการและตรวจสอบคนขับ (Driver Management)', breadcrumb: ['ระบบ Admin', 'การดำเนินงาน', 'คนขับ'] },
+  queue: { title: 'ตรวจสอบคิวและวินมอเตอร์ไซค์ (Queue Monitor)', breadcrumb: ['ระบบ Admin', 'การดำเนินงาน', 'คิววิน'] },
+  campaigns: { title: 'แคมเปญและโปรโมชัน (Campaigns)', breadcrumb: ['ระบบ Admin', 'การตลาด', 'แคมเปญ'] },
+  referrals: { title: 'ระบบแนะนำเพื่อน (Referral Program)', breadcrumb: ['ระบบ Admin', 'การตลาด', 'แนะนำเพื่อน'] },
+  finance: { title: 'การเงินและบัญชี (Finance & Ledger)', breadcrumb: ['ระบบ Admin', 'ระบบ', 'การเงิน'] },
+  ai: { title: 'ศูนย์วิเคราะห์อัจฉริยะ AI (AI Mobility Analyst)', breadcrumb: ['ระบบ Admin', 'ระบบ', 'AI Analyst'] },
+  audit: { title: 'บันทึกการตรวจสอบความปลอดภัย (Audit Log)', breadcrumb: ['ระบบ Admin', 'ระบบ', 'Audit Log'] },
+  settings: { title: 'ตั้งค่าระบบ (System Settings)', breadcrumb: ['ระบบ Admin', 'ระบบ', 'ตั้งค่า'] },
 };
 
 export default function AdminHeader() {

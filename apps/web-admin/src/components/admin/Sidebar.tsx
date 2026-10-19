@@ -31,27 +31,27 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    title: 'OPERATIONS',
+    title: 'การดำเนินงาน (OPERATIONS)',
     items: [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { id: 'drivers', label: 'Drivers', icon: Users },
-      { id: 'queue', label: 'Queue Monitor', icon: ListOrdered },
+      { id: 'dashboard', label: 'ภาพรวมระบบ', icon: LayoutDashboard },
+      { id: 'drivers', label: 'จัดการคนขับ', icon: Users },
+      { id: 'queue', label: 'ตรวจสอบคิววิน', icon: ListOrdered },
     ],
   },
   {
-    title: 'GROWTH',
+    title: 'การเติบโต (GROWTH)',
     items: [
-      { id: 'campaigns', label: 'Campaigns', icon: Megaphone },
-      { id: 'referrals', label: 'Referrals', icon: UserPlus },
+      { id: 'campaigns', label: 'แคมเปญ & โปรโมชัน', icon: Megaphone },
+      { id: 'referrals', label: 'ระบบแนะนำเพื่อน', icon: UserPlus },
     ],
   },
   {
-    title: 'SYSTEM',
+    title: 'ระบบและการเงิน (SYSTEM)',
     items: [
-      { id: 'finance', label: 'Finance', icon: Wallet },
-      { id: 'ai', label: 'AI Analyst', icon: Brain },
-      { id: 'audit', label: 'Audit Log', icon: Shield },
-      { id: 'settings', label: 'Settings', icon: Settings },
+      { id: 'finance', label: 'การเงินและบัญชี', icon: Wallet },
+      { id: 'ai', label: 'วิเคราะห์อัจฉริยะ AI', icon: Brain },
+      { id: 'audit', label: 'บันทึกการตรวจสอบ', icon: Shield },
+      { id: 'settings', label: 'ตั้งค่าระบบ', icon: Settings },
     ],
   },
 ];
