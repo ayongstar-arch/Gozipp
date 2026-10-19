@@ -120,17 +120,46 @@ const LoginView: React.FC = () => {
 
         {setup && (
           <div className="space-y-4">
-            <p className="text-slate-300 text-sm leading-relaxed">
-              ครั้งแรกต้องผูกแอป Authenticator (Google Authenticator / 1Password):
-              เพิ่มบัญชีด้วยลิงก์นี้ แล้วกรอกรหัส 6 หลัก
+            <div className="text-center">
+              <p className="text-slate-300 text-sm font-semibold mb-3">
+                สแกน QR Code ด้วยแอป Authenticator
+              </p>
+              <div className="bg-white p-3 rounded-2xl inline-block shadow-lg mx-auto">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(setup.otpauthUrl)}`}
+                  alt="2FA QR Code"
+                  className="w-40 h-40 object-contain mx-auto"
+                />
+              </div>
+            </div>
+
+            {(() => {
+              try {
+                const secretKey = new URL(setup.otpauthUrl).searchParams.get('secret');
+                if (secretKey) {
+                  return (
+                    <div className="text-center">
+                      <p className="text-xs text-slate-400 mb-1">หรือกรอกรหัสคีย์ (Setup Key) ด้วยตนเอง:</p>
+                      <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 font-mono text-emerald-400 font-bold text-sm tracking-widest select-all">
+                        {secretKey}
+                      </div>
+                    </div>
+                  );
+                }
+              } catch {}
+              return null;
+            })()}
+
+            <p className="text-xs text-slate-400 text-center">
+              เมื่อผูกสำเร็จแล้ว กรอกรหัส OTP 6 หลักจากแอปด้านล่าง:
             </p>
-            <p className="bg-white/5 border border-white/10 rounded-xl p-3 text-[11px] break-all text-emerald-300 select-all">
-              {setup.otpauthUrl}
-            </p>
+
             <input
               type="text"
               inputMode="numeric"
               maxLength={6}
+              placeholder="000000"
+              autoFocus
               className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-3xl font-black text-center tracking-[0.5em] outline-none focus:border-emerald-500"
               value={mfaCode}
               onChange={(e) => { setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(null); }}
@@ -142,6 +171,9 @@ const LoginView: React.FC = () => {
               className="w-full bg-emerald-500 text-slate-950 font-black py-4 rounded-2xl disabled:opacity-50"
             >
               เปิดใช้งานและเข้าสู่ระบบ
+            </button>
+            <button onClick={() => { setSetup(null); setMfaCode(''); }} className="text-slate-500 text-sm mx-auto block">
+              ← กลับ
             </button>
           </div>
         )}
