@@ -55,11 +55,18 @@ import {
   Phone,
   MapPin,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  Gift,
+  Plus,
+  Edit2,
+  Trash2,
+  Tag,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 import { useAdminStore } from '@/stores/adminStore';
 
-type AdminTab = 'ACCOUNTING' | 'FINANCE' | 'MANAGE' | 'AI_ANALYST';
+type AdminTab = 'ACCOUNTING' | 'PROMOTIONS' | 'FINANCE' | 'MANAGE' | 'AI_ANALYST';
 type ReportPeriod = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 type ChartMode = 'REVENUE' | 'TRIPS' | 'COMBINED';
 
@@ -73,13 +80,25 @@ interface Transaction {
   driver: string;
   channel: 'PROMPTPAY' | 'BANK' | 'WALLET' | 'TRUEMONEY';
   type: 'RIDE_FARE' | 'TOPUP' | 'WITHDRAWAL';
-  grossAmount: number;
-  platformFee: number;
-  netAmount: number;
+  fareAmount: number; // คนขับได้รับเต็ม 100% (ไม่มีการหัก GP 15%)
+  systemFeePoints: number; // ค่าบริการระบบแบบเหมาจ่ายต่อเที่ยว (เช่น 2 แต้ม = 2 บาท)
   status: 'RECONCILED' | 'PENDING' | 'REFUNDED';
   hmacSignature: string;
   bankRef: string;
   reconciledAt: string;
+}
+
+export interface PromotionRule {
+  id: string;
+  name: string;
+  code: string;
+  type: 'NEW_PASSENGER' | 'REFERRAL' | 'FIRST_RIDE' | 'TOPUP_BONUS' | 'CUSTOM';
+  points: number;
+  description: string;
+  isActive: boolean;
+  maxUsageLimit?: number;
+  currentUsage: number;
+  updatedAt: string;
 }
 
 interface DriverApplicant {
@@ -136,6 +155,63 @@ export default function AdminRateDashboard() {
   const [showPromptPayQR, setShowPromptPayQR] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
+  // Promotions State (Admin Customizable Anytime)
+  const [promotions, setPromotions] = useState<PromotionRule[]>([
+    {
+      id: 'PROMO-NEW-PASSENGER',
+      name: 'สมัครผู้โดยสารใหม่ รับแต้มฟรี',
+      code: 'WELCOME50',
+      type: 'NEW_PASSENGER',
+      points: 50,
+      description: 'ผู้โดยสารใหม่ลงทะเบียนสำเร็จ รับแต้มเข้ากระเป๋าทันที 50 แต้ม เพื่อใช้เดินทาง',
+      isActive: true,
+      maxUsageLimit: 10000,
+      currentUsage: 1482,
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'PROMO-REFERRAL',
+      name: 'โบนัสชวนเพื่อนเดินทาง (Referral Bonus)',
+      code: 'FRIEND50',
+      type: 'REFERRAL',
+      points: 50,
+      description: 'รับแต้ม 50 แต้ม เมื่อเพื่อนที่คุณชวนสมัครและเดินทางเที่ยวแรกสำเร็จ',
+      isActive: true,
+      maxUsageLimit: 50000,
+      currentUsage: 860,
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'PROMO-FIRST-RIDE',
+      name: 'ของขวัญเที่ยวแรก (First Ride Bonus)',
+      code: 'FIRSTRIDE20',
+      type: 'FIRST_RIDE',
+      points: 20,
+      description: 'เดินทางเที่ยวแรกสำเร็จ รับแต้มเงินคืน 20 แต้ม',
+      isActive: true,
+      maxUsageLimit: 5000,
+      currentUsage: 622,
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'PROMO-TOPUP-BONUS',
+      name: 'เติมแต้มรับเพิ่มพิเศษ (Top-up Bonus)',
+      code: 'TOPUP10',
+      type: 'TOPUP_BONUS',
+      points: 10,
+      description: 'เติมเงินตั้งแต่ 100 บาทขึ้นไป รับแต้มเพิ่มพิเศษ 10 แต้ม',
+      isActive: true,
+      maxUsageLimit: 2000,
+      currentUsage: 310,
+      updatedAt: new Date().toISOString(),
+    },
+  ]);
+  const [isPromotionsLoading, setIsPromotionsLoading] = useState(false);
+  const [editingPromotion, setEditingPromotion] = useState<PromotionRule | null>(null);
+  const [isCreatingPromotion, setIsCreatingPromotion] = useState(false);
+  const [promotionToast, setPromotionToast] = useState<string | null>(null);
+  const [promoTypeFilter, setPromoTypeFilter] = useState<string>('ALL');
+
   // AI Analyst State
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -146,7 +222,7 @@ export default function AdminRateDashboard() {
   const [isReferralSaving, setIsReferralSaving] = useState(false);
   const [referralSaveMessage, setReferralSaveMessage] = useState<string | null>(null);
 
-  // Pricing Policy State
+  // Pricing Policy State (Flat Fee per Trip - No Commission / 0% GP)
   const [baseFarePoints, setBaseFarePoints] = useState<number>(2);
   const [emergencyOverdraftLimit, setEmergencyOverdraftLimit] = useState<number>(5);
   const [isPricingSaving, setIsPricingSaving] = useState(false);
@@ -190,6 +266,7 @@ export default function AdminRateDashboard() {
 
   useEffect(() => {
     setIsMounted(true);
+    fetchPromotionsConfig();
     fetchReferralConfig();
     fetchPricingConfig();
     fetchPendingDrivers();
@@ -221,6 +298,87 @@ export default function AdminRateDashboard() {
     }, 600);
   };
 
+  // API Call: Fetch Promotions Config
+  const fetchPromotionsConfig = async () => {
+    setIsPromotionsLoading(true);
+    try {
+      const response = await fetch('/api/v1/admin/config/promotions', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data.promotions) && data.promotions.length > 0) {
+          setPromotions(data.promotions);
+        }
+      }
+    } catch (e) {
+      console.warn('Using local promotions fallback');
+    } finally {
+      setIsPromotionsLoading(false);
+    }
+  };
+
+  // API Call: Save Promotions Config
+  const savePromotionsToApi = async (updatedList: PromotionRule[]) => {
+    try {
+      await fetch('/api/v1/admin/config/promotions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ promotions: updatedList }),
+      });
+    } catch (e) {
+      console.warn('Saved promotions to local memory');
+    }
+  };
+
+  // Toggle Promotion Active
+  const handleTogglePromotion = (id: string) => {
+    const updated = promotions.map((p) =>
+      p.id === id ? { ...p, isActive: !p.isActive, updatedAt: new Date().toISOString() } : p
+    );
+    setPromotions(updated);
+    savePromotionsToApi(updated);
+    showToast('ปรับเปลี่ยนสถานะโปรโมชั่นสำเร็จ');
+  };
+
+  // Save Edit Promotion
+  const handleSaveEditPromotion = (updatedPromo: PromotionRule) => {
+    const updated = promotions.map((p) => (p.id === updatedPromo.id ? updatedPromo : p));
+    setPromotions(updated);
+    savePromotionsToApi(updated);
+    setEditingPromotion(null);
+    showToast(`บันทึกการแก้ไข "${updatedPromo.name}" สำเร็จ`);
+  };
+
+  // Create New Promotion
+  const handleCreateNewPromotion = (newPromo: PromotionRule) => {
+    const updated = [newPromo, ...promotions];
+    setPromotions(updated);
+    savePromotionsToApi(updated);
+    setIsCreatingPromotion(false);
+    showToast(`สร้างโปรโมชั่น "${newPromo.name}" สำเร็จ`);
+  };
+
+  // Delete Promotion
+  const handleDeletePromotion = (id: string) => {
+    const promo = promotions.find((p) => p.id === id);
+    if (!promo) return;
+    if (confirm(`คุณต้องการลบโปรโมชั่น "${promo.name}" หรือไม่?`)) {
+      const updated = promotions.filter((p) => p.id !== id);
+      setPromotions(updated);
+      savePromotionsToApi(updated);
+      showToast('ลบโปรโมชั่นสำเร็จ');
+    }
+  };
+
+  const showToast = (msg: string) => {
+    setPromotionToast(msg);
+    setTimeout(() => setPromotionToast(null), 3500);
+  };
+
   // API Call: AI Summary
   const fetchAiSummary = async () => {
     setIsAiLoading(true);
@@ -241,7 +399,7 @@ export default function AdminRateDashboard() {
       }
     } catch {
       setAiReport(
-        'ผลการวิเคราะห์ AI ประจำวัน: ปริมาณความต้องการเรียกรถในเขตสุขุมวิท-อโศก และสยามสแควร์ พุ่งสูงขึ้น 34.2% ในช่วงเวลาเร่งด่วน 17:00 - 19:30 น. การกระทบยอดบัญชีรายได้ผ่าน PromptPay มีความแม่นยำ 100% ปราศจากรายการผิดปกติ แนะนำเพิ่ม Incentive โบนัสเที่ยวละ 5 บาท ให้คนขับในพื้นที่ดังกล่าวเพื่อลดเวลารอรับส่งผู้โดยสารลง 22%'
+        'ผลการวิเคราะห์ AI ประจำวัน: ปริมาณความต้องการเรียกรถในเขตสุขุมวิท-อโศก และสยามสแควร์ พุ่งสูงขึ้น 34.2% ในช่วงเวลาเร่งด่วน 17:00 - 19:30 น. การกระทบยอดบัญชีรายได้ผ่าน PromptPay มีความแม่นยำ 100% ปราศจากรายการผิดปกติ นโยบายคนขับรับเต็ม 100% (ไม่หัก GP) ส่งผลให้อัตราตอบรับงานของคนขับสูงถึง 98.4% แนะนำเปิดโปรโมชั่นแจกแต้มผู้โดยสารใหม่ 50 แต้ม เพื่อกระตุ้นยอดเดินทางในเขตดังกล่าว'
       );
     } finally {
       clearInterval(interval);
@@ -352,7 +510,6 @@ export default function AdminRateDashboard() {
       setIsDriversLoading(false);
     }
 
-    // Realistic default dataset
     setDrivers([
       {
         id: 'DRV-1029',
@@ -441,12 +598,12 @@ export default function AdminRateDashboard() {
     setRejectingDriver(null);
   };
 
-  // Mock Ledger & Chart Data
+  // Mock Ledger & Chart Data (NO 15% Platform cut - Flat Fee Base Points Only)
   const reportData = useMemo(() => {
     let kpi = {
       revenue: 12500,
       txns: 85,
-      platformFee: 1875,
+      flatFeePointsCollected: 170, // 85 เที่ยว × 2 บาท
       growth: 12.4,
       avgFare: 147.05,
       successRate: 99.8,
@@ -458,7 +615,7 @@ export default function AdminRateDashboard() {
       kpi = {
         revenue: 12500,
         txns: 85,
-        platformFee: 1875,
+        flatFeePointsCollected: 85 * baseFarePoints,
         growth: 12.4,
         avgFare: 147.05,
         successRate: 99.8,
@@ -471,7 +628,7 @@ export default function AdminRateDashboard() {
       kpi = {
         revenue: 87500,
         txns: 595,
-        platformFee: 13125,
+        flatFeePointsCollected: 595 * baseFarePoints,
         growth: 14.8,
         avgFare: 147.05,
         successRate: 99.7,
@@ -484,7 +641,7 @@ export default function AdminRateDashboard() {
       kpi = {
         revenue: 450000,
         txns: 2400,
-        platformFee: 67500,
+        flatFeePointsCollected: 2400 * baseFarePoints,
         growth: 18.2,
         avgFare: 187.5,
         successRate: 99.9,
@@ -497,7 +654,7 @@ export default function AdminRateDashboard() {
       kpi = {
         revenue: 5400000,
         txns: 28800,
-        platformFee: 810000,
+        flatFeePointsCollected: 28800 * baseFarePoints,
         growth: 24.6,
         avgFare: 187.5,
         successRate: 99.9,
@@ -519,9 +676,8 @@ export default function AdminRateDashboard() {
         driver: 'D-1029 (พี่สมศักดิ์ วิน BTS อโศก)',
         channel: 'PROMPTPAY',
         type: 'RIDE_FARE',
-        grossAmount: 150.0,
-        platformFee: 22.5,
-        netAmount: 127.5,
+        fareAmount: 150.0,
+        systemFeePoints: baseFarePoints,
         status: 'RECONCILED',
         hmacSignature: 'sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069',
         bankRef: 'PP-BTH-994102',
@@ -537,9 +693,8 @@ export default function AdminRateDashboard() {
         driver: 'D-1055 (พี่ประวิทย์ วิน MRT เพชรบุรี)',
         channel: 'WALLET',
         type: 'RIDE_FARE',
-        grossAmount: 85.0,
-        platformFee: 12.75,
-        netAmount: 72.25,
+        fareAmount: 85.0,
+        systemFeePoints: baseFarePoints,
         status: 'RECONCILED',
         hmacSignature: 'sha256:3c84e931fa02c2e0b58e77a10fca56d11a9e872013f9901416e254cd6b6852bb',
         bankRef: 'WLT-BAL-48190',
@@ -555,9 +710,8 @@ export default function AdminRateDashboard() {
         driver: 'D-1088 (พี่ธนกร วิน สยามสแควร์)',
         channel: 'BANK',
         type: 'RIDE_FARE',
-        grossAmount: 220.0,
-        platformFee: 33.0,
-        netAmount: 187.0,
+        fareAmount: 220.0,
+        systemFeePoints: baseFarePoints,
         status: 'RECONCILED',
         hmacSignature: 'sha256:49c0d24e16d44558238f29631cf5e1e47f2409559c5d0705a61b848ddc5cbe83',
         bankRef: 'KBANK-TRF-00192',
@@ -573,9 +727,8 @@ export default function AdminRateDashboard() {
         driver: '-',
         channel: 'PROMPTPAY',
         type: 'TOPUP',
-        grossAmount: 500.0,
-        platformFee: 0.0,
-        netAmount: 500.0,
+        fareAmount: 500.0,
+        systemFeePoints: 0,
         status: 'RECONCILED',
         hmacSignature: 'sha256:88e14b2a95c479dfa33827d044cd05178657d4cc1d4d3809623707255476a382',
         bankRef: 'PP-QR-778103',
@@ -591,9 +744,8 @@ export default function AdminRateDashboard() {
         driver: 'D-1029 (พี่สมศักดิ์ วิน BTS อโศก)',
         channel: 'PROMPTPAY',
         type: 'RIDE_FARE',
-        grossAmount: 120.0,
-        platformFee: 18.0,
-        netAmount: 102.0,
+        fareAmount: 120.0,
+        systemFeePoints: baseFarePoints,
         status: 'RECONCILED',
         hmacSignature: 'sha256:5b8d234a70617beccba95f0133dbfb22067fc9b08f8883bb1f544971c261e479',
         bankRef: 'PP-BTH-994088',
@@ -609,9 +761,8 @@ export default function AdminRateDashboard() {
         driver: 'D-1055 (พี่ประวิทย์ วิน MRT เพชรบุรี)',
         channel: 'TRUEMONEY',
         type: 'RIDE_FARE',
-        grossAmount: 65.0,
-        platformFee: 9.75,
-        netAmount: 55.25,
+        fareAmount: 65.0,
+        systemFeePoints: baseFarePoints,
         status: 'RECONCILED',
         hmacSignature: 'sha256:1a84c982b6045feef5843a0e1ec34fa098a5e30d12e873522c079dbf67451a99',
         bankRef: 'TMN-WLT-66102',
@@ -627,9 +778,8 @@ export default function AdminRateDashboard() {
         driver: 'D-1088 (พี่ธนกร วิน สยามสแควร์)',
         channel: 'BANK',
         type: 'RIDE_FARE',
-        grossAmount: 180.0,
-        platformFee: 27.0,
-        netAmount: 153.0,
+        fareAmount: 180.0,
+        systemFeePoints: baseFarePoints,
         status: 'PENDING',
         hmacSignature: 'sha256:0d91ca476e3d29a56a6358c541785f82c4beaa017b2b71926c4831201d4a0f44',
         bankRef: 'SCB-TRF-88192',
@@ -645,9 +795,8 @@ export default function AdminRateDashboard() {
         driver: 'D-1029 (พี่สมศักดิ์ วิน BTS อโศก)',
         channel: 'PROMPTPAY',
         type: 'RIDE_FARE',
-        grossAmount: 95.0,
-        platformFee: 14.25,
-        netAmount: 80.75,
+        fareAmount: 95.0,
+        systemFeePoints: baseFarePoints,
         status: 'RECONCILED',
         hmacSignature: 'sha256:6e7719f9353907c08253a6a9b4317beec4b01e4a6659cf7d9037ec8a63529321',
         bankRef: 'PP-BTH-994012',
@@ -656,7 +805,7 @@ export default function AdminRateDashboard() {
     ];
 
     return { kpi, chartData, transactions };
-  }, [reportPeriod, selectedDate]);
+  }, [reportPeriod, selectedDate, baseFarePoints]);
 
   // Filtered Transactions
   const filteredTransactions = useMemo(() => {
@@ -674,6 +823,19 @@ export default function AdminRateDashboard() {
       return matchSearch && matchChannel && matchStatus;
     });
   }, [reportData.transactions, searchQuery, channelFilter, statusFilter]);
+
+  // Filtered Promotions
+  const filteredPromotions = useMemo(() => {
+    return promotions.filter((p) => {
+      const matchType = promoTypeFilter === 'ALL' || p.type === promoTypeFilter;
+      const matchSearch =
+        searchQuery === '' ||
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.description.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchType && matchSearch;
+    });
+  }, [promotions, promoTypeFilter, searchQuery]);
 
   // Filtered Drivers
   const filteredDrivers = useMemo(() => {
@@ -699,9 +861,8 @@ export default function AdminRateDashboard() {
       'คนขับ',
       'ช่องทางชำระเงิน',
       'ประเภท',
-      'ยอดเงินรวม (บาท)',
-      'ค่าบริการระบบ (15%)',
-      'ยอดสุทธิคนขับ (บาท)',
+      'ยอดค่าโดยสารที่คนขับได้รับ (100%)',
+      'ค่าบริการระบบเหมาจ่าย (แต้ม)',
       'สถานะตรวจสอบ',
       'ลายเซ็นดิจิทัล HMAC-SHA256',
     ];
@@ -714,9 +875,8 @@ export default function AdminRateDashboard() {
       t.driver,
       t.channel,
       t.type === 'RIDE_FARE' ? 'ค่าโดยสาร' : t.type === 'TOPUP' ? 'เติมแต้ม' : 'ถอนเงิน',
-      t.grossAmount.toFixed(2),
-      t.platformFee.toFixed(2),
-      t.netAmount.toFixed(2),
+      t.fareAmount.toFixed(2),
+      t.systemFeePoints,
       t.status === 'RECONCILED' ? 'ตรวจสอบแล้ว' : 'รอดำเนินการ',
       t.hmacSignature,
     ]);
@@ -769,6 +929,14 @@ export default function AdminRateDashboard() {
 
   return (
     <div className="flex-1 bg-slate-950 text-white min-h-screen flex flex-col font-sans select-none overflow-x-hidden">
+      {/* ──────────────── Toast Notification ──────────────── */}
+      {promotionToast && (
+        <div className="fixed top-5 right-5 z-50 bg-emerald-500 text-slate-950 px-5 py-3 rounded-2xl font-black text-xs shadow-2xl flex items-center gap-2 animate-in slide-in-from-top duration-300">
+          <CheckCircle2 className="w-4 h-4 text-slate-950" />
+          <span>{promotionToast}</span>
+        </div>
+      )}
+
       {/* ──────────────── Top Navigation & World-Class Enterprise Header ──────────────── */}
       <header className="sticky top-0 z-30 bg-slate-950/85 backdrop-blur-2xl border-b border-white/5 px-6 lg:px-10 py-4">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
@@ -788,7 +956,7 @@ export default function AdminRateDashboard() {
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium tracking-wide mt-0.5">
-                ศูนย์บริหารจัดการและตรวจสอบระบบการเดินทางอัจฉริยะมาตรฐานสากล
+                ศูนย์บริหารจัดการและควบคุมระบบการเดินทางอัจฉริยะมาตรฐานสากล
               </p>
             </div>
           </div>
@@ -839,6 +1007,12 @@ export default function AdminRateDashboard() {
           <div className="flex flex-wrap items-center gap-2 bg-slate-900/80 p-1 rounded-2xl border border-white/5 backdrop-blur-xl">
             {[
               { id: 'ACCOUNTING', label: 'การเงินและบัญชี', icon: BarChart3 },
+              {
+                id: 'PROMOTIONS',
+                label: 'โปรโมชั่น & แคมเปญ',
+                icon: Gift,
+                badge: promotions.filter((p) => p.isActive).length,
+              },
               { id: 'FINANCE', label: 'บริหารการเงิน & นโยบาย', icon: Wallet },
               {
                 id: 'MANAGE',
@@ -865,7 +1039,7 @@ export default function AdminRateDashboard() {
                   {tab.badge !== undefined && tab.badge > 0 && (
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                        isActive ? 'bg-slate-950 text-emerald-400' : 'bg-red-500 text-white'
+                        isActive ? 'bg-slate-950 text-emerald-400' : 'bg-emerald-500/20 text-emerald-400'
                       }`}
                     >
                       {tab.badge}
@@ -911,11 +1085,11 @@ export default function AdminRateDashboard() {
           <div className="space-y-8 animate-in fade-in duration-300">
             {/* 4 World-Class KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Card 1: Revenue */}
+              {/* Card 1: Revenue (Driver 100%) */}
               <div className="bg-slate-900/80 p-6 rounded-3xl border border-white/5 backdrop-blur-xl shadow-xl hover:border-white/10 transition-all">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    รายได้รวมสุทธิ ({reportPeriod === 'DAILY' ? 'วันนี้' : reportPeriod === 'WEEKLY' ? 'สัปดาห์นี้' : reportPeriod === 'MONTHLY' ? 'เดือนนี้' : 'ทั้งปี'})
+                    ยอดค่าโดยสารรวม ({reportPeriod === 'DAILY' ? 'วันนี้' : reportPeriod === 'WEEKLY' ? 'สัปดาห์นี้' : reportPeriod === 'MONTHLY' ? 'เดือนนี้' : 'ทั้งปี'})
                   </span>
                   <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
                     <DollarSign className="w-4 h-4" />
@@ -928,7 +1102,7 @@ export default function AdminRateDashboard() {
                   <span className="inline-flex items-center text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-md">
                     <TrendingUp className="w-3 h-3 mr-1" /> +{reportData.kpi.growth}%
                   </span>
-                  <span className="text-slate-500">เทียบกับช่วงก่อนหน้า</span>
+                  <span className="text-slate-500">คนขับได้รับเต็ม 100%</span>
                 </div>
               </div>
 
@@ -936,14 +1110,14 @@ export default function AdminRateDashboard() {
               <div className="bg-slate-900/80 p-6 rounded-3xl border border-white/5 backdrop-blur-xl shadow-xl hover:border-white/10 transition-all">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    จำนวนธุรกรรมสำเร็จ
+                    จำนวนเที่ยวสำเร็จ
                   </span>
                   <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
                     <Layers className="w-4 h-4" />
                   </div>
                 </div>
                 <div className="text-3xl lg:text-4xl font-black text-white tracking-tight">
-                  {reportData.kpi.txns.toLocaleString()} <span className="text-lg font-bold text-slate-400">รายการ</span>
+                  {reportData.kpi.txns.toLocaleString()} <span className="text-lg font-bold text-slate-400">เที่ยว</span>
                 </div>
                 <div className="flex items-center justify-between mt-3 text-xs text-slate-400">
                   <span>อัตราสำเร็จ {reportData.kpi.successRate}%</span>
@@ -951,22 +1125,22 @@ export default function AdminRateDashboard() {
                 </div>
               </div>
 
-              {/* Card 3: Platform Margin */}
+              {/* Card 3: System Flat Fee Points (No 15% GP) */}
               <div className="bg-slate-900/80 p-6 rounded-3xl border border-white/5 backdrop-blur-xl shadow-xl hover:border-white/10 transition-all">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    ส่วนแบ่งระบบ (Platform Fee 15%)
+                    ค่าบริการระบบ (หักแต้มต่อเที่ยว)
                   </span>
                   <div className="w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
-                    <PieChart className="w-4 h-4" />
+                    <Zap className="w-4 h-4" />
                   </div>
                 </div>
                 <div className="text-3xl lg:text-4xl font-black text-purple-400 tracking-tight">
-                  ฿{reportData.kpi.platformFee.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                  {reportData.kpi.flatFeePointsCollected.toLocaleString()} <span className="text-lg font-bold text-slate-400">แต้ม (฿{reportData.kpi.flatFeePointsCollected})</span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-400">
                   <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
-                  <span>หักเข้าบัญชีระบบอัตโนมัติ 100%</span>
+                  <span>เหมาจ่าย {baseFarePoints} แต้ม/เที่ยว — ไม่หัก GP คนขับ</span>
                 </div>
               </div>
 
@@ -996,17 +1170,17 @@ export default function AdminRateDashboard() {
                 <div>
                   <h3 className="text-lg font-black text-white flex items-center gap-2">
                     <BarChart3 className="w-5 h-5 text-emerald-400" />
-                    แนวโน้มรายได้และปริมาณเที่ยววิ่ง ({reportPeriod === 'DAILY' ? 'รายชั่วโมง' : reportPeriod === 'WEEKLY' ? 'รายวัน' : reportPeriod === 'MONTHLY' ? 'รายสัปดาห์' : 'รายเดือน'})
+                    แนวโน้มค่าโดยสารและปริมาณเที่ยววิ่ง ({reportPeriod === 'DAILY' ? 'รายชั่วโมง' : reportPeriod === 'WEEKLY' ? 'รายวัน' : reportPeriod === 'MONTHLY' ? 'รายสัปดาห์' : 'รายเดือน'})
                   </h3>
                   <p className="text-xs text-slate-400 mt-1">
-                    แสดงการกระจายตัวของรายได้และจำนวนผู้โดยสารเรียกรถตลอดช่วงเวลา
+                    แสดงการกระจายตัวของค่าโดยสาร (คนขับรับเต็ม 100%) และจำนวนผู้โดยสารเรียกรถตลอดช่วงเวลา
                   </p>
                 </div>
 
                 {/* Chart Toggle */}
                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-white/5 text-xs font-bold">
                   {[
-                    { id: 'REVENUE', label: 'รายได้ (฿)' },
+                    { id: 'REVENUE', label: 'ค่าโดยสาร (฿)' },
                     { id: 'TRIPS', label: 'จำนวนเที่ยว' },
                     { id: 'COMBINED', label: 'แสดงทั้งคู่' },
                   ].map((mode) => (
@@ -1064,7 +1238,7 @@ export default function AdminRateDashboard() {
                               {payload.map((entry: any, i: number) => (
                                 <p key={i} className="font-black text-sm flex items-center justify-between gap-4">
                                   <span style={{ color: entry.color }}>
-                                    {entry.name === 'revenue' ? 'ยอดรายได้:' : 'จำนวนเที่ยว:'}
+                                    {entry.name === 'revenue' ? 'ยอดค่าโดยสาร:' : 'จำนวนเที่ยว:'}
                                   </span>
                                   <span className="text-white font-mono">
                                     {entry.name === 'revenue'
@@ -1119,12 +1293,12 @@ export default function AdminRateDashboard() {
                   <div className="text-emerald-400 font-bold text-sm mt-0.5">฿147.05</div>
                 </div>
                 <div>
-                  <span className="text-slate-500 font-medium">ช่องทางยอดนิยม:</span>
-                  <div className="text-white font-bold text-sm mt-0.5">พร้อมเพย์ QR (65%)</div>
+                  <span className="text-slate-500 font-medium">นโยบายรายได้คนขับ:</span>
+                  <div className="text-white font-bold text-sm mt-0.5">รับเต็ม 100% (0% GP)</div>
                 </div>
                 <div>
-                  <span className="text-slate-500 font-medium">ระยะเวลากระทบยอดเฉลี่ย:</span>
-                  <div className="text-cyan-400 font-bold text-sm mt-0.5">2.4 วินาที / รายการ</div>
+                  <span className="text-slate-500 font-medium">ค่าบริการหักแต้มต่อเที่ยว:</span>
+                  <div className="text-purple-400 font-bold text-sm mt-0.5">{baseFarePoints} แต้ม / เที่ยว</div>
                 </div>
               </div>
             </div>
@@ -1138,7 +1312,7 @@ export default function AdminRateDashboard() {
                     บัญชีรายการธุรกรรมและการตรวจสอบ (Audit Ledger)
                   </h3>
                   <p className="text-xs text-slate-400 mt-1">
-                    แสดงรายการชำระเงินที่ผ่านการตรวจสอบความถูกต้องด้วยลายเซ็นดิจิทัล
+                    แสดงรายการชำระเงินที่คนขับรับเต็ม 100% พร้อมบันทึกหักแต้มเหมาจ่ายต่อเที่ยว
                   </p>
                 </div>
 
@@ -1192,8 +1366,8 @@ export default function AdminRateDashboard() {
                       <th className="p-4">ผู้โดยสาร</th>
                       <th className="p-4">คนขับผู้ให้บริการ</th>
                       <th className="p-4">ช่องทาง</th>
-                      <th className="p-4 text-right">ยอดรวม (THB)</th>
-                      <th className="p-4 text-right">ส่วนแบ่งระบบ (15%)</th>
+                      <th className="p-4 text-right">ค่าโดยสารคนขับรับเต็ม (THB)</th>
+                      <th className="p-4 text-right">ค่าบริการระบบ (หักแต้ม)</th>
                       <th className="p-4 text-center">สถานะตรวจสอบ</th>
                       <th className="p-4 text-center">การจัดการ</th>
                     </tr>
@@ -1220,11 +1394,11 @@ export default function AdminRateDashboard() {
                           </td>
                           <td className="p-4 text-slate-300">{row.driver}</td>
                           <td className="p-4">{getChannelBadge(row.channel)}</td>
-                          <td className="p-4 font-black text-white text-right font-mono">
-                            ฿{row.grossAmount.toFixed(2)}
+                          <td className="p-4 font-black text-emerald-400 text-right font-mono">
+                            ฿{row.fareAmount.toFixed(2)}
                           </td>
-                          <td className="p-4 font-bold text-emerald-400 text-right font-mono">
-                            ฿{row.platformFee.toFixed(2)}
+                          <td className="p-4 font-bold text-purple-400 text-right font-mono">
+                            {row.systemFeePoints > 0 ? `${row.systemFeePoints} แต้ม` : '-'}
                           </td>
                           <td className="p-4 text-center whitespace-nowrap">
                             {row.status === 'RECONCILED' ? (
@@ -1275,7 +1449,173 @@ export default function AdminRateDashboard() {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════
-            TAB 2: บริหารการเงิน & นโยบาย (Finance & Platform Policies)
+            TAB 2: โปรโมชั่น & แคมเปญ (Promotion Management)
+           ═══════════════════════════════════════════════════════════════ */}
+        {activeTab === 'PROMOTIONS' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Header & Create Button */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-white flex items-center gap-2">
+                  <Gift className="w-6 h-6 text-emerald-400" />
+                  ระบบกำหนดและจัดการโปรโมชั่น (Promotion & Points Engine)
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  กำหนดแต้มแจกผู้โดยสารใหม่ แนะนำเพื่อน และโปรโมชั่นพิเศษ แอดมินสามารถปรับเปลี่ยนชื่อและแต้มได้ตลอดเวลา
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Type Filter */}
+                <select
+                  value={promoTypeFilter}
+                  onChange={(e) => setPromoTypeFilter(e.target.value)}
+                  className="bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="ALL">ทุกประเภทโปรโมชั่น</option>
+                  <option value="NEW_PASSENGER">ผู้โดยสารใหม่</option>
+                  <option value="REFERRAL">แนะนำเพื่อน</option>
+                  <option value="FIRST_RIDE">เที่ยวเดินทางแรก</option>
+                  <option value="TOPUP_BONUS">เติมเงิน</option>
+                  <option value="CUSTOM">กำหนดเอง</option>
+                </select>
+
+                {/* Create Promo Button */}
+                <button
+                  onClick={() => setIsCreatingPromotion(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>สร้างโปรโมชั่นใหม่</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Promotions Overview Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-slate-900/80 p-5 rounded-2xl border border-white/5">
+                <span className="text-[10px] font-bold uppercase text-slate-500">โปรโมชั่นที่เปิดใช้งาน</span>
+                <div className="text-2xl font-black text-white mt-1">
+                  {promotions.filter((p) => p.isActive).length}{' '}
+                  <span className="text-xs font-normal text-slate-400">/ {promotions.length} แคมเปญ</span>
+                </div>
+              </div>
+              <div className="bg-slate-900/80 p-5 rounded-2xl border border-white/5">
+                <span className="text-[10px] font-bold uppercase text-slate-500">แต้มแจกจ่ายสะสมทั้งหมด</span>
+                <div className="text-2xl font-black text-emerald-400 mt-1">
+                  {promotions.reduce((sum, p) => sum + p.points * p.currentUsage, 0).toLocaleString()} แต้ม
+                </div>
+              </div>
+              <div className="bg-slate-900/80 p-5 rounded-2xl border border-white/5">
+                <span className="text-[10px] font-bold uppercase text-slate-500">ผู้โดยสารที่ได้รับสิทธิ์สะสม</span>
+                <div className="text-2xl font-black text-cyan-400 mt-1">
+                  {promotions.reduce((sum, p) => sum + p.currentUsage, 0).toLocaleString()} คน
+                </div>
+              </div>
+            </div>
+
+            {/* Promotions List Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {filteredPromotions.map((promo) => (
+                <div
+                  key={promo.id}
+                  className={`p-6 rounded-3xl border transition-all flex flex-col justify-between space-y-4 ${
+                    promo.isActive
+                      ? 'bg-slate-900/80 border-white/10 shadow-xl'
+                      : 'bg-slate-950/60 border-white/5 opacity-60'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                              promo.type === 'NEW_PASSENGER'
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                                : promo.type === 'REFERRAL'
+                                ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                                : promo.type === 'FIRST_RIDE'
+                                ? 'bg-purple-500/15 text-purple-400 border border-purple-500/20'
+                                : 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
+                            }`}
+                          >
+                            {promo.type === 'NEW_PASSENGER'
+                              ? 'ผู้โดยสารใหม่'
+                              : promo.type === 'REFERRAL'
+                              ? 'แนะนำเพื่อน'
+                              : promo.type === 'FIRST_RIDE'
+                              ? 'เที่ยวแรก'
+                              : promo.type === 'TOPUP_BONUS'
+                              ? 'เติมเงิน'
+                              : 'กำหนดเอง'}
+                          </span>
+                          <span className="font-mono text-xs font-bold text-slate-400 bg-white/5 px-2 py-0.5 rounded">
+                            {promo.code}
+                          </span>
+                        </div>
+                        <h4 className="text-lg font-black text-white mt-2">{promo.name}</h4>
+                      </div>
+
+                      {/* Toggle Active Switch */}
+                      <button
+                        onClick={() => handleTogglePromotion(promo.id)}
+                        className={`p-1 rounded-xl transition-colors ${
+                          promo.isActive ? 'text-emerald-400 hover:text-emerald-300' : 'text-slate-600 hover:text-slate-400'
+                        }`}
+                        title={promo.isActive ? 'คลิกเพื่อปิดใช้งาน' : 'คลิกเพื่อเปิดใช้งาน'}
+                      >
+                        {promo.isActive ? <ToggleRight className="w-8 h-8" /> : <ToggleLeft className="w-8 h-8" />}
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-slate-400 leading-relaxed">{promo.description}</p>
+
+                    {/* Points Highlight Box */}
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-500">แต้มที่มอบให้</span>
+                        <div className="text-2xl font-black text-emerald-400 font-mono">
+                          {promo.points} <span className="text-sm font-bold text-slate-400">แต้ม (฿{promo.points})</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] uppercase font-bold text-slate-500">มอบสิทธิ์ไปแล้ว</span>
+                        <div className="text-base font-bold text-white font-mono">{promo.currentUsage.toLocaleString()} คน</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="flex items-center justify-between pt-3 border-t border-white/5 text-xs">
+                    <span className="text-[10px] text-slate-500">
+                      สถานะ: {promo.isActive ? '● กำลังใช้งาน' : '○ ปิดการใช้งาน'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setEditingPromotion(promo)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-bold transition-all"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>แก้ไขชื่อ / แต้ม</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeletePromotion(promo.id)}
+                        className="p-1.5 rounded-xl hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
+                        title="ลบโปรโมชั่น"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════
+            TAB 3: บริหารการเงิน & นโยบาย (Finance & Platform Policies)
            ═══════════════════════════════════════════════════════════════ */}
         {activeTab === 'FINANCE' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-300">
@@ -1407,7 +1747,7 @@ export default function AdminRateDashboard() {
                     นโยบายค่าบริการหักแต้มต่อเที่ยว (Trip Fare Policy)
                   </h3>
                   <p className="text-xs text-slate-400 mt-1">
-                    กำหนดแต้มหักต่อเที่ยว และวงเงินแต้มติดลบฉุกเฉินสำหรับผู้โดยสาร
+                    กำหนดแต้มหักต่อเที่ยว และวงเงินแต้มติดลบฉุกเฉินสำหรับผู้โดยสาร (คนขับรับค่าโดยสารเต็ม 100%)
                   </p>
                 </div>
 
@@ -1458,7 +1798,7 @@ export default function AdminRateDashboard() {
                 {/* Simulator Box */}
                 <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
                   <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    จำลองรายได้คาดการณ์ของระบบ (Platform Simulator)
+                    จำลองรายได้ค่าบริการระบบแบบเหมาจ่าย (Flat Fee Simulator)
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
@@ -1492,7 +1832,7 @@ export default function AdminRateDashboard() {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════
-            TAB 3: จัดการและอนุมัติคนขับ (Driver Approvals & KYC)
+            TAB 4: จัดการและอนุมัติคนขับ (Driver Approvals & KYC)
            ═══════════════════════════════════════════════════════════════ */}
         {activeTab === 'MANAGE' && (
           <div className="space-y-6 animate-in fade-in duration-300">
@@ -1663,7 +2003,7 @@ export default function AdminRateDashboard() {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════
-            TAB 4: ศูนย์วิเคราะห์อัจฉริยะ AI (AI Mobility Intelligence)
+            TAB 5: ศูนย์วิเคราะห์อัจฉริยะ AI (AI Mobility Intelligence)
            ═══════════════════════════════════════════════════════════════ */}
         {activeTab === 'AI_ANALYST' && (
           <div className="space-y-8 max-w-4xl mx-auto animate-in fade-in duration-300">
@@ -1864,19 +2204,19 @@ export default function AdminRateDashboard() {
               </div>
             </div>
 
-            {/* Pricing Breakdown */}
+            {/* Pricing Breakdown (Driver 100% - No GP 15%) */}
             <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2 text-xs">
               <div className="flex justify-between text-slate-400">
-                <span>ยอดค่าโดยสารรวม:</span>
-                <span className="font-mono text-white">฿{selectedTxn.grossAmount.toFixed(2)}</span>
+                <span>ยอดค่าโดยสาร (คนขับได้รับเต็ม 100%):</span>
+                <span className="font-mono text-emerald-400 font-black">฿{selectedTxn.fareAmount.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-slate-400">
-                <span>ส่วนแบ่งแพลตฟอร์ม GOZIPP (15%):</span>
-                <span className="font-mono text-emerald-400">฿{selectedTxn.platformFee.toFixed(2)}</span>
+                <span>ค่าบริการระบบ GOZIPP (หักแต้มเหมาจ่ายต่อเที่ยว):</span>
+                <span className="font-mono text-purple-400 font-bold">{selectedTxn.systemFeePoints} แต้ม (฿{selectedTxn.systemFeePoints}.00)</span>
               </div>
-              <div className="flex justify-between font-black text-sm pt-2 border-t border-white/5 text-white">
-                <span>ยอดเงินสุทธิถึงคนขับ:</span>
-                <span className="font-mono text-emerald-400">฿{selectedTxn.netAmount.toFixed(2)}</span>
+              <div className="pt-2 border-t border-white/5 text-[11px] text-slate-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>นโยบาย GOZIPP: ไม่หัก GP ค่าหัวคิวจากคนขับ — คนขับรับค่าโดยสารเต็มเม็ดเต็มหน่วย 100%</span>
               </div>
             </div>
 
@@ -1919,7 +2259,138 @@ export default function AdminRateDashboard() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════
-          MODAL 2: PromptPay Full QR Code Modal
+          MODAL 2: Edit Promotion Modal (Customizable Anytime)
+         ═══════════════════════════════════════════════════════════════ */}
+      {editingPromotion && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-3xl max-w-lg w-full p-6 lg:p-8 space-y-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-white/5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                  <Edit2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-black text-white text-base">ปรับเปลี่ยนโปรโมชั่นและแต้มที่ให้</h4>
+                  <p className="text-xs text-slate-400">แก้ไขชื่อโปรโมชั่นและแต้มสะสมได้เสมอ</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingPromotion(null)}
+                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-300 mb-1.5">ชื่อโปรโมชั่น</label>
+                <input
+                  type="text"
+                  value={editingPromotion.name}
+                  onChange={(e) => setEditingPromotion({ ...editingPromotion, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-white font-bold focus:outline-none focus:border-emerald-500"
+                  placeholder="เช่น สมัครผู้โดยสารใหม่ ให้แต้ม 50 แต้ม"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1.5">รหัสโปรโมชั่น (Code)</label>
+                  <input
+                    type="text"
+                    value={editingPromotion.code}
+                    onChange={(e) => setEditingPromotion({ ...editingPromotion, code: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-white font-mono font-bold focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1.5">ประเภทโปรโมชั่น</label>
+                  <select
+                    value={editingPromotion.type}
+                    onChange={(e) => setEditingPromotion({ ...editingPromotion, type: e.target.value as any })}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="NEW_PASSENGER">ผู้โดยสารใหม่</option>
+                    <option value="REFERRAL">แนะนำเพื่อน</option>
+                    <option value="FIRST_RIDE">เที่ยวเดินทางแรก</option>
+                    <option value="TOPUP_BONUS">เติมเงิน</option>
+                    <option value="CUSTOM">กำหนดเอง</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-300 mb-1.5">จำนวนแต้มที่ให้ (แต้มต่อคน)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    value={editingPromotion.points}
+                    onChange={(e) =>
+                      setEditingPromotion({ ...editingPromotion, points: Math.max(0, parseInt(e.target.value) || 0) })
+                    }
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-emerald-400 font-mono font-black text-lg focus:outline-none focus:border-emerald-500 pr-24"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                    แต้ม (฿{editingPromotion.points})
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">แอดมินสามารถปรับเปลี่ยนจำนวนแต้มที่แจกได้ตลอดเวลา</p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-300 mb-1.5">คำอธิบายและเงื่อนไขโปรโมชั่น</label>
+                <textarea
+                  rows={3}
+                  value={editingPromotion.description}
+                  onChange={(e) => setEditingPromotion({ ...editingPromotion, description: e.target.value })}
+                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="ระบุเงื่อนไขการรับแต้ม..."
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                <span className="font-bold text-slate-300">เปิดใช้งานโปรโมชั่นนี้ทันที</span>
+                <input
+                  type="checkbox"
+                  checked={editingPromotion.isActive}
+                  onChange={(e) => setEditingPromotion({ ...editingPromotion, isActive: e.target.checked })}
+                  className="w-5 h-5 rounded text-emerald-500 focus:ring-0 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setEditingPromotion(null)}
+                className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => handleSaveEditPromotion(editingPromotion)}
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20"
+              >
+                บันทึกการเปลี่ยนแปลง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL 3: Create New Promotion Modal
+         ═══════════════════════════════════════════════════════════════ */}
+      {isCreatingPromotion && (
+        <CreatePromotionModal
+          onClose={() => setIsCreatingPromotion(false)}
+          onSave={handleCreateNewPromotion}
+        />
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL 4: PromptPay Full QR Code Modal
          ═══════════════════════════════════════════════════════════════ */}
       {showPromptPayQR && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -1934,12 +2405,10 @@ export default function AdminRateDashboard() {
               </button>
             </div>
 
-            {/* Simulated PromptPay Card */}
             <div className="bg-white p-6 rounded-2xl text-slate-950 shadow-inner flex flex-col items-center">
               <div className="text-xs font-black tracking-widest text-blue-900 uppercase mb-2">
                 PROMPTPAY BILL PAYMENT
               </div>
-              {/* QR Mockup */}
               <div className="w-48 h-48 bg-slate-100 rounded-xl flex items-center justify-center border-2 border-slate-900 p-2">
                 <QrCode className="w-40 h-40 text-slate-900" />
               </div>
@@ -1958,7 +2427,7 @@ export default function AdminRateDashboard() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════
-          MODAL 3: Driver Document Viewer Modal
+          MODAL 5: Driver Document Viewer Modal
          ═══════════════════════════════════════════════════════════════ */}
       {selectedDoc && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -1976,7 +2445,6 @@ export default function AdminRateDashboard() {
               </button>
             </div>
 
-            {/* Simulated Document Certificate */}
             <div className="bg-slate-950 p-6 rounded-2xl border border-white/10 flex flex-col items-center justify-center min-h-[220px] text-center space-y-3">
               <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
                 <FileCheck className="w-8 h-8" />
@@ -2005,7 +2473,7 @@ export default function AdminRateDashboard() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════
-          MODAL 4: Driver Rejection Reason Modal
+          MODAL 6: Driver Rejection Reason Modal
          ═══════════════════════════════════════════════════════════════ */}
       {rejectingDriver && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -2070,6 +2538,154 @@ export default function AdminRateDashboard() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Subcomponent: Create Promotion Modal
+// ─────────────────────────────────────────────────────────────
+function CreatePromotionModal({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (promo: PromotionRule) => void;
+}) {
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [type, setType] = useState<PromotionRule['type']>('NEW_PASSENGER');
+  const [points, setPoints] = useState(50);
+  const [description, setDescription] = useState('');
+  const [maxUsageLimit, setMaxUsageLimit] = useState<number | undefined>(undefined);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return alert('กรุณาระบุชื่อโปรโมชั่น');
+    const generatedCode = code.trim() || `PROMO${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const newPromo: PromotionRule = {
+      id: `PROMO-${Date.now()}`,
+      name: name.trim(),
+      code: generatedCode.toUpperCase(),
+      type,
+      points: Math.max(0, points),
+      description: description.trim() || `โปรโมชั่น ${name.trim()} รับทันที ${points} แต้ม`,
+      isActive: true,
+      maxUsageLimit: maxUsageLimit || undefined,
+      currentUsage: 0,
+      updatedAt: new Date().toISOString(),
+    };
+
+    onSave(newPromo);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-white/10 rounded-3xl max-w-lg w-full p-6 lg:p-8 space-y-6 shadow-2xl animate-in zoom-in-95">
+        <div className="flex items-center justify-between border-b border-white/5 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+              <Gift className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-black text-white text-base">สร้างโปรโมชั่นแจกแต้มใหม่</h4>
+              <p className="text-xs text-slate-400">กำหนดเงื่อนไขและแต้มสะสมสำหรับผู้โดยสาร</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-slate-300 mb-1.5">ชื่อโปรโมชั่น *</label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-white font-bold focus:outline-none focus:border-emerald-500"
+              placeholder="เช่น สมัครผู้โดยสารใหม่ ให้แต้ม 50 แต้ม"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-slate-300 mb-1.5">รหัสโปรโมชั่น (Code)</label>
+              <input
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-white font-mono font-bold focus:outline-none focus:border-emerald-500"
+                placeholder="เช่น WELCOME50"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-slate-300 mb-1.5">ประเภทโปรโมชั่น</label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as any)}
+                className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="NEW_PASSENGER">ผู้โดยสารใหม่ (New Passenger)</option>
+                <option value="REFERRAL">แนะนำเพื่อน (Referral)</option>
+                <option value="FIRST_RIDE">เที่ยวเดินทางแรก (First Ride)</option>
+                <option value="TOPUP_BONUS">เติมเงิน (Top-up)</option>
+                <option value="CUSTOM">กำหนดเอง (Custom)</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-300 mb-1.5">จำนวนแต้มที่ให้ (แต้มต่อคน) *</label>
+            <div className="relative">
+              <input
+                type="number"
+                min={1}
+                required
+                value={points}
+                onChange={(e) => setPoints(Math.max(0, parseInt(e.target.value) || 0))}
+                className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-emerald-400 font-mono font-black text-lg focus:outline-none focus:border-emerald-500 pr-24"
+              />
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                แต้ม (฿{points})
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-300 mb-1.5">คำอธิบายและเงื่อนไขโปรโมชั่น</label>
+            <textarea
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-emerald-500"
+              placeholder="เช่น เมื่อผู้โดยสารลงทะเบียนใหม่ผ่าน OTP สำเร็จ จะได้รับแต้มทันที 50 แต้ม"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20"
+            >
+              สร้างโปรโมชั่น
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
