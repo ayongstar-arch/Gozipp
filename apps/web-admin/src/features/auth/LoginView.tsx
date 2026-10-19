@@ -3,6 +3,7 @@ import { useAdminStore } from '../../stores/adminStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useAdminAuth } from '../../hooks/useAdminAuth';
 import { APP_LOGO_PATH } from '@/constants';
+import { Eye, EyeOff } from 'lucide-react';
 
 /**
  * Admin login — username/password + TOTP MFA against the real backend.
@@ -15,6 +16,7 @@ const LoginView: React.FC = () => {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [setup, setSetup] = useState<{ setupToken: string; otpauthUrl: string } | null>(null);
@@ -71,17 +73,27 @@ const LoginView: React.FC = () => {
                 onChange={(e) => { setUsername(e.target.value); setError(null); }}
               />
             </label>
-            <label className="block">
+            <div>
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">รหัสผ่าน</span>
-              <input
-                type="password"
-                autoComplete="current-password"
-                className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-lg font-bold outline-none focus:border-emerald-500 mt-2"
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') handlePasswordLogin(); }}
-              />
-            </label>
+              <div className="relative mt-2">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  className="w-full bg-white/5 border border-white/10 p-4 pr-12 rounded-2xl text-lg font-bold outline-none focus:border-emerald-500"
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handlePasswordLogin(); }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors focus:outline-none p-1"
+                  aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
             <button
               onClick={handlePasswordLogin}
               disabled={isLoading}
