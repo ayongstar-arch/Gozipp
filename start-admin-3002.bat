@@ -1,0 +1,6 @@
+@echo off
+cd /d "%~dp0"
+echo Starting GOZIPP Admin web on port 3002...
+echo DO NOT close this window. Wait for: Ready in ...
+call npm run dev --workspace=@gozipp/admin -- -p 3002 -H 0.0.0.0
+pause
