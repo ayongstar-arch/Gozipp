@@ -1,0 +1,57 @@
+[
+  {
+    "id": "PROMO-NEW-PASSENGER",
+    "name": "สมัครผู้โดยสารใหม่ รับแต้มฟรี",
+    "code": "WELCOME60",
+    "type": "NEW_PASSENGER",
+    "points": 60,
+    "description": "ผู้โดยสารใหม่ลงทะเบียนสำเร็จ รับแต้มเข้ากระเป๋าทันที 60 แต้มเพื่อใช้เดินทาง",
+    "isActive": true,
+    "startDate": "2026-10-01",
+    "endDate": "2026-12-31",
+    "maxUsageLimit": 10000,
+    "currentUsage": 1482,
+    "updatedAt": "2026-10-23T04:22:00.000Z"
+  },
+  {
+    "id": "PROMO-REFERRAL",
+    "name": "โบนัสชวนเพื่อนเดินทาง (Referral Bonus)",
+    "code": "FRIEND50",
+    "type": "REFERRAL",
+    "points": 50,
+    "description": "รับแต้ม 50 แต้ม เมื่อเพื่อนที่คุณชวนสมัครและเดินทางเที่ยวแรกสำเร็จ",
+    "isActive": true,
+    "startDate": "2026-10-01",
+    "endDate": "2026-12-31",
+    "maxUsageLimit": 50000,
+    "currentUsage": 860,
+    "updatedAt": "2026-10-23T04:15:00.000Z"
+  },
+  {
+    "id": "PROMO-FIRST-RIDE",
+    "name": "ของขวัญเที่ยวแรก (First Ride Bonus)",
+    "code": "FIRSTRIDE20",
+    "type": "FIRST_RIDE",
+    "points": 20,
+    "description": "เดินทางเที่ยวแรกสำเร็จ รับแต้มเงินคืน 20 แต้ม",
+    "isActive": true,
+    "startDate": "2026-10-15",
+    "endDate": "2026-11-30",
+    "maxUsageLimit": 5000,
+    "currentUsage": 622,
+    "updatedAt": "2026-10-23T04:15:00.000Z"
+  },
+  {
+    "id": "PROMO-TOPUP-BONUS",
+    "name": "เติมแต้มรับเพิ่มพิเศษ (Top-up Bonus)",
+    "code": "TOPUP10",
+    "type": "TOPUP_BONUS",
+    "points": 10,
+    "description": "เติมเงินตั้งแต่ 100 บาทขึ้นไป รับแต้มเพิ่มพิเศษ 10 แต้ม",
+    "isActive": true,
+    "startDate": "2026-10-01",
+    "maxUsageLimit": 2000,
+    "currentUsage": 310,
+    "updatedAt": "2026-10-23T04:15:00.000Z"
+  }
+]

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 import { supabaseAdmin, supabase } from '@/lib/supabaseClient';
 
 export const dynamic = 'force-dynamic';
@@ -78,6 +80,38 @@ const defaultPromotions: PromotionRule[] = [
   },
 ];
 
+// Resolve path to packages/shared/promotions-config.json
+function getSharedConfigPath(): string {
+  const candidates = [
+    path.join(process.cwd(), 'packages', 'shared', 'promotions-config.json'),
+    path.join(process.cwd(), '..', '..', 'packages', 'shared', 'promotions-config.json'),
+    path.join(process.cwd(), '..', 'packages', 'shared', 'promotions-config.json'),
+    path.resolve('c:/Users/acer/Videos/Project/Gozipp/packages/shared/promotions-config.json'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return c;
+    }
+  }
+  return candidates[0];
+}
+
+function readSharedConfig(): PromotionRule[] | null {
+  try {
+    const configPath = getSharedConfigPath();
+    if (fs.existsSync(configPath)) {
+      const data = fs.readFileSync(configPath, 'utf8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Error reading shared promotions config in passenger:', err);
+  }
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const client = supabaseAdmin || supabase;
@@ -104,6 +138,23 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Try reading persistent shared monorepo config
+    const sharedData = readSharedConfig();
+    if (sharedData) {
+      return NextResponse.json(
+        {
+          success: true,
+          source: 'shared_file',
+          promotions: sharedData,
+        },
+        {
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          },
+        }
+      );
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -118,10 +169,11 @@ export async function GET(req: NextRequest) {
     );
   } catch (error: any) {
     console.error('Error fetching passenger promotions config:', error);
+    const sharedData = readSharedConfig();
     return NextResponse.json({
       success: true,
-      source: 'fallback',
-      promotions: defaultPromotions,
+      source: sharedData ? 'shared_file_fallback' : 'fallback',
+      promotions: sharedData || defaultPromotions,
     });
   }
 }

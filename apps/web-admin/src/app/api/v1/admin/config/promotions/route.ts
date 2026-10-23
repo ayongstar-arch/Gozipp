@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export interface PromotionRule {
@@ -75,6 +77,51 @@ let cachedPromotions: PromotionRule[] = [
   },
 ];
 
+// Resolve path to packages/shared/promotions-config.json
+function getSharedConfigPath(): string {
+  const candidates = [
+    path.join(process.cwd(), 'packages', 'shared', 'promotions-config.json'),
+    path.join(process.cwd(), '..', '..', 'packages', 'shared', 'promotions-config.json'),
+    path.join(process.cwd(), '..', 'packages', 'shared', 'promotions-config.json'),
+    path.resolve('c:/Users/acer/Videos/Project/Gozipp/packages/shared/promotions-config.json'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return c;
+    }
+  }
+  return candidates[0];
+}
+
+function readSharedConfig(): PromotionRule[] | null {
+  try {
+    const configPath = getSharedConfigPath();
+    if (fs.existsSync(configPath)) {
+      const data = fs.readFileSync(configPath, 'utf8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Error reading shared promotions config in admin:', err);
+  }
+  return null;
+}
+
+function writeSharedConfig(promotions: PromotionRule[]) {
+  try {
+    const configPath = getSharedConfigPath();
+    const dir = path.dirname(configPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(configPath, JSON.stringify(promotions, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('Error writing shared promotions config in admin:', err);
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     if (supabaseAdmin) {
@@ -87,20 +134,35 @@ export async function GET(req: NextRequest) {
       if (!error && data?.value && Array.isArray(data.value)) {
         return NextResponse.json({
           success: true,
+          source: 'database',
           promotions: data.value,
         });
       }
     }
 
+    // Try reading persistent shared monorepo config
+    const sharedData = readSharedConfig();
+    if (sharedData) {
+      cachedPromotions = sharedData;
+      return NextResponse.json({
+        success: true,
+        source: 'shared_file',
+        promotions: sharedData,
+      });
+    }
+
     return NextResponse.json({
       success: true,
+      source: 'memory',
       promotions: cachedPromotions,
     });
   } catch (error: any) {
     console.error('Error fetching promotions config:', error);
+    const sharedData = readSharedConfig();
     return NextResponse.json({
       success: true,
-      promotions: cachedPromotions,
+      source: sharedData ? 'shared_file_fallback' : 'memory_fallback',
+      promotions: sharedData || cachedPromotions,
     });
   }
 }
@@ -134,6 +196,10 @@ export async function POST(req: NextRequest) {
 
     cachedPromotions = sanitizedPromotions;
 
+    // 1. Immediately persist to shared monorepo file for cross-process sync
+    writeSharedConfig(sanitizedPromotions);
+
+    // 2. Persist to Supabase if configured
     if (supabaseAdmin) {
       try {
         await supabaseAdmin

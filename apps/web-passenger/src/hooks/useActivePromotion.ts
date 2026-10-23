@@ -142,7 +142,7 @@ export function useActivePromotion() {
       }
     } catch {}
 
-    // 3. Storage event listener (sync on localStorage changes)
+    // 3. Storage event listener (sync on localStorage changes within same origin)
     const handleStorage = (e: StorageEvent) => {
       if (e.key === 'gozipp_promotions_config' && e.newValue) {
         try {
@@ -153,8 +153,20 @@ export function useActivePromotion() {
     };
     window.addEventListener('storage', handleStorage);
 
-    // 4. Fallback polling heartbeat (every 20 seconds)
-    const interval = setInterval(fetchPromotions, 20000);
+    // 4. Instant Refetch on Window Focus & Tab Visibility Change
+    const handleFocus = () => {
+      fetchPromotions();
+    };
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchPromotions();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // 5. Short polling heartbeat (every 3 seconds for instant local sync)
+    const interval = setInterval(fetchPromotions, 3000);
 
     return () => {
       if (channel) {
@@ -168,6 +180,8 @@ export function useActivePromotion() {
         } catch {}
       }
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(interval);
     };
   }, [fetchPromotions]);
