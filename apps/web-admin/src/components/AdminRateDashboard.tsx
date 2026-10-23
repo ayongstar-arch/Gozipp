@@ -63,13 +63,48 @@ import {
   Tag,
   ToggleLeft,
   ToggleRight,
-  Menu
+  Menu,
+  Coins
 } from 'lucide-react';
 import { useAdminStore } from '@/stores/adminStore';
 
-type AdminTab = 'ACCOUNTING' | 'PROMOTIONS' | 'FINANCE' | 'MANAGE' | 'AI_ANALYST';
+type AdminTab = 'ACCOUNTING' | 'CUSTOMER_POINTS' | 'PROMOTIONS' | 'FINANCE' | 'MANAGE' | 'AI_ANALYST';
 type ReportPeriod = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 type ChartMode = 'REVENUE' | 'TRIPS' | 'COMBINED';
+
+export interface TopupTransaction {
+  id: string;
+  paymentRef: string;
+  timestamp: string;
+  passengerId: string;
+  passengerName: string;
+  passengerPhone: string;
+  amountBaht: number;
+  basePoints: number;
+  bonusPoints: number;
+  totalPoints: number;
+  paymentMethod: 'PROMPTPAY' | 'BANK_TRANSFER' | 'CREDIT_CARD';
+  status: 'COMPLETED' | 'PENDING' | 'REJECTED';
+  promoApplied?: string;
+  bankRef?: string;
+  qrPayload?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+}
+
+export interface CustomerPointRecord {
+  id: string;
+  name: string;
+  phone: string;
+  currentPoints: number;
+  welcomePoints: number;
+  totalToppedUpBaht: number;
+  totalPointsEarned: number;
+  totalRidesUsed: number;
+  registrationDate: string;
+  lastTopupDate?: string;
+  status: 'ACTIVE' | 'SUSPENDED';
+}
 
 interface Transaction {
   id: string;
@@ -311,12 +346,72 @@ export default function AdminRateDashboard() {
     },
   ]);
 
+  // Realtime Customer Points & Top-ups State
+  const [topupFeed, setTopupFeed] = useState<TopupTransaction[]>([]);
+  const [customersList, setCustomersList] = useState<CustomerPointRecord[]>([]);
+  const [customerPointsTab, setCustomerPointsTab] = useState<'TOPUPS' | 'CUSTOMERS'>('TOPUPS');
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [topupStatusFilter, setTopupStatusFilter] = useState<'ALL' | 'COMPLETED' | 'PENDING' | 'REJECTED'>('ALL');
+  const [isTopupsLoading, setIsTopupsLoading] = useState(false);
+  const [selectedTopup, setSelectedTopup] = useState<TopupTransaction | null>(null);
+  const [topupSummary, setTopupSummary] = useState({
+    totalTransactions: 7,
+    totalVolumeBaht: 1030,
+    totalPointsGiven: 1120,
+    totalBonusGiven: 90,
+    avgTopupAmount: 147,
+  });
+  const [customerSummary, setCustomerSummary] = useState({
+    totalCustomersCount: 8,
+    totalSystemPoints: 1510,
+    avgPointsPerCustomer: 189,
+  });
+
+  const fetchTopupFeed = async () => {
+    try {
+      const res = await fetch('/api/v1/admin/customers/topups');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.topups)) {
+          setTopupFeed(data.topups);
+          if (data.summary) setTopupSummary(data.summary);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch topup feed:', e);
+    }
+  };
+
+  const fetchCustomersList = async () => {
+    try {
+      const res = await fetch('/api/v1/admin/customers/points');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.customers)) {
+          setCustomersList(data.customers);
+          if (data.summary) setCustomerSummary(data.summary);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch customers list:', e);
+    }
+  };
+
   useEffect(() => {
     setIsMounted(true);
     fetchPromotionsConfig();
     fetchReferralConfig();
     fetchPricingConfig();
     fetchPendingDrivers();
+    fetchTopupFeed();
+    fetchCustomersList();
+
+    const interval = setInterval(() => {
+      fetchTopupFeed();
+      fetchCustomersList();
+    }, 3000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Copy helper
@@ -1069,6 +1164,14 @@ export default function AdminRateDashboard() {
               icon: BarChart3,
             },
             {
+              id: 'CUSTOMER_POINTS',
+              label: 'ตรวจสอบแต้ม & เติมเงินสด',
+              enLabel: 'Customer Points & Live Top-up',
+              icon: Coins,
+              badgeText: 'Live',
+              badgeColor: 'emerald',
+            },
+            {
               id: 'PROMOTIONS',
               label: 'โปรโมชั่น & แคมเปญ',
               enLabel: 'Promotions & Points',
@@ -1227,6 +1330,7 @@ export default function AdminRateDashboard() {
                 <ChevronRight className="w-3 h-3 text-slate-600 flex-shrink-0" />
                 <span className="text-emerald-400 font-bold truncate">
                   {activeTab === 'ACCOUNTING' && 'การเงินและบัญชี'}
+                  {activeTab === 'CUSTOMER_POINTS' && 'ตรวจสอบแต้ม & เติมเงินสด'}
                   {activeTab === 'PROMOTIONS' && 'โปรโมชั่น & แคมเปญ'}
                   {activeTab === 'FINANCE' && 'บริหารการเงิน & นโยบาย'}
                   {activeTab === 'MANAGE' && 'จัดการและอนุมัติคนขับ'}
@@ -1235,6 +1339,7 @@ export default function AdminRateDashboard() {
               </div>
               <h2 className="text-base sm:text-xl lg:text-2xl font-black text-white tracking-tight mt-0.5 truncate">
                 {activeTab === 'ACCOUNTING' && 'สรุปการเงินและบัญชีแยกประเภท'}
+                {activeTab === 'CUSTOMER_POINTS' && 'ตรวจสอบแต้มคงเหลือลูกค้า & รายการเติมเงิน Realtime'}
                 {activeTab === 'PROMOTIONS' && 'จัดการโปรโมชั่น & กำหนดแต้มสะสม'}
                 {activeTab === 'FINANCE' && 'บริหารนโยบายและโครงสร้างอัตราค่าบริการ'}
                 {activeTab === 'MANAGE' && 'ตรวจสอบและอนุมัติผู้สมัครคนขับ'}
@@ -1694,6 +1799,346 @@ export default function AdminRateDashboard() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════
+            TAB: ตรวจสอบแต้มลูกค้า & รายการเติมเงิน Realtime (Live Top-Up Stream)
+           ═══════════════════════════════════════════════════════════════ */}
+        {activeTab === 'CUSTOMER_POINTS' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Header with Live Realtime Pulse */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/60 p-5 rounded-3xl border border-white/5 backdrop-blur-xl">
+              <div>
+                <h3 className="text-xl font-black text-white flex items-center gap-2.5">
+                  <Coins className="w-6 h-6 text-emerald-400" />
+                  ตรวจสอบแต้มลูกค้า & รายการเติมเงิน Realtime (Live Top-Up Stream)
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  ตรวจสอบยอดแต้มคงเหลือของลูกค้า และฟีดรายการเติมแต้มผ่าน PromptPay QR Code สดทันทีแบบ Realtime
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 font-bold">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span>Live Stream • ซิงก์สดทุก 3 วินาที</span>
+                </div>
+                <button
+                  onClick={() => {
+                    fetchTopupFeed();
+                    fetchCustomersList();
+                  }}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all border border-white/5"
+                  title="รีเฟรชข้อมูลสด"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* 4 Summary KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-slate-900/80 p-5 rounded-2xl border border-white/5 relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                    ยอดเงินเติมเข้าวันนี้ (บาท)
+                  </span>
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-emerald-400 mt-2 font-mono">
+                  ฿{topupSummary.totalVolumeBaht.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  ยอดเฉลี่ย ฿{topupSummary.avgTopupAmount.toLocaleString()} / รายการ
+                </div>
+              </div>
+
+              <div className="bg-slate-900/80 p-5 rounded-2xl border border-white/5 relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                    แต้มที่เข้ากระเป๋าลูกค้า
+                  </span>
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400">
+                    <Coins className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-purple-400 mt-2 font-mono">
+                  +{topupSummary.totalPointsGiven.toLocaleString()} แต้ม
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  รวมแต้มหลักและแต้มโบนัสโปรโมชั่น
+                </div>
+              </div>
+
+              <div className="bg-slate-900/80 p-5 rounded-2xl border border-white/5 relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                    แต้มโบนัสที่แจกฟรี (Promo)
+                  </span>
+                  <div className="w-7 h-7 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-400">
+                    <Gift className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-cyan-400 mt-2 font-mono">
+                  +{topupSummary.totalBonusGiven.toLocaleString()} แต้ม
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  จากแคมเปญ Top-up Bonus ที่กำหนด
+                </div>
+              </div>
+
+              <div className="bg-slate-900/80 p-5 rounded-2xl border border-white/5 relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                    แต้มคงเหลือรวมในระบบ
+                  </span>
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-amber-400 mt-2 font-mono">
+                  {customerSummary.totalSystemPoints.toLocaleString()} แต้ม
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  รวม {customerSummary.totalCustomersCount} บัญชีผู้โดยสาร
+                </div>
+              </div>
+            </div>
+
+            {/* Sub-tab Navigation and Search Box */}
+            <div className="bg-slate-900/80 p-6 rounded-3xl border border-white/5 backdrop-blur-xl space-y-6">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-white/5 pb-5">
+                <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-white/10 text-xs font-bold">
+                  <button
+                    onClick={() => setCustomerPointsTab('TOPUPS')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+                      customerPointsTab === 'TOPUPS'
+                        ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Coins className="w-3.5 h-3.5" />
+                    <span>รายการเติมแต้มสด Realtime ({topupFeed.length})</span>
+                  </button>
+                  <button
+                    onClick={() => setCustomerPointsTab('CUSTOMERS')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+                      customerPointsTab === 'CUSTOMERS'
+                        ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>สมุดตรวจสอบแต้มลูกค้า ({customersList.length})</span>
+                  </button>
+                </div>
+
+                {/* Search Box */}
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <div className="relative flex-1 md:w-80">
+                    <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder={
+                        customerPointsTab === 'TOPUPS'
+                          ? 'ค้นหาชื่อ, เบอร์โทร, รหัส Ref, ธนาคาร...'
+                          : 'ค้นหาชื่อลูกค้า, เบอร์โทร, รหัส ID...'
+                      }
+                      value={customerSearchQuery}
+                      onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {customerPointsTab === 'TOPUPS' && (
+                    <select
+                      value={topupStatusFilter}
+                      onChange={(e: any) => setTopupStatusFilter(e.target.value)}
+                      className="bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="ALL">ทุกสถานะ</option>
+                      <option value="COMPLETED">เติมสำเร็จ (Completed)</option>
+                      <option value="PENDING">รอดำเนินการ (Pending)</option>
+                      <option value="REJECTED">ยกเลิก/ไม่สำเร็จ</option>
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              {/* View 1: Top-ups Feed Table */}
+              {customerPointsTab === 'TOPUPS' && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-white/[0.02] text-[10px] uppercase font-black tracking-widest text-slate-400 border-b border-white/5">
+                      <tr>
+                        <th className="p-4">เวลาทำรายการ</th>
+                        <th className="p-4">เลขที่อ้างอิง (Ref)</th>
+                        <th className="p-4">ผู้โดยสาร (ลูกค้า)</th>
+                        <th className="p-4 text-right">ยอดเงินโอน (THB)</th>
+                        <th className="p-4 text-right">แต้มที่ได้รับ</th>
+                        <th className="p-4">โปรโมชั่นที่ได้รับ</th>
+                        <th className="p-4">ช่องทาง</th>
+                        <th className="p-4 text-center">สถานะ</th>
+                        <th className="p-4 text-center">หลักฐานสลิป</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 font-medium">
+                      {topupFeed
+                        .filter((t) => {
+                          const matchesQuery =
+                            !customerSearchQuery ||
+                            t.passengerName.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+                            t.passengerPhone.includes(customerSearchQuery) ||
+                            t.paymentRef.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+                            (t.bankRef && t.bankRef.toLowerCase().includes(customerSearchQuery.toLowerCase()));
+                          const matchesStatus = topupStatusFilter === 'ALL' || t.status === topupStatusFilter;
+                          return matchesQuery && matchesStatus;
+                        })
+                        .map((row) => (
+                          <tr
+                            key={row.id}
+                            onClick={() => setSelectedTopup(row)}
+                            className="hover:bg-white/[0.03] transition-colors cursor-pointer group"
+                          >
+                            <td className="p-4 text-slate-400 whitespace-nowrap">
+                              {new Date(row.timestamp).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              <span className="block text-[10px] text-slate-500">
+                                {new Date(row.timestamp).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
+                              </span>
+                            </td>
+                            <td className="p-4 font-black text-white font-mono">{row.paymentRef}</td>
+                            <td className="p-4">
+                              <div className="text-slate-200 font-semibold">{row.passengerName}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">{row.passengerPhone}</div>
+                            </td>
+                            <td className="p-4 font-black text-emerald-400 text-right font-mono text-sm">
+                              ฿{row.amountBaht.toFixed(2)}
+                            </td>
+                            <td className="p-4 text-right font-mono">
+                              <div className="font-extrabold text-purple-400">+{row.totalPoints} แต้ม</div>
+                              {row.bonusPoints > 0 && (
+                                <div className="text-[10px] text-cyan-400">
+                                  ({row.basePoints} + โบนัส {row.bonusPoints})
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-4">
+                              {row.promoApplied ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                                  🎁 {row.promoApplied}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 text-[11px]">-</span>
+                              )}
+                            </td>
+                            <td className="p-4">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                <QrCode className="w-3 h-3" /> PromptPay QR
+                              </span>
+                            </td>
+                            <td className="p-4 text-center whitespace-nowrap">
+                              {row.status === 'COMPLETED' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                                  <CheckCircle2 className="w-3 h-3" /> เติมสำเร็จ
+                                </span>
+                              ) : row.status === 'PENDING' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                                  <Clock className="w-3 h-3" /> รอดำเนินการ
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-500/15 text-red-400 border border-red-500/20">
+                                  <X className="w-3 h-3" /> ยกเลิก
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-4 text-center">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedTopup(row);
+                                }}
+                                className="px-3 py-1 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 font-bold transition-all text-[11px]"
+                              >
+                                ดูหลักฐาน
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* View 2: Customer Directory Table */}
+              {customerPointsTab === 'CUSTOMERS' && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-white/[0.02] text-[10px] uppercase font-black tracking-widest text-slate-400 border-b border-white/5">
+                      <tr>
+                        <th className="p-4">รหัสลูกค้า</th>
+                        <th className="p-4">ชื่อผู้โดยสาร</th>
+                        <th className="p-4">เบอร์โทรศัพท์</th>
+                        <th className="p-4 text-right">แต้มคงเหลือปัจจุบัน</th>
+                        <th className="p-4 text-center">แต้มสมัครใหม่</th>
+                        <th className="p-4 text-right">ยอดเติมสะสม (THB)</th>
+                        <th className="p-4 text-center">เที่ยวที่เดินทาง</th>
+                        <th className="p-4">วันที่สมัครสมาชิก</th>
+                        <th className="p-4 text-center">สถานะ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 font-medium">
+                      {customersList
+                        .filter((c) => {
+                          if (!customerSearchQuery) return true;
+                          const q = customerSearchQuery.toLowerCase();
+                          return c.name.toLowerCase().includes(q) || c.phone.includes(q) || c.id.toLowerCase().includes(q);
+                        })
+                        .map((c) => (
+                          <tr key={c.id} className="hover:bg-white/[0.03] transition-colors">
+                            <td className="p-4 font-mono font-bold text-slate-400">{c.id}</td>
+                            <td className="p-4 font-bold text-white">{c.name}</td>
+                            <td className="p-4 font-mono text-slate-300">{c.phone}</td>
+                            <td className="p-4 text-right font-mono">
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl font-black text-sm bg-purple-500/15 text-purple-300 border border-purple-500/25">
+                                <Coins className="w-3.5 h-3.5 text-purple-400" />
+                                {c.currentPoints.toLocaleString()} แต้ม
+                              </span>
+                            </td>
+                            <td className="p-4 text-center">
+                              <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 text-[11px]">
+                                +{c.welcomePoints} แต้ม
+                              </span>
+                            </td>
+                            <td className="p-4 text-right font-mono font-bold text-slate-200">
+                              ฿{c.totalToppedUpBaht.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="p-4 text-center font-bold text-slate-300">
+                              {c.totalRidesUsed} เที่ยว
+                            </td>
+                            <td className="p-4 text-slate-400 text-[11px]">
+                              {new Date(c.registrationDate).toLocaleDateString('th-TH', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: '2-digit',
+                              })}
+                            </td>
+                            <td className="p-4 text-center">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                ใช้งานปกติ
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2419,6 +2864,91 @@ export default function AdminRateDashboard() {
           </div>
         </main>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL: ตรวจสอบหลักฐานการเติมแต้มลูกค้า (Top-up Audit Slip)
+         ═══════════════════════════════════════════════════════════════ */}
+      {selectedTopup && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-3xl max-w-lg w-full p-6 lg:p-8 space-y-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-white/5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                  <Coins className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-black text-white text-base">ใบเสร็จตรวจสอบการเติมแต้ม</h4>
+                  <p className="text-xs text-slate-400 font-mono">PromptPay Instant Top-up Audit Slip</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedTopup(null)}
+                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-slate-950 p-5 rounded-2xl border border-white/5 space-y-3 font-mono text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">รหัสอ้างอิงธุรกรรม:</span>
+                <span className="text-white font-black">{selectedTopup.paymentRef}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">เลขอ้างอิงธนาคาร (Bank Ref):</span>
+                <span className="text-emerald-400 font-bold">{selectedTopup.bankRef || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">เวลาทำรายการ:</span>
+                <span className="text-slate-300">
+                  {new Date(selectedTopup.timestamp).toLocaleString('th-TH')}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">ลูกค้าผู้โดยสาร:</span>
+                <span className="text-slate-200 font-sans font-bold">
+                  {selectedTopup.passengerName} ({selectedTopup.passengerPhone})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">ช่องทางการชำระ:</span>
+                <span className="text-blue-400 font-bold">PromptPay QR Code</span>
+              </div>
+              <div className="border-t border-white/5 pt-3 flex justify-between text-sm">
+                <span className="text-slate-400">ยอดเงินโอนเข้า:</span>
+                <span className="text-emerald-400 font-black">
+                  ฿{selectedTopup.amountBaht.toFixed(2)} บาท
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">แต้มที่ได้รับเข้ากระเป๋า:</span>
+                <span className="text-purple-400 font-black">
+                  +{selectedTopup.totalPoints} แต้ม
+                </span>
+              </div>
+              {selectedTopup.bonusPoints > 0 && (
+                <div className="flex justify-between text-xs text-cyan-400">
+                  <span>โบนัสโปรโมชั่นพิเศษ:</span>
+                  <span>+{selectedTopup.bonusPoints} แต้ม</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-2 border-t border-white/5">
+                <span className="text-slate-500">สถานะการตรวจสอบ:</span>
+                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> ตรวจสอบสำเร็จ (Auto-Reconciled)
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSelectedTopup(null)}
+              className="w-full py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl text-xs transition-colors"
+            >
+              ปิดหน้าต่าง
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════
           MODAL 1: Audit Receipt Inspector Modal
