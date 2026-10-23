@@ -1675,10 +1675,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                                 <div className="flex gap-2">
                                     <button onClick={handleRejectJob} className="flex-1 bg-slate-800 hover:bg-red-900/50 py-4 rounded-xl font-bold text-red-400 text-sm transition-colors border border-slate-700">ยกเลิก</button>
                                     {tripPhase === 'TO_PICKUP' ? (
-                                        <>
-                                            <button onClick={handleArrivedPickup} className="flex-[2] bg-amber-400 hover:bg-amber-300 text-slate-900 py-4 rounded-xl font-bold text-base shadow-lg transition-colors">ถึงจุดรับแล้ว</button>
-                                            <button onClick={handleStartTrip} className="flex-[2] bg-slate-100 hover:bg-white text-slate-900 py-4 rounded-xl font-bold text-base shadow-lg transition-colors">รับผู้โดยสารแล้ว ออกเดินทาง</button>
-                                        </>
+                                        <button onClick={handleArrivedPickup} className="flex-[2] bg-amber-400 hover:bg-amber-300 text-slate-900 py-4 rounded-xl font-bold text-base shadow-lg transition-colors">ถึงจุดรับแล้ว</button>
                                     ) : (
                                         <button onClick={handleCompleteJob} className="flex-[2] bg-slate-100 hover:bg-white text-slate-900 py-4 rounded-xl font-bold text-lg shadow-lg transition-colors">ส่งถึงที่หมาย (จบงาน)</button>
                                     )}

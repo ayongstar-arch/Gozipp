@@ -415,13 +415,17 @@ export class DriverService implements OnModuleInit {
 
   async completeTrip(dto: TripActionDto) {
     const trip = await this.tripRepo.findOne({ where: { id: dto.tripId, driver_id: dto.driverId } });
-    if (!trip || trip.status !== 'IN_PROGRESS') {
-      throw new BadRequestException('ไม่สามารถจบทริปก่อนเริ่มเดินทาง');
+    if (!trip || !['DRIVER_ARRIVED', 'IN_PROGRESS', 'ACCEPTED'].includes(trip.status)) {
+      throw new BadRequestException('ไม่สามารถจบทริปในสถานะนี้ได้');
     }
     await this.redis.hset(`trip:${dto.tripId}`, 'status', 'COMPLETED');
     await this.redis.hset(`driver:${dto.driverId}:stats`, 'status', 'IDLE');
 
-    await this.tripRepo.update(dto.tripId, { status: 'COMPLETED', completed_at: new Date() });
+    await this.tripRepo.update(dto.tripId, {
+      status: 'COMPLETED',
+      completed_at: new Date(),
+      started_at: trip.started_at || new Date(),
+    });
     await this.driverRepo.update(dto.driverId, { current_status: 'IDLE' });
     await this.driverRepo.increment({ id: dto.driverId }, 'total_trips', 1);
 
