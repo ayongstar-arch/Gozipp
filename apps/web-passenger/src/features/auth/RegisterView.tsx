@@ -3,6 +3,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../hooks/useAuth';
 import { useFirebasePhoneAuth } from '../../hooks/useFirebasePhoneAuth';
+import { useActivePromotion } from '../../hooks/useActivePromotion';
 import { motion } from 'framer-motion';
 
 const RegisterView: React.FC = () => {
@@ -10,6 +11,7 @@ const RegisterView: React.FC = () => {
   const { setUser, setOtpPurpose } = useAuthStore();
   const { isLoading: authLoading, setIsLoading, setToastMessage } = useUIStore();
   const { verifyOtp: verifyBackendOtp, error: backendError, setError: setBackendError } = useAuth();
+  const { newPassengerPoints } = useActivePromotion();
   const {
     isLoading: firebaseLoading,
     error: firebaseError,
@@ -196,13 +198,18 @@ const RegisterView: React.FC = () => {
   };
 
   const completeAuthSuccess = (data: any, phoneNumber: string) => {
+    // Award Admin-configured active welcome promotion points if newly registered
+    const finalPoints = (typeof data.pointsBalance === 'number' && data.pointsBalance > 0)
+      ? data.pointsBalance
+      : (newPassengerPoints > 0 ? newPassengerPoints : 60);
+
     setUser({
       id: data.passengerId || data.user?.id || '',
       name: data.name || data.user?.name || formData.name,
       phone: phoneNumber,
       email: data.user?.email || '',
       avatarSeed: (data.passengerId || data.user?.id || 'user').slice(0, 8),
-      pointsBalance: data.pointsBalance ?? 0,
+      pointsBalance: finalPoints,
       freeRidesRemaining: data.freeRidesRemaining ?? 3,
     });
 
@@ -407,7 +414,27 @@ const RegisterView: React.FC = () => {
 
             {!otpStep ? (
               /* STEP 1: Name + Phone */
-              <div className="space-y-5">
+              <div className="space-y-4">
+                {/* Active New Passenger Promotion Banner */}
+                {newPassengerPoints > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 p-3.5 rounded-2xl mb-1 text-xs flex items-center justify-between backdrop-blur-md shadow-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🎁</span>
+                      <div>
+                        <span className="font-bold text-white block">สิทธิพิเศษสมัครผู้โดยสารใหม่</span>
+                        <span className="text-[11px] text-emerald-400">รับแต้มเดินทางฟรีทันทีเมื่อลงทะเบียน</span>
+                      </div>
+                    </div>
+                    <span className="font-black text-[#39B54A] bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/30 text-xs shrink-0">
+                      +{newPassengerPoints} แต้ม
+                    </span>
+                  </motion.div>
+                )}
+
                 <label className="block relative">
                   <span className="absolute -top-3 left-6 bg-black px-2 text-xs font-bold text-[#A3FF3F] uppercase tracking-wider z-10">ชื่อ-นามสกุล</span>
                   <input

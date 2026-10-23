@@ -77,13 +77,29 @@ export const useAuth = () => {
       });
 
       if (data.success || data.user || data.passengerId) {
+        // Read active promotion points from cached config if available
+        let promoPoints = 60;
+        if (typeof window !== 'undefined') {
+          try {
+            const cached = localStorage.getItem('gozipp_promotions_config');
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              const p = parsed.find((item: any) => item.type === 'NEW_PASSENGER' && item.isActive);
+              if (p && typeof p.points === 'number') promoPoints = p.points;
+            }
+          } catch {}
+        }
+        const finalBalance = (typeof data.pointsBalance === 'number' && data.pointsBalance > 0)
+          ? data.pointsBalance
+          : promoPoints;
+
         setUser({
           id: data.passengerId || data.user?.id,
           name: data.name || data.user?.name || name || '',
           phone: phoneNumber,
           email: data.user?.email || '',
           avatarSeed: (data.passengerId || data.user?.id || 'user').slice(0, 8),
-          pointsBalance: data.pointsBalance ?? 0,
+          pointsBalance: finalBalance,
           freeRidesRemaining: data.freeRidesRemaining ?? 3,
         });
 

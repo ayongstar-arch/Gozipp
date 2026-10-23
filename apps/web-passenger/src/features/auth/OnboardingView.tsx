@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
+import { useActivePromotion } from '../../hooks/useActivePromotion';
 import InstallPwaPrompt from '../../components/InstallPwaPrompt';
 import { API_BASE_URL } from '@/constants';
 import { motion } from 'framer-motion';
@@ -9,6 +10,7 @@ const OnboardingView: React.FC = () => {
   const setAuthStep = useAuthStore((state) => state.setAuthStep);
   const setUser = useAuthStore((state) => state.setUser);
   const setToastMessage = useUIStore((state) => state.setToastMessage);
+  const { newPassengerPoints } = useActivePromotion();
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -102,8 +104,20 @@ const OnboardingView: React.FC = () => {
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, duration: 0.6 }}
-        className="relative z-20 w-full flex flex-col space-y-4 bg-black/40 backdrop-blur-2xl border-t border-white/5 px-6 pt-6 pb-8 shadow-[0_-20px_40px_rgba(0,0,0,0.5)]"
+        className="relative z-20 w-full flex flex-col space-y-3.5 bg-black/40 backdrop-blur-2xl border-t border-white/5 px-6 pt-5 pb-8 shadow-[0_-20px_40px_rgba(0,0,0,0.5)]"
       >
+        {/* Dynamic New Passenger Promotion Badge */}
+        {newPassengerPoints > 0 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mx-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold tracking-wide shadow-sm"
+          >
+            <span className="text-sm">🎁</span>
+            <span>สมัครสมาชิกใหม่วันนี้ รับแต้มฟรี <strong>{newPassengerPoints} แต้ม</strong></span>
+          </motion.div>
+        )}
+
         {/* Primary Action */}
         <motion.button
           whileHover={{ scale: 1.02 }}
@@ -114,7 +128,7 @@ const OnboardingView: React.FC = () => {
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
           </svg>
-          ลงทะเบียนใช้งาน
+          ลงทะเบียนใช้งาน {newPassengerPoints > 0 ? `• รับฟรี ${newPassengerPoints} แต้ม` : ''}
         </motion.button>
 
         {/* Divider */}

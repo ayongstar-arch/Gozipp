@@ -271,6 +271,29 @@ export class AuthService {
         }
     }
 
+    private getWelcomePromotionPoints(): number {
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const candidates = [
+                path.resolve(process.cwd(), 'packages', 'shared', 'promotions-config.json'),
+                path.resolve(process.cwd(), '..', '..', 'packages', 'shared', 'promotions-config.json'),
+                path.resolve(process.cwd(), '..', 'packages', 'shared', 'promotions-config.json'),
+                'c:/Users/acer/Videos/Project/Gozipp/packages/shared/promotions-config.json',
+            ];
+            for (const c of candidates) {
+                if (fs.existsSync(c)) {
+                    const parsed = JSON.parse(fs.readFileSync(c, 'utf8'));
+                    const promo = parsed.find((p: any) => p.type === 'NEW_PASSENGER' && p.isActive);
+                    if (promo && typeof promo.points === 'number') {
+                        return promo.points;
+                    }
+                }
+            }
+        } catch {}
+        return 60;
+    }
+
     // --- UNIFORM LOGIC ---
     private async findOrCreateSocialUser(
         provider: string,
@@ -287,7 +310,8 @@ export class AuthService {
             });
 
             if (!passenger) {
-                // Register new passenger
+                // Register new passenger with Admin-configured welcome promotion points
+                const welcomePoints = this.getWelcomePromotionPoints();
                 const newId = `P-${crypto.randomUUID().slice(0, 8)}`;
                 passenger = this.passengerRepo.create({
                     id: newId,
@@ -297,7 +321,7 @@ export class AuthService {
                     avatar_url: profile.picture,
                     auth_provider: provider,
                     provider_id: providerId,
-                    points_balance: 0,
+                    points_balance: welcomePoints,
                     free_rides_remaining: 3
                 });
                 await this.passengerRepo.save(passenger);
@@ -439,13 +463,14 @@ export class AuthService {
                 }
 
                 const refCode = `P-${crypto.randomUUID().toUpperCase().slice(0, 6)}`;
+                const welcomePoints = this.getWelcomePromotionPoints();
                 try {
                     passenger = this.passengerRepo.create({
                         phone: normalized,
                         name: cleanName.slice(0, 200),
                         auth_provider: 'OTP',
                         provider_id: decoded.uid,
-                        points_balance: 0,
+                        points_balance: welcomePoints,
                         free_rides_remaining: 3,
                         referral_code: refCode,
                         referred_by_id: referredById || undefined,
@@ -456,13 +481,13 @@ export class AuthService {
                     const newId = crypto.randomUUID();
                     await this.dataSource.query(`
                         INSERT INTO passengers (id, phone, name, auth_provider, provider_id, points_balance, free_rides_remaining, referral_code, referred_by_id)
-                        VALUES ($1, $2, $3, 'OTP', $4, 0, 3, $5, $6)
+                        VALUES ($1, $2, $3, 'OTP', $4, $7, 3, $5, $6)
                         ON CONFLICT (phone) DO UPDATE 
                         SET name = EXCLUDED.name, provider_id = EXCLUDED.provider_id
-                    `, [newId, normalized, cleanName.slice(0, 200), decoded.uid, refCode, referredById || null]);
+                    `, [newId, normalized, cleanName.slice(0, 200), decoded.uid, refCode, referredById || null, welcomePoints]);
 
                     const rows = await this.dataSource.query(`SELECT * FROM passengers WHERE phone = $1 LIMIT 1`, [normalized]);
-                    passenger = (rows && rows[0]) ? rows[0] : ({ id: newId, phone: normalized, name: cleanName, points_balance: 0, free_rides_remaining: 3 } as any);
+                    passenger = (rows && rows[0]) ? rows[0] : ({ id: newId, phone: normalized, name: cleanName, points_balance: welcomePoints, free_rides_remaining: 3 } as any);
                 }
 
                 try {

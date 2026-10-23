@@ -1,4 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
+
+function getWelcomePromotionPoints(): number {
+  try {
+    const candidates = [
+      path.join(process.cwd(), 'packages', 'shared', 'promotions-config.json'),
+      path.join(process.cwd(), '..', '..', 'packages', 'shared', 'promotions-config.json'),
+      path.join(process.cwd(), '..', 'packages', 'shared', 'promotions-config.json'),
+      path.resolve('c:/Users/acer/Videos/Project/Gozipp/packages/shared/promotions-config.json'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        const raw = JSON.parse(fs.readFileSync(c, 'utf8'));
+        const promo = raw.find((p: any) => p.type === 'NEW_PASSENGER' && p.isActive);
+        if (promo && typeof promo.points === 'number') {
+          return promo.points;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to read welcome promo points in firebase-verify:', e);
+  }
+  return 60;
+}
 
 /**
  * POST /api/v1/auth/firebase-verify — MASTER OTP entrypoint (Firebase Phone Auth).
@@ -72,6 +97,14 @@ export async function POST(request: NextRequest) {
   }
 
   const data = await nestRes.json().catch(() => ({}));
+
+  // Link Active New Passenger Promotion points to newly registered passenger wallet
+  if (data?.success && nestRole === 'PASSENGER' && (data.isNew || purpose === 'REGISTER')) {
+    if (typeof data.pointsBalance !== 'number' || data.pointsBalance <= 0) {
+      data.pointsBalance = getWelcomePromotionPoints();
+    }
+  }
+
   const res = NextResponse.json(data, { status: nestRes.status });
 
   // Forward HttpOnly auth cookies set by Nest so the browser session works.

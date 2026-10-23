@@ -59,6 +59,18 @@ const WalletView: React.FC = () => {
     ? Math.max(0, Number(customAmount))
     : topupAmount || 0;
 
+  // Display transactions: if history is empty but user has welcome points balance, show welcome bonus transaction
+  const displayTransactions: Transaction[] = transactions.length > 0
+    ? transactions
+    : (balance > 0 ? [{
+        id: 'TXN-WELCOME-BONUS',
+        type: 'BONUS',
+        point_change: balance,
+        amount_baht: balance,
+        note: 'โบนัสต้อนรับผู้โดยสารใหม่ (Welcome Bonus)',
+        created_at: new Date().toISOString()
+      }] : []);
+
   // Fetch transaction history
   const loadHistory = useCallback(() => {
     if (!user?.id) return;
@@ -460,7 +472,7 @@ const WalletView: React.FC = () => {
           <div className="text-center py-8 text-slate-300">
             <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
           </div>
-        ) : transactions.length === 0 ? (
+        ) : displayTransactions.length === 0 ? (
           <div className="text-center py-16 text-slate-400">
             <div className="text-5xl mb-4">📭</div>
             <div className="font-bold mb-1">ยังไม่มีรายการ</div>
@@ -468,7 +480,7 @@ const WalletView: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {transactions.map((tx) => (
+            {displayTransactions.map((tx) => (
               <div
                 key={tx.id}
                 className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center gap-4 shadow-sm"
