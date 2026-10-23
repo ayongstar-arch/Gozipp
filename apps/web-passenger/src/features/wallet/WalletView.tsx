@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { apiFetch } from '../../services/api';
-import { Download, QrCode, ArrowLeft, CheckCircle2, AlertTriangle, Sparkles, X, Smartphone } from 'lucide-react';
+import { Download, QrCode, ArrowLeft, CheckCircle2, AlertTriangle, X, Smartphone } from 'lucide-react';
 
 interface Transaction {
   id: string;
@@ -52,7 +52,6 @@ const WalletView: React.FC = () => {
   const [isSavingImage, setIsSavingImage] = useState(false);
 
   const balance = user?.pointsBalance ?? 0;
-  const freeRides = user?.freeRidesRemaining ?? 0;
 
   // Effective amount: custom if typed, else preset
   const effectiveAmount = customAmount && !isNaN(Number(customAmount))
@@ -230,13 +229,7 @@ const WalletView: React.FC = () => {
               <span>มียอดค้างชำระฉุกเฉิน เมื่อเติมเงินจะหักลบยอดหนี้อัตโนมัติ</span>
             </div>
           )}
-          {freeRides > 0 && (
-            <div className="inline-flex items-center gap-1.5 bg-white/20 rounded-full px-3 py-1 text-xs font-bold mb-6">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>ฟรีไรด์เหลือ {freeRides} เที่ยว</span>
-            </div>
-          )}
-          {!freeRides && balance >= 0 && <div className="mb-6" />}
+          {balance >= 0 && <div className="mb-6" />}
           <button
             id="btn-topup"
             onClick={() => {

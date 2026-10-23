@@ -494,9 +494,7 @@ export default function HomeView() {
   // Main Call Win handler with point comparison check, advance scheduling & favorite driver support
   const handleCallWin = async () => {
     const currentPoints = user?.pointsBalance ?? 0;
-    const freeRides = user?.freeRidesRemaining ?? 0;
-    const hasFreeRides = freeRides > 0;
-    const canAfford = hasFreeRides || currentPoints >= tripPoints;
+    const canAfford = currentPoints >= tripPoints;
 
     // Check if points are sufficient
     if (!canAfford) {
@@ -519,22 +517,14 @@ export default function HomeView() {
 
     const success = await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress, false, rideOptions);
     if (success) {
-      if (hasFreeRides) {
-        useAuthStore.getState().setUser({
-          ...user!,
-          freeRidesRemaining: Math.max(0, freeRides - 1),
-        });
-        setToastMessage(`🎁 ${bookingMode === 'SCHEDULE' ? 'นัดหมายสำเร็จ' : 'เรียกวินสำเร็จ'}! ใช้ฟรีไรด์ (เหลือ ${freeRides - 1} เที่ยว)`);
+      const remaining = currentPoints - tripPoints;
+      useAuthStore.getState().updatePointsBalance(remaining);
+      if (bookingMode === 'SCHEDULE') {
+        setToastMessage(`⏱️ นัดหมายเวลาล่วงหน้าสำเร็จ! (${scheduledDisplay}) หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
+      } else if (preferredDriver) {
+        setToastMessage(`⭐ เรียกพี่วินขาประจำ "${preferredDriver.nickname || preferredDriver.name}" สำเร็จ! หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
       } else {
-        const remaining = currentPoints - tripPoints;
-        useAuthStore.getState().updatePointsBalance(remaining);
-        if (bookingMode === 'SCHEDULE') {
-          setToastMessage(`⏱️ นัดหมายเวลาล่วงหน้าสำเร็จ! (${scheduledDisplay}) หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
-        } else if (preferredDriver) {
-          setToastMessage(`⭐ เรียกพี่วินขาประจำ "${preferredDriver.nickname || preferredDriver.name}" สำเร็จ! หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
-        } else {
-          setToastMessage(`🛵 เรียกวินสำเร็จ! หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
-        }
+        setToastMessage(`🛵 เรียกวินสำเร็จ! หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
       }
     }
   };
@@ -705,8 +695,6 @@ export default function HomeView() {
               className={`backdrop-blur-md border px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 shadow-lg active:scale-95 transition-all ${
                 (user?.pointsBalance ?? 0) < 0
                   ? 'bg-rose-950/80 border-rose-500/60 text-rose-300'
-                  : (user?.freeRidesRemaining ?? 0) > 0
-                  ? 'bg-amber-950/80 border-amber-500/60 text-amber-300'
                   : 'bg-[#08221b]/90 border-[#00e58b]/50 text-[#00e58b]'
               }`}
               title="แต้มคงเหลือของคุณ (แตะเพื่อเติมแต้ม)"
@@ -715,11 +703,6 @@ export default function HomeView() {
                 <>
                   <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0 animate-pulse" />
                   <span>{user?.pointsBalance} แต้ม</span>
-                </>
-              ) : (user?.freeRidesRemaining ?? 0) > 0 ? (
-                <>
-                  <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
-                  <span>{user?.pointsBalance ?? 0} แต้ม (ฟรี {user?.freeRidesRemaining})</span>
                 </>
               ) : (
                 <>
