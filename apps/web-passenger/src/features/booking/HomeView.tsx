@@ -272,9 +272,33 @@ export default function HomeView() {
     apiFetch('/api/v1/passenger/me')
       .then((res) => {
         if (res?.user && useAuthStore.getState().user) {
+          const currentPts = typeof res.user.pointsBalance === 'number' ? res.user.pointsBalance : 0;
+          const totalRides = typeof res.user.totalRides === 'number' ? res.user.totalRides : 0;
+
+          // Auto-grant welcome promotion points if new passenger with 0 rides and 0 points
+          let resolvedPoints = currentPts;
+          if (currentPts <= 0 && totalRides === 0) {
+            try {
+              const cached = localStorage.getItem('gozipp_promotions_config');
+              if (cached) {
+                const parsed = JSON.parse(cached);
+                const p = parsed.find((item: any) => item.type === 'NEW_PASSENGER' && item.isActive);
+                if (p && typeof p.points === 'number' && p.points > 0) {
+                  resolvedPoints = p.points;
+                } else {
+                  resolvedPoints = 60;
+                }
+              } else {
+                resolvedPoints = 60;
+              }
+            } catch {
+              resolvedPoints = 60;
+            }
+          }
+
           useAuthStore.getState().setUser({
             ...useAuthStore.getState().user!,
-            pointsBalance: res.user.pointsBalance !== undefined ? res.user.pointsBalance : useAuthStore.getState().user!.pointsBalance,
+            pointsBalance: resolvedPoints,
             freeRidesRemaining: res.user.freeRidesRemaining !== undefined ? res.user.freeRidesRemaining : useAuthStore.getState().user!.freeRidesRemaining,
           });
         }
