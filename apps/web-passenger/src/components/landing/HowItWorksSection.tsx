@@ -3,10 +3,12 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { ListOrdered, Bike, ChevronRight, ChevronDown } from 'lucide-react';
+import { useActivePromotion } from '@/hooks/useActivePromotion';
 
 export default function HowItWorksSection() {
+  const { newPassengerPoints } = useActivePromotion();
   const passengerSteps = [
-    { type: 'image', src: '/images/step-p1.png', title: 'สมัครและรับแต้มฟรี', desc: 'รับฟรี 100 แต้มสำหรับผู้ใช้ใหม่' },
+    { type: 'image', src: '/images/step-p1.png', title: 'สมัครและรับแต้มฟรี', desc: `รับฟรี ${newPassengerPoints || 50} แต้มสำหรับผู้ใช้ใหม่` },
     { type: 'image', src: '/images/step-p2.png', title: 'ค้นหา / เรียกวิน', desc: 'เลือกระบุจุดรับส่งที่ต้องการ' },
     { type: 'image', src: '/images/step-p3.png', title: 'พบคนขับและเดินทาง', desc: 'ติดตามและเดินทางอย่างปลอดภัย' },
   ];

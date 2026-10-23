@@ -2,8 +2,10 @@
 
 import { motion } from 'framer-motion';
 import { Bike, Map, CalendarClock, QrCode, MessageCircle, Wallet } from 'lucide-react';
+import { useActivePromotion } from '@/hooks/useActivePromotion';
 
 export default function DriverBenefitsSection() {
+  const { newPassengerPoints } = useActivePromotion();
   const benefits = [
     { icon: Map, title: 'เลือกวินอิสระ', desc: 'สามารถเข้าร่วมวินในพื้นที่ของคุณ หรือสร้างวินใหม่สำหรับชุมชน' },
     { icon: CalendarClock, title: 'ยืดหยุ่นเวลา', desc: 'เปิดรับงานเมื่อพร้อม ปิดเมื่อต้องการพักผ่อน ไม่มีข้อผูกมัด' },
@@ -109,7 +111,7 @@ export default function DriverBenefitsSection() {
               className="absolute bottom-[10%] right-[15%] w-[200px] bg-gray-900 border border-gray-700 rounded-3xl p-5 shadow-2xl z-10 text-center"
             >
               <div className="text-white font-bold font-kanit mb-1">สแกนเรียกพี่วิน</div>
-              <div className="text-gray-400 text-xs font-kanit mb-4">รับฟรี 100 แต้ม!</div>
+              <div className="text-gray-400 text-xs font-kanit mb-4">รับฟรี {newPassengerPoints || 50} แต้ม!</div>
               <div className="bg-white p-2 rounded-xl inline-block mb-3">
                 <QrCode className="w-24 h-24 text-black" />
               </div>

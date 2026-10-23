@@ -3,8 +3,10 @@
 import { motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
+import { useActivePromotion } from '@/hooks/useActivePromotion';
 
 export default function DownloadCtaSection() {
+  const { newPassengerBadge } = useActivePromotion();
   return (
     <section className="py-12 bg-[#04070B] relative overflow-hidden" id="download">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -41,7 +43,7 @@ export default function DownloadCtaSection() {
                   <span className="text-lg">สมัครผู้โดยสาร</span>
                   <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </div>
-                <span className="text-xs text-gray-400 relative z-10 font-medium">รับแต้มฟรี 100 แต้ม</span>
+                <span className="text-xs text-gray-400 relative z-10 font-medium">{newPassengerBadge}</span>
               </Link>
               
               <Link

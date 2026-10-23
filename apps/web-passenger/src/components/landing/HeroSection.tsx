@@ -3,8 +3,10 @@
 import { motion } from 'framer-motion';
 import { CheckCircle2, ChevronRight, Gift, Percent } from 'lucide-react';
 import Link from 'next/link';
+import { useActivePromotion } from '@/hooks/useActivePromotion';
 
 export default function HeroSection() {
+  const { newPassengerBadge } = useActivePromotion();
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -79,7 +81,7 @@ export default function HeroSection() {
                   <span className="text-lg">สมัครผู้โดยสาร</span>
                   <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </div>
-                <span className="text-xs text-[#04070B]/70 relative z-10 font-medium">รับแต้มฟรี 100 แต้ม</span>
+                <span className="text-xs text-[#04070B]/70 relative z-10 font-medium">{newPassengerBadge}</span>
               </Link>
               <Link
                 href="https://gozipp-mobile-driver.vercel.app"

@@ -367,6 +367,18 @@ export default function AdminRateDashboard() {
 
   // API Call: Save Promotions Config
   const savePromotionsToApi = async (updatedList: PromotionRule[]) => {
+    // Immediate local and cross-tab broadcast for instant Realtime sync
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('gozipp_promotions_config', JSON.stringify(updatedList));
+        if ('BroadcastChannel' in window) {
+          const bc = new BroadcastChannel('gozipp_promotions_sync');
+          bc.postMessage({ type: 'PROMOTIONS_UPDATED', promotions: updatedList });
+          bc.close();
+        }
+      } catch {}
+    }
+
     try {
       await fetch('/api/v1/admin/config/promotions', {
         method: 'POST',

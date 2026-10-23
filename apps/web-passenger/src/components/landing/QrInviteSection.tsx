@@ -3,8 +3,10 @@
 import { motion } from 'framer-motion';
 import { QrCode, ScanLine, Share2, Coins, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { useActivePromotion } from '@/hooks/useActivePromotion';
 
 export default function QrInviteSection() {
+  const { newPassengerPoints } = useActivePromotion();
   return (
     <section className="py-24 bg-[#04070B] border-t border-gray-900 relative overflow-hidden" id="qr-invite">
       <div className="absolute top-1/2 right-0 w-[500px] h-[500px] bg-[#A3FF3F]/10 rounded-full blur-[150px] -translate-y-1/2" />
@@ -41,7 +43,7 @@ export default function QrInviteSection() {
               transition={{ delay: 0.2 }}
               className="text-lg text-gray-400 font-kanit mb-10"
             >
-              คนขับสามารถสร้าง QR Code ส่วนตัวให้ผู้โดยสารสแกนเพื่อโหลดแอป ทันทีที่สมัครสำเร็จ ได้รับแต้มฟรีไปเลย 100 แต้ม ทั้งคนขับและผู้โดยสาร!
+              คนขับสามารถสร้าง QR Code ส่วนตัวให้ผู้โดยสารสแกนเพื่อโหลดแอป ทันทีที่สมัครสำเร็จ ได้รับแต้มฟรีไปเลย {newPassengerPoints || 50} แต้ม ทั้งคนขับและผู้โดยสาร!
             </motion.p>
 
             <div className="space-y-6">
