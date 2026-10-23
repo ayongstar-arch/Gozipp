@@ -259,8 +259,8 @@ export class FirebaseVerifyDto {
 
 export class RideRequestDto {
   @IsString()
-  @IsNotEmpty()
-  passengerId: string;
+  @IsOptional()
+  passengerId?: string;
   @IsNumber()
   pickupLat: number;
 

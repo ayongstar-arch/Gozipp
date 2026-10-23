@@ -1,7 +1,7 @@
 import {
   Controller, Post, Get, Body, Query, Param,
   UseGuards, Req, HttpCode, HttpStatus, Logger,
-  Delete, Res
+  Delete, Res, BadRequestException
 } from '@nestjs/common';
 import { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
@@ -143,7 +143,10 @@ export class RideController {
   @Roles('PASSENGER')
   async requestRide(@Body() body: RideRequestDto, @Req() req: any) {
     // Inject passengerId from JWT token (don't trust client-sent ID)
-    body.passengerId = req.user.sub;
+    body.passengerId = req.user?.sub || body.passengerId;
+    if (!body.passengerId) {
+      throw new BadRequestException('ไม่พบรหัสผู้โดยสาร กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
+    }
     return this.passengerService.requestRide(body);
   }
 

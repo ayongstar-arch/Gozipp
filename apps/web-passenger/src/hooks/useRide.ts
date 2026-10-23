@@ -4,6 +4,7 @@
  */
 import { useState, useCallback, useEffect } from 'react';
 import { useRideStore } from '../stores/rideStore';
+import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
 import { supabase } from '../lib/supabaseClient';
 import { apiFetch } from '../services/api';
@@ -144,9 +145,11 @@ export const useRide = () => {
     setError(null);
 
     try {
+      const currentUser = useAuthStore.getState().user;
       const data = await apiFetch('/api/v1/passenger/ride/request', {
         method: 'POST',
         body: JSON.stringify({
+          passengerId: currentUser?.id || undefined,
           pickupLat,
           pickupLng,
           pickupAddress,
