@@ -74,9 +74,13 @@ export default function Sidebar() {
     >
       {/* Logo Area */}
       <div className="p-4 flex items-center gap-3 border-b border-white/5 min-h-[65px]">
-        <div className="w-9 h-9 rounded-xl bg-gozipp-green flex items-center justify-center flex-shrink-0
-          shadow-lg shadow-gozipp-green/20">
-          <Zap className="w-5 h-5 text-slate-950" />
+        <div className="w-9 h-9 rounded-xl bg-slate-900 border border-emerald-500/30 flex items-center justify-center flex-shrink-0
+          shadow-lg shadow-emerald-500/20 p-1 overflow-hidden">
+          <img
+            src="/logo-gozipp-symbol-transparent.png"
+            alt="GOZIPP"
+            className="w-full h-full object-contain filter drop-shadow-[0_0_6px_rgba(41,238,122,0.4)]"
+          />
         </div>
         <AnimatePresence mode="wait">
           {!sidebarCollapsed && (

@@ -589,7 +589,7 @@ const PassengerApp: React.FC<PassengerAppProps> = ({ riderData }) => {
             return (
                 <div className="flex flex-col h-full bg-white font-sans p-6">
                     <div className="flex-1 flex flex-col justify-center">
-                        <div className="w-16 h-16 bg-mywin-blue rounded-2xl shadow-lg flex items-center justify-center mb-6"><img src={APP_LOGO_PATH} className="w-10 h-10 brightness-0 invert" /></div>
+                        <div className="w-16 h-16 bg-slate-950 rounded-2xl shadow-xl flex items-center justify-center mb-6 p-2 ring-1 ring-emerald-500/20"><img src={APP_LOGO_PATH} className="w-full h-full object-contain" alt="GOZIPP" /></div>
                         <h2 className="text-2xl font-bold text-slate-800 mb-2">เข้าสู่ระบบ</h2>
                         <p className="text-slate-500 mb-8">กรอกเบอร์โทรศัพท์เพื่อใช้งาน</p>
 

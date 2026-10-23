@@ -35,6 +35,10 @@ export const metadata: Metadata = {
   title: 'GOZIPP – แอปเรียกวินอัจฉริยะ รวดเร็ว ปลอดภัย',
   description: 'จองรถมอเตอร์ไซค์รับจ้างได้ทันทีกับ GOZIPP ปลอดภัย ฉลาด และราคาประหยัด เพื่อการเดินทางในเมืองที่ไร้ขีดจำกัด',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/logo-gozipp-symbol-transparent.png',
+    apple: '/logo-gozipp-symbol-transparent.png',
+  },
   openGraph: {
     title: 'GOZIPP – แอปเรียกวินที่คนไทยไว้วางใจ',
     description: 'จุดเริ่มความเร็ว เพื่อทุกการเดินทาง ไปกับ GOZIPP',

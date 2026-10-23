@@ -47,8 +47,8 @@ const LoginView: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-slate-950 font-sans p-6 text-white">
       <div className="flex-1 flex flex-col justify-center max-w-sm w-full mx-auto">
-        <div className="w-16 h-16 bg-emerald-500 rounded-2xl shadow-lg flex items-center justify-center mb-6">
-          <img src={APP_LOGO_PATH} className="w-12 h-12 object-contain" alt="GOZIPP" />
+        <div className="w-20 h-20 bg-slate-900 border border-emerald-500/30 rounded-3xl shadow-2xl shadow-emerald-500/10 flex items-center justify-center mb-6 p-2 ring-1 ring-emerald-500/20">
+          <img src={APP_LOGO_PATH} className="w-full h-full object-contain" alt="GOZIPP" />
         </div>
         <h2 className="text-3xl font-black mb-2">Admin Console</h2>
         <p className="text-slate-400 mb-8 font-medium text-sm">

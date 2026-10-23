@@ -1002,8 +1002,12 @@ export default function AdminRateDashboard() {
         <div className="p-5 lg:p-6 border-b border-white/5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 via-green-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/25 ring-1 ring-white/20 flex-shrink-0">
-                <Zap className="w-6 h-6 text-slate-950 fill-slate-950" />
+              <div className="w-11 h-11 rounded-2xl bg-slate-900 border border-emerald-500/30 flex items-center justify-center shadow-lg shadow-emerald-500/20 ring-1 ring-white/10 flex-shrink-0 p-1.5 overflow-hidden">
+                <img
+                  src="/logo-gozipp-symbol-transparent.png"
+                  alt="GOZIPP"
+                  className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(41,238,122,0.4)]"
+                />
               </div>
               <div>
                 <div className="flex items-center gap-2">
