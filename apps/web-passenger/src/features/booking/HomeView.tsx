@@ -847,36 +847,6 @@ export default function HomeView() {
 
       {/* 3. BOTTOM FLOATING CONTROLS (Tightly anchored right above bottom navigation bar) */}
       <div className="relative z-20 px-3 pb-2 sm:px-4 sm:pb-2.5 space-y-1.5 pointer-events-none w-full max-w-full min-w-0 box-border">
-        {/* Fare & Points Deduction Indicator Strip */}
-        <div className="bg-[#091b27]/90 backdrop-blur-md rounded-2xl border border-slate-700/60 px-3 py-2 flex items-center justify-between text-xs pointer-events-auto shadow-xl">
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-300 font-medium text-[11px]">ค่าบริการเที่ยวนี้:</span>
-            <span className="text-[#00e58b] font-black text-xs">{tripPoints} แต้ม</span>
-            <span className="text-slate-400 text-[10px]">({tripPoints} บาท)</span>
-          </div>
-          <div className="flex items-center gap-1">
-            {(user?.freeRidesRemaining ?? 0) > 0 ? (
-              <span className="text-amber-300 font-bold bg-amber-950/70 border border-amber-600/40 px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1">
-                <Sparkles className="w-2.5 h-2.5 text-amber-400" />
-                <span>ฟรีไรด์เหลือ {user?.freeRidesRemaining} เที่ยว</span>
-              </span>
-            ) : (user?.pointsBalance ?? 0) >= tripPoints ? (
-              <span className="text-[#00e58b] font-medium bg-[#00e58b]/10 border border-[#00e58b]/30 px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1">
-                <CheckCircle2 className="w-2.5 h-2.5 text-[#00e58b]" />
-                <span>แต้มพอใช้งาน</span>
-              </span>
-            ) : (
-              <button
-                onClick={() => setShowInsufficientPointsModal(true)}
-                className="text-rose-400 font-bold bg-rose-950/80 border border-rose-500/50 px-2.5 py-0.5 rounded-full text-[10px] flex items-center gap-1 hover:brightness-110 active:scale-95 transition-all shadow-sm"
-              >
-                <AlertTriangle className="w-2.5 h-2.5 text-rose-400" />
-                <span>แต้มไม่พอ (ขาด {tripPoints - (user?.pointsBalance ?? 0)})</span>
-              </button>
-            )}
-          </div>
-        </div>
-
         {/* Feature Selectors Row: Advance Scheduling & Regular Driver */}
         <div className="grid grid-cols-2 gap-1.5 pointer-events-auto">
           {/* 1. Schedule Ride Button */}
