@@ -7,6 +7,8 @@ export class HealthController {
     return {
       ok: true,
       service: 'gozipp-api',
+      version: '1.0.3-hotfix',
+      buildTime: '2026-10-23T14:55:00Z',
       timestamp: new Date().toISOString(),
     };
   }
