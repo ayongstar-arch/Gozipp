@@ -142,12 +142,18 @@ export class RideController {
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('PASSENGER')
   async requestRide(@Body() body: RideRequestDto, @Req() req: any) {
-    // Inject passengerId from JWT token (don't trust client-sent ID)
-    body.passengerId = req.user?.sub || body.passengerId;
-    if (!body.passengerId) {
-      throw new BadRequestException('ไม่พบรหัสผู้โดยสาร กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
+    try {
+      // Inject passengerId from JWT token (don't trust client-sent ID)
+      body.passengerId = req.user?.sub || body.passengerId;
+      if (!body.passengerId) {
+        throw new BadRequestException('ไม่พบรหัสผู้โดยสาร กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
+      }
+      return await this.passengerService.requestRide(body);
+    } catch (err: any) {
+      this.logger.error(`Failed to request ride: ${err?.message || err}`, err?.stack);
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(err?.message || 'ไม่สามารถดำเนินการเรียกรถได้ กรุณาลองใหม่อีกครั้ง');
     }
-    return this.passengerService.requestRide(body);
   }
 
   /** GET /api/v1/passenger/ride/:tripId/status */

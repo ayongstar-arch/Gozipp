@@ -219,7 +219,11 @@ export class DatabaseMigrationService implements OnModuleInit {
         passenger_id UUID,
         driver_id UUID,
         station_id VARCHAR(50),
+        pickup_lat DOUBLE PRECISION,
+        pickup_lng DOUBLE PRECISION,
         pickup_address TEXT,
+        dest_lat DOUBLE PRECISION,
+        dest_lng DOUBLE PRECISION,
         dest_address TEXT,
         distance_km NUMERIC(8, 2) NOT NULL DEFAULT 0,
         duration_mins INTEGER,
@@ -242,8 +246,14 @@ export class DatabaseMigrationService implements OnModuleInit {
     `);
 
     // Trips table additional columns & status enum
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS pickup_lat DOUBLE PRECISION;`);
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS pickup_lng DOUBLE PRECISION;`);
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS dest_lat DOUBLE PRECISION;`);
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS dest_lng DOUBLE PRECISION;`);
     await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;`);
     await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS preferred_driver_id VARCHAR(50);`);
+    await this.safeQuery(`ALTER TABLE trips ALTER COLUMN pickup_location DROP NOT NULL;`);
+    await this.safeQuery(`ALTER TABLE trips ALTER COLUMN dest_location DROP NOT NULL;`);
     await this.safeQuery(`
       DO $$ BEGIN
         IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'trip_status') THEN
