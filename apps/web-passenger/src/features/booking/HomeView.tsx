@@ -294,6 +294,13 @@ export default function HomeView() {
             } catch {
               resolvedPoints = 60;
             }
+
+            if (typeof window !== 'undefined' && !localStorage.getItem('gozipp_welcome_celebrated')) {
+              localStorage.setItem('gozipp_welcome_celebrated', 'true');
+              setTimeout(() => {
+                setToastMessage(`🎉 ยินดีต้อนรับสู่ GOZIPP! คุณได้รับแต้มโปรโมชั่นต้อนรับ ${resolvedPoints} แต้ม (฿${resolvedPoints}) เรียบร้อยแล้ว`);
+              }, 500);
+            }
           }
 
           useAuthStore.getState().setUser({
@@ -1399,13 +1406,19 @@ export default function HomeView() {
                       {(user?.pointsBalance ?? 0).toLocaleString()} แต้ม
                     </span>
                   </div>
-                  {(user?.pointsBalance ?? 0) < 0 && (
+                  {(user?.pointsBalance ?? 0) < 0 ? (
                     <div className="text-right">
                       <span className="text-rose-400 bg-rose-950/70 border border-rose-500/40 px-2 py-0.5 rounded-full text-[10px] font-bold">
                         มียอดค้างชำระฉุกเฉิน
                       </span>
                     </div>
-                  )}
+                  ) : (user?.pointsBalance ?? 0) > 0 ? (
+                    <div className="text-right">
+                      <span className="text-[#00e58b] bg-[#00e58b]/10 border border-[#00e58b]/30 px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
+                        🎁 มีแต้มพร้อมใช้ {Math.floor((user?.pointsBalance ?? 0) / (tripPoints || 2))} เที่ยว
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Amount Selection Grid */}

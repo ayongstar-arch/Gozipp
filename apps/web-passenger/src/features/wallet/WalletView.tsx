@@ -86,7 +86,20 @@ const WalletView: React.FC = () => {
 
   useEffect(() => {
     loadHistory();
-  }, [loadHistory]);
+    // Auto-catchup welcome points in WalletView if new user has 0 points
+    if (user && (user.pointsBalance ?? 0) <= 0) {
+      try {
+        const cached = localStorage.getItem('gozipp_promotions_config');
+        let pts = 60;
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          const p = parsed.find((item: any) => item.type === 'NEW_PASSENGER' && item.isActive);
+          if (p && typeof p.points === 'number' && p.points > 0) pts = p.points;
+        }
+        useAuthStore.getState().updatePointsBalance(pts);
+      } catch {}
+    }
+  }, [loadHistory, user?.pointsBalance]);
 
   // Step 1 -> Step 2: Request Topup & Generate PromptPay QR
   const handleGenerateQr = async () => {

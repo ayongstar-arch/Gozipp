@@ -261,15 +261,56 @@ export class PassengerService implements OnModuleInit {
     return normalized;
   }
 
+  private getWelcomePromotionPoints(): number {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const candidates = [
+        path.resolve(process.cwd(), 'packages', 'shared', 'promotions-config.json'),
+        path.resolve(process.cwd(), '..', '..', 'packages', 'shared', 'promotions-config.json'),
+        path.resolve(process.cwd(), '..', 'packages', 'shared', 'promotions-config.json'),
+        'c:/Users/acer/Videos/Project/Gozipp/packages/shared/promotions-config.json',
+      ];
+      for (const c of candidates) {
+        if (fs.existsSync(c)) {
+          const parsed = JSON.parse(fs.readFileSync(c, 'utf8'));
+          const promo = parsed.find((p: any) => p.type === 'NEW_PASSENGER' && p.isActive);
+          if (promo && typeof promo.points === 'number') {
+            return promo.points;
+          }
+        }
+      }
+    } catch {}
+    return 60;
+  }
+
   async getProfile(passengerId: string) {
     const passenger = await this.passengerRepo.findOne({ where: { id: passengerId } });
     if (!passenger) throw new NotFoundException('ไม่พบข้อมูลผู้โดยสาร');
+
+    let points = Number(passenger.points_balance) || 0;
+    const totalRides = Number(passenger.total_rides) || 0;
+
+    // Retroactive Welcome Credit Catch-up:
+    // If passenger is new (0 rides) and points balance is 0, award welcome promotion points
+    if (points <= 0 && totalRides === 0) {
+      const welcomePts = this.getWelcomePromotionPoints();
+      if (welcomePts > 0) {
+        points = welcomePts;
+        try {
+          await this.passengerRepo.update(passenger.id, { points_balance: welcomePts });
+        } catch (e: any) {
+          this.logger.warn(`Failed to persist welcome points catchup: ${e?.message}`);
+        }
+      }
+    }
+
     return {
       id: passenger.id,
       name: passenger.name,
       phone: passenger.phone,
       email: passenger.email,
-      pointsBalance: passenger.points_balance,
+      pointsBalance: points,
       totalRides: passenger.total_rides,
       freeRidesRemaining: passenger.free_rides_remaining,
       avatarUrl: passenger.avatar_url,
