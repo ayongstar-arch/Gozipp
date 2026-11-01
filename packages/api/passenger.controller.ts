@@ -144,7 +144,9 @@ export class RideController {
   async requestRide(@Body() body: RideRequestDto, @Req() req: any) {
     try {
       // Inject passengerId from JWT token (don't trust client-sent ID)
-      body.passengerId = req.user?.sub || body.passengerId;
+      const tokenSub = req.user?.sub || req.user?.id;
+      const clientSentId = body.passengerId && typeof body.passengerId === 'string' && body.passengerId.trim() !== '' ? body.passengerId.trim() : undefined;
+      body.passengerId = tokenSub || clientSentId;
       if (!body.passengerId) {
         throw new BadRequestException('ไม่พบรหัสผู้โดยสาร กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
       }

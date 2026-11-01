@@ -42,9 +42,10 @@ export default function PassengerPage() {
 
       if (savedPhone && !explicitSwitch && !isPinPassed) {
         const savedName = localStorage.getItem('gozipp_saved_name') || '';
+        const savedId = localStorage.getItem('gozipp_passenger_id') || '';
         if (!user?.phone) {
           setUser({
-            id: '',
+            id: savedId,
             name: savedName,
             phone: savedPhone,
             email: '',

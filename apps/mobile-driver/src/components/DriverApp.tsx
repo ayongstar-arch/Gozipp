@@ -402,7 +402,9 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                         phoneNumber,
                         otp,
                         purpose: 'REGISTER',
-                        name: regForm.name.trim() || 'พาร์ทเนอร์คนขับ'
+                        role: 'DRIVER',
+                        name: regForm.name.trim() || 'พาร์ทเนอร์คนขับ',
+                        referralCode: regForm.inviteCode || undefined
                     })
                 });
                 data = await res.json().catch(() => ({}));
@@ -1715,7 +1717,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             try {
                 const token = typeof window !== 'undefined' ? localStorage.getItem('gozipp_access_token') : null;
                 const driverId = registrationToken || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_driver_id') : '') || useAuthStore.getState().user?.id;
-                const phone = phoneNumber || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_saved_phone') : '');
+                const phone = (phoneNumber || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_saved_phone') || '' : '') || useAuthStore.getState().user?.phone || '').trim();
 
                 const res = await fetch(`${API_BASE_URL}/api/v1/auth/set-pin`, {
                     method: 'POST',
@@ -1732,7 +1734,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                     })
                 });
                 const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data.message || 'ตั้งค่า PIN ไม่สำเร็จ');
+                if (!res.ok) throw new Error(data.message || 'ตั้งค่า PIN ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
 
                 if (data.accessToken && typeof window !== 'undefined') {
                     localStorage.setItem('gozipp_access_token', data.accessToken);

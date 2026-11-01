@@ -146,30 +146,35 @@ export const useRide = () => {
 
     try {
       const currentUser = useAuthStore.getState().user;
-      const passengerId =
-        currentUser?.id ||
-        (typeof window !== 'undefined'
-          ? localStorage.getItem('gozipp_passenger_id') ||
-            localStorage.getItem('mywin_passenger_id') ||
-            currentUser?.phone ||
-            localStorage.getItem('gozipp_saved_phone') ||
-            undefined
-          : undefined);
+      const rawId = (currentUser?.id && currentUser.id.trim() !== '')
+        ? currentUser.id.trim()
+        : (typeof window !== 'undefined'
+          ? (localStorage.getItem('gozipp_passenger_id') ||
+             localStorage.getItem('mywin_passenger_id') ||
+             currentUser?.phone ||
+             localStorage.getItem('gozipp_saved_phone') ||
+             '').trim()
+          : '');
+      const passengerId = rawId || undefined;
+
+      const payload: Record<string, any> = {
+        pickupLat,
+        pickupLng,
+        pickupAddress,
+        destLat,
+        destLng,
+        destAddress,
+        isEmergency,
+        scheduledAt: options?.scheduledAt,
+        preferredDriverId: options?.preferredDriverId,
+      };
+      if (passengerId) {
+        payload.passengerId = passengerId;
+      }
 
       const data = await apiFetch('/api/v1/passenger/ride/request', {
         method: 'POST',
-        body: JSON.stringify({
-          passengerId,
-          pickupLat,
-          pickupLng,
-          pickupAddress,
-          destLat,
-          destLng,
-          destAddress,
-          isEmergency,
-          scheduledAt: options?.scheduledAt,
-          preferredDriverId: options?.preferredDriverId,
-        }),
+        body: JSON.stringify(payload),
       });
 
       setEstimate({

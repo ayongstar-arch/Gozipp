@@ -258,6 +258,7 @@ export class FirebaseVerifyDto {
 }
 
 export class RideRequestDto {
+  @Transform(({ value }) => (value && typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined))
   @IsString()
   @IsOptional()
   passengerId?: string;

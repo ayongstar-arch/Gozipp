@@ -93,8 +93,13 @@ export const useAuth = () => {
           ? data.pointsBalance
           : promoPoints;
 
+        const passengerId = data.passengerId || data.user?.id || '';
+        if (typeof window !== 'undefined' && passengerId) {
+          localStorage.setItem('gozipp_passenger_id', passengerId);
+        }
+
         setUser({
-          id: data.passengerId || data.user?.id,
+          id: passengerId,
           name: data.name || data.user?.name || name || '',
           phone: phoneNumber,
           email: data.user?.email || '',
@@ -146,6 +151,9 @@ export const useAuth = () => {
         if (data?.accessToken) {
           localStorage.setItem('gozipp_access_token', data.accessToken);
         }
+        if (data?.userId) {
+          localStorage.setItem('gozipp_passenger_id', data.userId);
+        }
         const phone = user?.phone || localStorage.getItem('gozipp_saved_phone');
         if (phone) localStorage.setItem('gozipp_saved_phone', phone);
         if (user?.name) localStorage.setItem('gozipp_saved_name', user.name);
@@ -189,6 +197,9 @@ export const useAuth = () => {
       if (typeof window !== 'undefined') {
         if (data?.accessToken) {
           localStorage.setItem('gozipp_access_token', data.accessToken);
+        }
+        if (data.user?.id) {
+          localStorage.setItem('gozipp_passenger_id', data.user.id);
         }
         sessionStorage.setItem('gozipp_pin_passed', 'true');
         localStorage.setItem('gozipp_saved_phone', data.user.phone);
@@ -318,6 +329,7 @@ export const useAuth = () => {
           freeRidesRemaining: data.user.freeRidesRemaining ?? 0,
         });
         if (typeof window !== 'undefined') {
+          if (data.user.id) localStorage.setItem('gozipp_passenger_id', data.user.id);
           localStorage.setItem('gozipp_saved_phone', data.user.phone);
           if (data.user.name) localStorage.setItem('gozipp_saved_name', data.user.name);
           localStorage.setItem('gozipp_has_pin', 'true');

@@ -84,6 +84,66 @@ export class AuthService {
         }
     }
 
+    async findOrCreateUserByPhone(phoneNumber: string, role: 'PASSENGER' | 'DRIVER', defaultName?: string) {
+        const phone = normalizeThaiMobileNumber(phoneNumber) || phoneNumber;
+        let user = await this.findUserByPhone(phone, role);
+        if (user) return user;
+
+        try {
+            if (role === 'DRIVER') {
+                const newDriver = this.driverRepo.create({
+                    phone,
+                    name: (defaultName || '').trim() || 'พาร์ทเนอร์คนขับ',
+                    plate: '',
+                    approval_status: 'PENDING',
+                    auth_provider: 'OTP',
+                });
+                return await this.driverRepo.save(newDriver);
+            } else {
+                const newPassenger = this.passengerRepo.create({
+                    phone,
+                    name: (defaultName || '').trim() || 'ผู้โดยสาร',
+                    points_balance: 60,
+                    free_rides_remaining: 3,
+                });
+                return await this.passengerRepo.save(newPassenger);
+            }
+        } catch (err: any) {
+            this.logger.warn(`findOrCreateUserByPhone save failed: ${err?.message}`);
+            return await this.findUserByPhone(phone, role);
+        }
+    }
+
+    async registerDriver(data: {
+        phoneNumber: string;
+        fullName: string;
+        licensePlate?: string;
+        winId?: string;
+        winName?: string;
+        inviteCode?: string;
+        profilePicUrl?: string;
+    }) {
+        const phone = normalizeThaiMobileNumber(data.phoneNumber) || data.phoneNumber;
+        let driver = await this.driverRepo.findOne({ where: { phone } });
+        if (driver) {
+            if (data.fullName?.trim()) driver.name = data.fullName.trim();
+            if (data.licensePlate) driver.plate = data.licensePlate;
+            if (data.inviteCode) driver.invite_code = data.inviteCode;
+            if (data.profilePicUrl) driver.profile_pic_url = data.profilePicUrl;
+            return await this.driverRepo.save(driver);
+        }
+        driver = this.driverRepo.create({
+            phone,
+            name: (data.fullName || '').trim() || 'พาร์ทเนอร์คนขับ',
+            plate: data.licensePlate || '',
+            invite_code: data.inviteCode || 'WIN888',
+            approval_status: 'PENDING',
+            auth_provider: 'OTP',
+            profile_pic_url: data.profilePicUrl,
+        });
+        return await this.driverRepo.save(driver);
+    }
+
     // --- TOKEN MANAGEMENT ---
 
     async issueTokens(userId: string, role: string, deviceMeta: DeviceMetadata = {}) {

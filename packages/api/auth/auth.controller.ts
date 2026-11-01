@@ -154,9 +154,9 @@ export class AuthController {
             }
         }
 
-        // 3. Fallback by phone number if provided
+        // 3. Fallback by phone number if provided (auto-provision driver if completed OTP)
         if (!userId && body.phoneNumber) {
-            const user = await this.authService.findUserByPhone(body.phoneNumber, role);
+            const user = await this.authService.findOrCreateUserByPhone(body.phoneNumber, role);
             if (user) {
                 userId = user.id;
             }
@@ -177,6 +177,20 @@ export class AuthController {
             ...tokens,
             userId,
         };
+    }
+
+    @Post('driver-register')
+    async driverRegister(@Body() body: any) {
+        const driver = await this.authService.registerDriver({
+            phoneNumber: body.phoneNumber,
+            fullName: body.fullName || body.name,
+            licensePlate: body.licensePlate || body.plate,
+            winId: body.winId,
+            winName: body.winName,
+            inviteCode: body.inviteCode,
+            profilePicUrl: body.profilePicUrl || body.profilePic,
+        });
+        return { success: true, message: 'บันทึกข้อมูลคนขับเรียบร้อยแล้ว', driver };
     }
 
     @Post('change-pin')

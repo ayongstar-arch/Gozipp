@@ -137,7 +137,11 @@ export class AdminService {
 
   async getPendingDrivers() {
     const drivers = await this.driverRepo.find({
-      where: { approval_status: 'PENDING_REVIEW' },
+      where: [
+        { approval_status: 'PENDING_REVIEW' },
+        { approval_status: 'PENDING' },
+        { approval_status: 'REUPLOAD_REQUESTED' },
+      ],
       order: { updated_at: 'DESC' }
     });
 
