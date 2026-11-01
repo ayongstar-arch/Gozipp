@@ -9,6 +9,12 @@ const InstallPwaPrompt: React.FC = () => {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (sessionStorage.getItem('gozipp_passenger_pwa_dismissed') === 'true') {
+      setDismissed(true);
+    }
+
     const standalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone;
@@ -32,17 +38,34 @@ const InstallPwaPrompt: React.FC = () => {
   if (isStandalone || dismissed) return null;
   if (!isMobile && !supportsPWA && !isIOS) return null;
 
+  const handleDismiss = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setDismissed(true);
+    try {
+      sessionStorage.setItem('gozipp_passenger_pwa_dismissed', 'true');
+    } catch {}
+  };
+
   const handleInstallClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     if (!promptInstall) return;
     await promptInstall.prompt();
     const choiceResult = await promptInstall.userChoice;
-    if (choiceResult.outcome === 'accepted') setSupportsPWA(false);
+    if (choiceResult.outcome === 'accepted') {
+      setSupportsPWA(false);
+      handleDismiss();
+    }
   };
 
   const card = (
     <div className="bg-slate-900/95 backdrop-blur text-white p-4 rounded-2xl shadow-2xl border border-slate-700 max-w-md mx-auto relative ring-1 ring-[#A3FF3F]/20 pointer-events-auto">
-      <button onClick={() => setDismissed(true)} className="absolute top-2 right-2 text-slate-500 hover:text-white">×</button>
+      <button 
+        onClick={handleDismiss} 
+        className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-slate-800 border border-slate-600 text-white flex items-center justify-center text-sm font-bold shadow-lg hover:bg-slate-700 active:scale-90 transition-all z-10"
+        aria-label="ปิดการแจ้งเตือน"
+      >
+        ✕
+      </button>
       <div className="flex items-center gap-3">
         <div className="w-11 h-11 bg-[#A3FF3F] rounded-xl flex items-center justify-center text-xl shadow-lg shadow-green-900/20">🛵</div>
         <div className="flex-1">

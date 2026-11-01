@@ -900,7 +900,10 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     if (authStep === 'ONBOARDING') {
         return (
             <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white">
-                <InstallPwaPrompt />
+                {/* Header Action: Install PWA Button */}
+                <div className="absolute top-5 right-5 z-30">
+                    <InstallPwaPrompt mode="button" />
+                </div>
 
                 {/* Main Content Area (Logo + Slogans) */}
                 <div className="flex-1 flex flex-col items-center justify-start mt-0 space-y-2 relative z-10 w-full pt-8">
@@ -977,7 +980,9 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     if (authStep === 'LOGIN') {
         return (
             <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white">
-                <InstallPwaPrompt />
+                <div className="absolute top-6 right-6 z-30">
+                    <InstallPwaPrompt mode="button" />
+                </div>
 
                 {/* Back Button */}
                 <div className="absolute top-6 left-6 z-30">
@@ -1447,7 +1452,6 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     if (authStep === 'OTP') {
         return (
             <div className="flex flex-col justify-between h-[100dvh] bg-slate-950 font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white">
-                <InstallPwaPrompt />
 
                 {/* Back Button */}
                 <div className="absolute top-6 left-6 z-30">
