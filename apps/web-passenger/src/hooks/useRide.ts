@@ -146,10 +146,20 @@ export const useRide = () => {
 
     try {
       const currentUser = useAuthStore.getState().user;
+      const passengerId =
+        currentUser?.id ||
+        (typeof window !== 'undefined'
+          ? localStorage.getItem('gozipp_passenger_id') ||
+            localStorage.getItem('mywin_passenger_id') ||
+            currentUser?.phone ||
+            localStorage.getItem('gozipp_saved_phone') ||
+            undefined
+          : undefined);
+
       const data = await apiFetch('/api/v1/passenger/ride/request', {
         method: 'POST',
         body: JSON.stringify({
-          passengerId: currentUser?.id || undefined,
+          passengerId,
           pickupLat,
           pickupLng,
           pickupAddress,

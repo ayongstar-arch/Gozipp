@@ -265,6 +265,15 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             if (!res.ok) throw new Error(data.message || 'เข้าสู่ระบบไม่สำเร็จ');
 
             try { localStorage.setItem('gozipp_driver_id', data.driverId || ''); } catch { /* noop */ }
+            if (data.accessToken) {
+                try {
+                    localStorage.setItem('gozipp_access_token', data.accessToken);
+                    useAuthStore.getState().setToken(data.accessToken, data.refreshToken || null);
+                } catch { /* noop */ }
+            }
+            if (phoneNumber) {
+                try { localStorage.setItem('gozipp_saved_phone', phoneNumber); } catch { /* noop */ }
+            }
             setRegistrationToken(data.driverId || '');
 
             // New / unapproved driver -> onboarding flow
@@ -1294,6 +1303,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             const pin = pinCode.join('');
             if (pin.length < 4) return;
             setIsLoading(true);
+            setAuthError('');
             try {
                 const res = await fetch(`${API_BASE_URL}/api/v1/auth/login-pin`, {
                     method: 'POST',
@@ -1301,12 +1311,33 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                     credentials: 'include',
                     body: JSON.stringify({ phoneNumber, pin, role: 'DRIVER' })
                 });
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.message || 'รหัส PIN ไม่ถูกต้อง');
+
+                if (data.accessToken && typeof window !== 'undefined') {
+                    localStorage.setItem('gozipp_access_token', data.accessToken);
+                    useAuthStore.getState().setToken(data.accessToken, data.refreshToken || null);
+                }
+                if (data.user?.id && typeof window !== 'undefined') {
+                    localStorage.setItem('gozipp_driver_id', data.user.id);
+                }
+                if (data.user) {
+                    useAuthStore.getState().setUser(data.user);
+                    setDriverData(prev => ({
+                        ...(prev || {}),
+                        id: data.user.id,
+                        name: data.user.name,
+                        phone: data.user.phone,
+                        plate: data.user.licensePlate || 'TBD',
+                        rating: 5.0,
+                        totalTrips: 0,
+                        status: 'IDLE'
+                    } as any));
+                }
 
                 setAuthStep('DASHBOARD');
             } catch (err: any) {
-                setAuthError(err.message);
+                setAuthError(err.message || 'รหัส PIN ไม่ถูกต้อง');
                 setPinCode(['', '', '', '']); // Reset
             } finally {
                 setIsLoading(false);
@@ -1418,19 +1449,40 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             const pin = pinCode.join('');
             if (pin.length < 4) return;
             setIsLoading(true);
+            setAuthError('');
             try {
-                // Identity comes from the HttpOnly session cookie (Firebase verify).
+                const token = typeof window !== 'undefined' ? localStorage.getItem('gozipp_access_token') : null;
+                const driverId = registrationToken || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_driver_id') : '') || useAuthStore.getState().user?.id;
+                const phone = phoneNumber || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_saved_phone') : '');
+
                 const res = await fetch(`${API_BASE_URL}/api/v1/auth/set-pin`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {})
+                    },
                     credentials: 'include',
-                    body: JSON.stringify({ pin, role: 'DRIVER' })
+                    body: JSON.stringify({
+                        pin,
+                        role: 'DRIVER',
+                        userId: driverId || undefined,
+                        phoneNumber: phone || undefined,
+                    })
                 });
-                if (!res.ok) throw new Error('ตั้งค่า PIN ไม่สำเร็จ');
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.message || 'ตั้งค่า PIN ไม่สำเร็จ');
+
+                if (data.accessToken && typeof window !== 'undefined') {
+                    localStorage.setItem('gozipp_access_token', data.accessToken);
+                    useAuthStore.getState().setToken(data.accessToken, data.refreshToken || null);
+                }
+                if (data.userId && typeof window !== 'undefined') {
+                    localStorage.setItem('gozipp_driver_id', data.userId);
+                }
 
                 setAuthStep('DASHBOARD');
             } catch (err: any) {
-                setAuthError(err.message);
+                setAuthError(err.message || 'ตั้งค่า PIN ไม่สำเร็จ');
             } finally {
                 setIsLoading(false);
             }

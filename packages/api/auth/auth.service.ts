@@ -65,7 +65,7 @@ export class AuthService {
         }
     }
 
-    private async findUserByPhone(phoneNumber: string, role: 'PASSENGER' | 'DRIVER') {
+    async findUserByPhone(phoneNumber: string, role: 'PASSENGER' | 'DRIVER') {
         phoneNumber = normalizeThaiMobileNumber(phoneNumber) || phoneNumber;
         try {
             return role === 'PASSENGER'
@@ -605,8 +605,8 @@ export class AuthService {
 
     // --- PIN MANAGEMENT ---
     async setPin(userId: string, pin: string, role: 'PASSENGER' | 'DRIVER') {
-        if (!/^\d{6}$/.test(pin)) {
-            throw new BadRequestException('PIN must be 6 digits');
+        if (!/^\d{4,6}$/.test(pin)) {
+            throw new BadRequestException('PIN ต้องเป็นตัวเลข 4-6 หลัก');
         }
         const hash = await hashPin(pin);
 
@@ -703,8 +703,8 @@ export class AuthService {
     }
 
     async changePin(userId: string, currentPin: string, nextPin: string, role: 'PASSENGER' | 'DRIVER') {
-        if (!/^\d{6}$/.test(currentPin) || !/^\d{6}$/.test(nextPin)) {
-            throw new BadRequestException('PIN must be 6 digits');
+        if (!/^\d{4,6}$/.test(currentPin) || !/^\d{4,6}$/.test(nextPin)) {
+            throw new BadRequestException('PIN ต้องเป็นตัวเลข 4-6 หลัก');
         }
         if (currentPin === nextPin) {
             throw new BadRequestException('New PIN must be different from current PIN');
@@ -934,7 +934,7 @@ export class AuthService {
     async redeemPinRecovery(phoneNumber: string, role: 'PASSENGER' | 'DRIVER', ticket: string, newPin: string, deviceMeta: DeviceMetadata = {}) {
         // Generic errors everywhere — the ticket is the only secret, no oracle.
         const fail = () => { throw new BadRequestException('รหัสกู้ไม่ถูกต้องหรือหมดอายุ'); };
-        if (!/^\d{6}$/.test(newPin)) throw new BadRequestException('PIN ต้องเป็นตัวเลข 6 หลัก');
+        if (!/^\d{4,6}$/.test(newPin)) throw new BadRequestException('PIN ต้องเป็นตัวเลข 4-6 หลัก');
         const phone = normalizeThaiMobileNumber(phoneNumber);
         if (!phone || !ticket || ticket.length > 16) return fail();
 

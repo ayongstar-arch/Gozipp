@@ -124,7 +124,7 @@ export class AuthController {
 
     @Post('set-pin')
     async setPin(
-        @Body() body: { pin: string, role?: 'PASSENGER' | 'DRIVER', userId?: string },
+        @Body() body: { pin: string, role?: 'PASSENGER' | 'DRIVER', userId?: string, phoneNumber?: string },
         @Req() req: any,
         @Res({ passthrough: true }) res: Response,
     ) {
@@ -145,12 +145,19 @@ export class AuthController {
             }
         }
 
-        // 2. Safe first-time registration fallback:
-        // If user just completed OTP registration and is setting PIN for the first time,
-        // body.userId is provided. Allow if user exists and has not set a PIN yet (!user.pin_hash).
+        // 2. Safe first-time registration / onboard fallback:
+        // If body.userId is provided, lookup user in database
         if (!userId && body.userId) {
             const user = await this.authService.findUserById(body.userId, role);
-            if (user && !user.pin_hash) {
+            if (user) {
+                userId = user.id;
+            }
+        }
+
+        // 3. Fallback by phone number if provided
+        if (!userId && body.phoneNumber) {
+            const user = await this.authService.findUserByPhone(body.phoneNumber, role);
+            if (user) {
                 userId = user.id;
             }
         }

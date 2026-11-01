@@ -146,9 +146,10 @@ export const useAuth = () => {
         throw new Error('PIN ต้องเป็นตัวเลข 4-6 หลัก');
       }
       const userId = user?.id || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_driver_id') : undefined);
+      const phone = user?.phone || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_saved_phone') : undefined);
       await apiFetch('/api/v1/auth/set-pin', {
         method: 'POST',
-        body: JSON.stringify({ pin, role: 'DRIVER', userId }),
+        body: JSON.stringify({ pin, role: 'DRIVER', userId, phoneNumber: phone }),
       }, token);
 
       setToastMessage('ตั้ง PIN สำเร็จ!');
