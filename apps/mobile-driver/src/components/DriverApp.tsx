@@ -1263,7 +1263,6 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                         <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                             <div className="grid grid-cols-1 gap-4">
                                 {[
-                                    { id: 'ID', title: 'บัตรประชาชน', icon: '🪪' },
                                     { id: 'LICENSE', title: 'ใบอนุญาตขับขี่', icon: '💳' },
                                     { id: 'VEHICLE', title: 'รูปรถคู่ใจ', icon: '🏍️' },
                                     { id: 'PLATE', title: 'ป้ายทะเบียน', icon: '🔢' }
