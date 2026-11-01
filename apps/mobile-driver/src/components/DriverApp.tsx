@@ -104,6 +104,20 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     // Score Info Modal
     const [showScoreInfo, setShowScoreInfo] = useState(false);
 
+    // Auto-detect returning driver with saved phone and PIN
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const savedPhone = localStorage.getItem('gozipp_saved_phone');
+        const hasPin = localStorage.getItem('gozipp_has_pin') === 'true';
+        const explicitSwitch = sessionStorage.getItem('gozipp_explicit_switch') === 'true';
+        if (savedPhone && !explicitSwitch) {
+            setPhoneNumber(savedPhone);
+            if (hasPin) {
+                setAuthStep('LOGIN_PIN');
+            }
+        }
+    }, []);
+
     // QR Share Modal
     const [showQrModal, setShowQrModal] = useState(false);
 
@@ -194,8 +208,101 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         initFirebaseRecaptcha('driver-send-otp-btn');
     }, [initFirebaseRecaptcha]);
 
-    // --- API FUNCTIONS (Firebase OTP = MASTER) ---
-    const requestOtp = async () => {
+    // --- API FUNCTIONS (Firebase OTP + Backend SMS Fallback) ---
+    const requestOtp = async (targetPhone?: string) => {
+        const phone = (targetPhone || phoneNumber).replace(/\D/g, '');
+        if (!/^0[689]\d{8}$/.test(phone)) {
+            setAuthError('กรุณากรอกเบอร์โทรศัพท์มือถือไทย 10 หลัก');
+            return false;
+        }
+
+        setIsLoading(true);
+        setAuthError('');
+
+        try {
+            let sent = false;
+            try {
+                sent = await sendFirebaseOtp(phone);
+            } catch (fbErr: any) {
+                console.warn('Firebase sendOtp error, attempting backend fallback:', fbErr);
+            }
+
+            if (!sent) {
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/v1/auth/request-otp`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phoneNumber: phone, purpose: 'REGISTER' })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data.success) {
+                        sent = true;
+                    } else {
+                        throw new Error(data.message || 'ไม่สามารถส่งรหัส OTP ได้ กรุณารอสักครู่แล้วลองใหม่');
+                    }
+                } catch (fallbackErr: any) {
+                    throw new Error(fallbackErr.message || 'ไม่สามารถส่งรหัส OTP ได้');
+                }
+            }
+
+            setPhoneNumber(phone);
+            setOtpCode(['', '', '', '', '', '']);
+            setOtpCountdown(60);
+            setAuthStep('OTP');
+            return true;
+        } catch (err: any) {
+            setAuthError(err.message || 'เกิดข้อผิดพลาดในการส่ง OTP');
+            return false;
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleRegisterAndRequestOtp = async () => {
+        const phone = phoneNumber.replace(/\D/g, '');
+        if (!/^0[689]\d{8}$/.test(phone)) {
+            setAuthError('กรุณากรอกเบอร์โทรศัพท์มือถือไทย 10 หลัก');
+            return;
+        }
+        if (!regForm.name.trim()) {
+            setAuthError('กรุณากรอกชื่อ-นามสกุลจริง');
+            return;
+        }
+        if (!regForm.plate.trim()) {
+            setAuthError('กรุณากรอกป้ายทะเบียนรถมอเตอร์ไซค์');
+            return;
+        }
+
+        setIsLoading(true);
+        setAuthError('');
+
+        try {
+            // Check if driver is already registered with PIN
+            try {
+                const statusRes = await fetch(`${API_BASE_URL}/api/v1/auth/check-status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ phoneNumber: phone, role: 'DRIVER' })
+                });
+                const statusData = await statusRes.json().catch(() => ({}));
+                if (statusData.exists && statusData.hasPin) {
+                    setPhoneNumber(phone);
+                    setAuthStep('LOGIN_PIN');
+                    setIsLoading(false);
+                    return;
+                }
+            } catch { /* proceed */ }
+
+            await requestOtp(phone);
+        } catch (err: any) {
+            setAuthError(err.message || 'เกิดข้อผิดพลาด');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleLoginPhone = async () => {
         const phone = phoneNumber.replace(/\D/g, '');
         if (!/^0[689]\d{8}$/.test(phone)) {
             setAuthError('กรุณากรอกเบอร์โทรศัพท์มือถือไทย 10 หลัก');
@@ -206,31 +313,22 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         setAuthError('');
 
         try {
-            // 1. Check if user already has a PIN
             const statusRes = await fetch(`${API_BASE_URL}/api/v1/auth/check-status`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({ phoneNumber: phone, role: 'DRIVER' })
             });
-            const statusData = await statusRes.json();
+            const statusData = await statusRes.json().catch(() => ({}));
 
             if (statusData.exists && statusData.hasPin) {
-                // User has PIN -> Go to PIN Login
                 setPhoneNumber(phone);
                 setAuthStep('LOGIN_PIN');
-                setIsLoading(false);
                 return;
             }
 
-            // 2. First-time signup -> Send OTP via Firebase (MASTER)
-            const sent = await sendFirebaseOtp(phone);
-            if (!sent) throw new Error('ไม่สามารถส่ง OTP ได้ กรุณาลองใหม่อีกครั้ง');
-
-            setPhoneNumber(phone);
-            setOtpCode(['', '', '', '', '', '']);
-            setOtpCountdown(60);
-            setAuthStep('OTP');
+            // Not yet registered or has no PIN -> send OTP
+            await requestOtp(phone);
         } catch (err: any) {
             setAuthError(err.message || 'เกิดข้อผิดพลาด');
         } finally {
@@ -238,10 +336,31 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         }
     };
 
+    const handleSwitchAccount = () => {
+        if (typeof window !== 'undefined') {
+            sessionStorage.setItem('gozipp_explicit_switch', 'true');
+            localStorage.removeItem('gozipp_saved_phone');
+            localStorage.removeItem('gozipp_has_pin');
+        }
+        setPhoneNumber('');
+        setPinCode(['', '', '', '']);
+        setOtpCode(['', '', '', '', '', '']);
+        setAuthError('');
+        setAuthStep('LOGIN');
+    };
+
+    const handleForgotPin = async () => {
+        if (!phoneNumber) {
+            setAuthStep('LOGIN');
+            return;
+        }
+        await requestOtp(phoneNumber);
+    };
+
     const verifyAndLogin = async () => {
         const otp = otpCode.join('');
         if (otp.length < 6) {
-            setAuthError('กรุณากรอกรหัส OTP ให้ครบ');
+            setAuthError('กรุณากรอกรหัส OTP ให้ครบ 6 หลัก');
             return;
         }
 
@@ -249,48 +368,98 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         setAuthError('');
 
         try {
-            // 1. Verify OTP with Firebase (MASTER) -> ID token
-            const idToken = await confirmFirebaseOtp(otp);
-            if (!idToken) throw new Error('ยืนยัน OTP ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+            let idToken: string | null = null;
+            try {
+                idToken = await confirmFirebaseOtp(otp);
+            } catch (fbErr: any) {
+                console.warn('Firebase confirmOtp error, attempting backend fallback:', fbErr);
+            }
 
-            // 2. Exchange Firebase token for Gozipp session (HttpOnly cookies)
-            const res = await fetch('/api/v1/auth/firebase-verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ idToken, phoneNumber, role: 'DRIVER' })
-            });
+            let data: any = null;
+            if (idToken) {
+                const res = await fetch('/api/v1/auth/firebase-verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        idToken,
+                        phoneNumber,
+                        name: regForm.name.trim() || undefined,
+                        role: 'DRIVER',
+                        purpose: 'REGISTER',
+                        referralCode: regForm.inviteCode || undefined
+                    })
+                });
+                data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.message || 'ยืนยัน OTP ไม่สำเร็จ');
+            } else {
+                // Backend fallback verify
+                const res = await fetch(`${API_BASE_URL}/api/v1/auth/verify-otp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        phoneNumber,
+                        otp,
+                        purpose: 'REGISTER',
+                        name: regForm.name.trim() || 'พาร์ทเนอร์คนขับ'
+                    })
+                });
+                data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.message || 'รหัส OTP ไม่ถูกต้องหรือหมดอายุ');
+            }
 
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'เข้าสู่ระบบไม่สำเร็จ');
-
-            try { localStorage.setItem('gozipp_driver_id', data.driverId || ''); } catch { /* noop */ }
-            if (data.accessToken) {
+            // Register/save driver vehicle details if filled
+            if (regForm.name && regForm.plate) {
                 try {
-                    localStorage.setItem('gozipp_access_token', data.accessToken);
-                    useAuthStore.getState().setToken(data.accessToken, data.refreshToken || null);
+                    await fetch(`${API_BASE_URL}/api/v1/auth/driver-register`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(data.accessToken ? { Authorization: `Bearer ${data.accessToken}` } : {})
+                        },
+                        body: JSON.stringify({
+                            phoneNumber,
+                            fullName: regForm.name,
+                            licensePlate: regForm.plate,
+                            winId: regForm.winId || '',
+                            winName: regForm.winName || '',
+                            inviteCode: regForm.inviteCode || 'WIN888',
+                            profilePicUrl: regForm.profilePic
+                        })
+                    });
                 } catch { /* noop */ }
             }
-            if (phoneNumber) {
-                try { localStorage.setItem('gozipp_saved_phone', phoneNumber); } catch { /* noop */ }
-            }
-            setRegistrationToken(data.driverId || '');
 
-            // New / unapproved driver -> onboarding flow
-            if (data.approvalStatus === 'PENDING' || data.approvalStatus === 'PENDING_REVIEW') {
-                setAuthStep('REGISTER');
-                setRegStep(1);
-                return;
+            const driverId = data.driverId || data.user?.id || '';
+            if (driverId && typeof window !== 'undefined') {
+                localStorage.setItem('gozipp_driver_id', driverId);
             }
+            if (data.accessToken && typeof window !== 'undefined') {
+                localStorage.setItem('gozipp_access_token', data.accessToken);
+                useAuthStore.getState().setToken(data.accessToken, data.refreshToken || null);
+            }
+            if (phoneNumber && typeof window !== 'undefined') {
+                localStorage.setItem('gozipp_saved_phone', phoneNumber);
+            }
+            if (data.user) {
+                useAuthStore.getState().setUser(data.user);
+            }
+            setRegistrationToken(driverId);
 
-            // PIN Setup Flow: first Firebase login without PIN -> set permanent PIN.
-            if (data.hasPin === false) {
-                setAuthStep('SETUP_PIN');
-            } else {
+            // Flow: If driver already has PIN -> DASHBOARD
+            // If driver doesn't have PIN -> SETUP_PIN ("ตั้งรหัส PIN 4 หลัก")!
+            if (data.hasPin) {
+                if (typeof window !== 'undefined') {
+                    localStorage.setItem('gozipp_has_pin', 'true');
+                }
                 setAuthStep('DASHBOARD');
+            } else {
+                setPinCode(['', '', '', '']);
+                setAuthStep('SETUP_PIN');
             }
         } catch (err: any) {
-            setAuthError(err.message || 'เกิดข้อผิดพลาด');
+            setAuthError(err.message || 'เกิดข้อผิดพลาดในการยืนยัน OTP');
         } finally {
             setIsLoading(false);
         }
@@ -383,15 +552,41 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     };
 
     const handleOtpChange = (index: number, value: string) => {
-        if (value.length > 1) value = value[0];
+        if (isNaN(Number(value))) return;
         const newOtp = [...otpCode];
-        newOtp[index] = value;
+        newOtp[index] = value.substring(value.length - 1);
         setOtpCode(newOtp);
+        setAuthError('');
 
         if (value && index < 5) {
             const nextInput = document.getElementById(`driver-otp-${index + 1}`);
             nextInput?.focus();
         }
+    };
+
+    const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Backspace') {
+            if (!otpCode[index] && index > 0) {
+                const newOtp = [...otpCode];
+                newOtp[index - 1] = '';
+                setOtpCode(newOtp);
+                document.getElementById(`driver-otp-${index - 1}`)?.focus();
+            }
+        }
+    };
+
+    const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+        e.preventDefault();
+        const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+        if (!pasted) return;
+        const newOtp = [...otpCode];
+        for (let i = 0; i < 6; i++) {
+            newOtp[i] = pasted[i] || '';
+        }
+        setOtpCode(newOtp);
+        setAuthError('');
+        const nextIdx = Math.min(pasted.length, 5);
+        document.getElementById(`driver-otp-${nextIdx}`)?.focus();
     };
 
     // --- LINE NOTIFY & BACKGROUND ALERT LOGIC ---
@@ -842,18 +1037,19 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                                     className="w-full bg-white/5 border border-white/10 focus:border-[#A3FF3F] focus:ring-1 focus:ring-[#A3FF3F] text-white py-4 pl-12 pr-4 rounded-2xl text-lg font-bold outline-none transition-all placeholder:text-gray-600 backdrop-blur-xl"
                                     value={phoneNumber}
                                     onChange={e => { setPhoneNumber(e.target.value); setAuthError(''); }}
-                                    placeholder="เบอร์โทรศัพท์"
+                                    placeholder="0812345678 (10 หลัก)"
                                     type="tel"
+                                    maxLength={10}
                                 />
                             </div>
 
                             <button
                                 id="driver-send-otp-btn"
-                                onClick={requestOtp}
-                                disabled={isLoading}
+                                onClick={handleLoginPhone}
+                                disabled={isLoading || !phoneNumber}
                                 className="w-full bg-gradient-to-b from-[#4ADE80] to-[#22C55E] text-black font-extrabold py-4 rounded-2xl text-lg shadow-[0_0_20px_rgba(57,181,74,0.2)] hover:shadow-[0_0_30px_rgba(57,181,74,0.4)] border border-white/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
                             >
-                                {isLoading ? 'กำลังดำเนินการ...' : 'เข้าสู่ระบบ'}
+                                {isLoading ? 'กำลังดำเนินการ...' : 'ถัดไป / เข้าสู่ระบบ'}
                             </button>
                         </div>
 
@@ -924,14 +1120,32 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                 <div className="flex-1 overflow-y-auto p-6">
                     {regStep === 1 && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            {authError && (
+                                <div className="bg-red-500/10 border border-red-500/30 text-red-600 px-4 py-3 rounded-2xl text-sm flex items-center gap-2">
+                                    <span>⚠️</span> {authError}
+                                </div>
+                            )}
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">ชื่อ-นามสกุล</label>
+                                    <label className="text-[10px] font-bold text-emerald-600 uppercase mb-2 block">เบอร์โทรศัพท์มือถือ * (รับรหัส OTP)</label>
+                                    <input
+                                        className="w-full bg-slate-50 border-2 border-slate-200 focus:border-emerald-500 focus:bg-white rounded-2xl p-4 text-lg font-bold outline-none transition-all"
+                                        value={phoneNumber}
+                                        onChange={e => { setPhoneNumber(e.target.value); setAuthError(''); }}
+                                        placeholder="0812345678 (10 หลัก)"
+                                        type="tel"
+                                        maxLength={10}
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">ชื่อ-นามสกุล *</label>
                                     <input
                                         className="w-full bg-slate-50 border-2 border-transparent focus:border-emerald-500 focus:bg-white rounded-2xl p-4 text-lg font-bold outline-none transition-all"
                                         value={regForm.name}
-                                        onChange={e => setRegForm({ ...regForm, name: e.target.value })}
+                                        onChange={e => { setRegForm({ ...regForm, name: e.target.value }); setAuthError(''); }}
                                         placeholder="ชื่อจริง ภาษาไทย"
+                                        required
                                     />
                                 </div>
                                 <div>
@@ -1184,21 +1398,18 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                     {regStep === 1 ? (
                         <div className="space-y-3">
                             <button 
-                                onClick={async () => {
-                                    await handleRegister();
-                                    setAuthStep('SETUP_PIN');
-                                }}
-                                disabled={!regForm.name || !regForm.plate || isLoading}
+                                id="driver-send-otp-btn"
+                                onClick={handleRegisterAndRequestOtp}
+                                disabled={!phoneNumber || !regForm.name || !regForm.plate || isLoading}
                                 className="w-full bg-[#A3FF3F] hover:bg-[#B7FF57] text-[#04070B] py-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-900/20 active:scale-95 transition-all disabled:opacity-30 font-kanit"
                             >
-                                {isLoading ? 'กำลังบันทึกข้อมูล...' : '🚀 บันทึกและตั้งรหัส PIN 4 หลัก'}
+                                {isLoading ? 'กำลังส่งรหัส OTP...' : '📲 ขอรหัส OTP เพื่อยืนยันเบอร์'}
                             </button>
                             <button 
-                                onClick={() => setRegStep(2)}
-                                disabled={!regForm.name}
+                                onClick={() => { setAuthStep('LOGIN'); setAuthError(''); }}
                                 className="w-full text-slate-500 hover:text-slate-700 text-xs font-bold py-2 font-kanit transition-colors"
                             >
-                                แนบเอกสารเพิ่มเติม (ทางเลือก) →
+                                มีบัญชีพาร์ทเนอร์อยู่แล้ว? เข้าสู่ระบบ →
                             </button>
                         </div>
                     ) : regStep < 5 ? (
@@ -1233,60 +1444,96 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         );
     }
 
-    // ... OTP Step (Visual Refactor - Light Mode)
+    // ... OTP Step
     if (authStep === 'OTP') {
         return (
-            <div className="flex flex-col h-full bg-white text-slate-900 p-6 justify-center font-sans">
-                <div className="text-center mb-8">
-                    <h2 className="text-2xl font-bold mb-2">ยืนยันรหัส OTP</h2>
-                    <p className="text-slate-500 text-sm">รหัสถูกส่งไปที่ {phoneNumber}</p>
+            <div className="flex flex-col justify-between h-[100dvh] bg-slate-950 font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white">
+                <InstallPwaPrompt />
+
+                {/* Back Button */}
+                <div className="absolute top-6 left-6 z-30">
+                    <button
+                        onClick={() => { setAuthStep(regForm.name ? 'REGISTER' : 'LOGIN'); setAuthError(''); }}
+                        className="w-12 h-12 bg-white/5 border border-white/5 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-2xl shadow-sm hover:bg-white/10"
+                        aria-label="กลับ"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
                 </div>
 
-                {authError && (
-                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl mb-4 text-sm text-center">
-                        ⚠️ {authError}
+                {/* Main Content Area */}
+                <div className="flex-1 flex flex-col justify-center items-center relative z-10 w-full px-6 max-w-sm mx-auto">
+                    <div className="mb-6 p-5 bg-emerald-500/10 rounded-3xl text-4xl border border-emerald-500/20 shadow-2xl">
+                        📲
                     </div>
-                )}
+                    <div className="text-center mb-6">
+                        <h2 className="text-3xl font-extrabold text-white tracking-tight mb-2">
+                            ยืนยันรหัส OTP
+                        </h2>
+                        <p className="text-slate-400 text-sm">
+                            รหัส 6 หลักถูกส่งไปที่ <span className="text-[#A3FF3F] font-bold">{phoneNumber}</span>
+                        </p>
+                    </div>
 
-                <div className="flex gap-2 justify-center mb-8">
-                    {otpCode.map((digit, i) => (
-                        <input
-                            key={i}
-                            id={`driver-otp-${i}`}
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={1}
-                            value={digit}
-                            onChange={e => handleOtpChange(i, e.target.value)}
-                            className="w-12 h-14 bg-slate-50 rounded-xl border-2 border-slate-200 text-2xl font-bold text-center outline-none focus:border-mywin-orange transition-colors"
-                        />
-                    ))}
-                </div>
-
-                <button
-                    onClick={verifyAndLogin}
-                    disabled={isLoading || otpCode.join('').length < 4}
-                    className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-bold text-lg shadow-lg transition-all disabled:opacity-50"
-                >
-                    {isLoading ? 'กำลังตรวจสอบ...' : 'ยืนยันรหัส'}
-                </button>
-
-                <div className="text-center mt-6">
-                    {otpCountdown > 0 ? (
-                        <span className="text-slate-400 text-sm">ส่งรหัสใหม่ได้ใน {otpCountdown} วินาที</span>
-                    ) : (
-                        <button
-                            onClick={requestOtp}
-                            className="text-mywin-orange text-sm font-bold hover:underline"
-                        >
-                            ส่งรหัสใหม่
-                        </button>
+                    {authError && (
+                        <div className="w-full bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-2xl mb-4 text-sm flex items-center gap-2 backdrop-blur-md">
+                            <span>⚠️</span> {authError}
+                        </div>
                     )}
+
+                    {/* 6 OTP Boxes */}
+                    <div className="flex gap-2.5 justify-center mb-6 w-full">
+                        {otpCode.map((digit, i) => (
+                            <input
+                                key={i}
+                                id={`driver-otp-${i}`}
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={1}
+                                value={digit}
+                                onChange={e => handleOtpChange(i, e.target.value)}
+                                onKeyDown={e => handleOtpKeyDown(i, e)}
+                                onPaste={handleOtpPaste}
+                                className="w-12 h-14 bg-white/5 rounded-2xl border-2 border-white/10 text-2xl font-black text-center text-white outline-none focus:border-[#A3FF3F] focus:bg-white/10 transition-all shadow-inner"
+                            />
+                        ))}
+                    </div>
+
+                    <button
+                        onClick={verifyAndLogin}
+                        disabled={isLoading || otpCode.join('').length < 6}
+                        className="w-full bg-gradient-to-b from-[#4ADE80] to-[#22C55E] text-black font-extrabold py-4 rounded-2xl text-lg shadow-[0_0_20px_rgba(57,181,74,0.2)] hover:shadow-[0_0_30px_rgba(57,181,74,0.4)] border border-white/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40"
+                    >
+                        {isLoading ? 'กำลังตรวจสอบ...' : 'ยืนยันรหัส OTP'}
+                    </button>
+
+                    <div className="text-center mt-6">
+                        {otpCountdown > 0 ? (
+                            <span className="text-gray-500 text-sm">ส่งรหัสใหม่ได้ใน {otpCountdown} วินาที</span>
+                        ) : (
+                            <button
+                                onClick={() => requestOtp(phoneNumber)}
+                                disabled={isLoading}
+                                className="text-[#A3FF3F] text-sm font-bold hover:underline"
+                            >
+                                ส่งรหัส OTP อีกครั้ง
+                            </button>
+                        )}
+                    </div>
+
+                    <button
+                        onClick={() => { setAuthStep(regForm.name ? 'REGISTER' : 'LOGIN'); setAuthError(''); }}
+                        className="mt-4 text-gray-500 text-xs hover:text-gray-300 transition-colors"
+                    >
+                        ← แก้ไขเบอร์โทรศัพท์
+                    </button>
                 </div>
 
-                <button onClick={() => { setAuthStep('LOGIN'); setAuthError(''); }} className="mt-4 text-slate-400 text-sm hover:text-slate-600 transition-colors">
-                    ← แก้ไขเบอร์โทร
-                </button>
+                <div className="p-4 text-center relative z-10 text-[10px] text-gray-500 font-bold tracking-widest uppercase">
+                    GOZIPP DRIVER PARTNER PLATFORM
+                </div>
             </div>
         );
     }
@@ -1379,9 +1626,21 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                     ))}
                 </div>
 
-                <button onClick={() => { setAuthStep('LOGIN'); setPhoneNumber(''); }} className="text-slate-400 text-sm mt-8">
-                    เปลี่ยนเบอร์หรือกลับไปเริ่มใหม่
-                </button>
+                <div className="flex flex-col items-center gap-3 mt-8">
+                    <button
+                        onClick={handleForgotPin}
+                        disabled={isLoading}
+                        className="text-[#A3FF3F] text-sm font-bold hover:underline"
+                    >
+                        ลืมรหัส PIN? ขอรหัส OTP เพื่อตั้ง PIN ใหม่
+                    </button>
+                    <button
+                        onClick={handleSwitchAccount}
+                        className="text-slate-400 text-xs hover:text-slate-200"
+                    >
+                        เปลี่ยนเบอร์หรือเข้าสู่ระบบด้วยเบอร์อื่น →
+                    </button>
+                </div>
 
                 {!showRecovery ? (
                     <button onClick={() => { setShowRecovery(true); setAuthError(''); }} className="text-slate-500 text-xs mt-4 hover:text-emerald-400 transition-colors">
@@ -1478,6 +1737,10 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                 }
                 if (data.userId && typeof window !== 'undefined') {
                     localStorage.setItem('gozipp_driver_id', data.userId);
+                }
+                if (typeof window !== 'undefined') {
+                    localStorage.setItem('gozipp_has_pin', 'true');
+                    if (phone) localStorage.setItem('gozipp_saved_phone', phone);
                 }
 
                 setAuthStep('DASHBOARD');
