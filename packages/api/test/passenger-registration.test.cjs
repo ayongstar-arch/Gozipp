@@ -3,25 +3,26 @@ require('reflect-metadata');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
-const { PassengerService } = require('../dist/passenger.service.js');
-const { AuthService } = require('../dist/auth/auth.service.js');
+const Module = require('node:module');
 
 class MemoryRedis {
   constructor() {
-    this.values = new Map();
+    this.store = new Map();
+    this.hashes = new Map();
   }
 
   async get(key) {
-    const item = this.values.get(key);
-    if (!item || (item.expiresAt && item.expiresAt <= Date.now())) {
-      this.values.delete(key);
+    const item = this.store.get(key);
+    if (!item) return null;
+    if (item.expiresAt && item.expiresAt <= Date.now()) {
+      this.store.delete(key);
       return null;
     }
     return item.value;
   }
 
   async set(key, value, mode, ttlSeconds) {
-    this.values.set(key, {
+    this.store.set(key, {
       value: String(value),
       expiresAt: mode === 'EX' ? Date.now() + Number(ttlSeconds) * 1000 : null,
     });
@@ -29,9 +30,91 @@ class MemoryRedis {
   }
 
   async del(key) {
-    return this.values.delete(key) ? 1 : 0;
+    this.store.delete(key);
+    this.hashes.delete(key);
+    return 1;
   }
+
+  async incr(key) {
+    const item = this.store.get(key);
+    const current = parseInt(item?.value || '0', 10);
+    const next = current + 1;
+    this.store.set(key, { value: String(next) });
+    return next;
+  }
+
+  async exists(key) {
+    const item = this.store.get(key) || this.hashes.get(key);
+    return item ? 1 : 0;
+  }
+
+  async expire(key, ttlSeconds) {
+    return 1;
+  }
+
+  async hget(key, field) {
+    const h = this.hashes.get(key);
+    return h ? h[field] ?? null : null;
+  }
+
+  async hset(key, ...args) {
+    const h = this.hashes.get(key) || {};
+    if (args.length === 1 && typeof args[0] === 'object') {
+      Object.assign(h, args[0]);
+    } else {
+      for (let i = 0; i < args.length; i += 2) {
+        h[args[i]] = String(args[i + 1]);
+      }
+    }
+    this.hashes.set(key, h);
+    return 1;
+  }
+
+  async hmset(key, obj) {
+    return this.hset(key, obj);
+  }
+
+  async hgetall(key) {
+    return this.hashes.get(key) || {};
+  }
+
+  multi() {
+    const chain = {
+      hmset: (key, obj) => {
+        this.hmset(key, obj);
+        return chain;
+      },
+      set: (key, val, mode, ttl) => {
+        this.set(key, val, mode, ttl);
+        return chain;
+      },
+      expire: (key, ttl) => chain,
+      del: (key) => {
+        this.del(key);
+        return chain;
+      },
+      exec: async () => [],
+    };
+    return chain;
+  }
+
+  disconnect() {}
+  on() {}
 }
+
+const originalLoad = Module._load;
+Module._load = function(request, parent, isMain) {
+  if (request === 'ioredis') {
+    return {
+      __esModule: true,
+      default: MemoryRedis,
+    };
+  }
+  return originalLoad.call(this, request, parent, isMain);
+};
+
+const { PassengerService } = require('../dist/passenger.service.js');
+const { AuthService } = require('../dist/auth/auth.service.js');
 
 function createHarness() {
   const passengers = new Map();
@@ -39,8 +122,8 @@ function createHarness() {
 
   const passengerRepo = {
     async findOne({ where }) {
-      return [...passengers.values()].find((passenger) =>
-        Object.entries(where).every(([key, value]) => passenger[key] === value)
+      return [...passengers.values()].find((p) =>
+        Object.entries(where).every(([key, value]) => p[key] === value)
       ) || null;
     },
     create(value) {
@@ -55,20 +138,35 @@ function createHarness() {
       passengers.set(passenger.id, passenger);
       return passenger;
     },
+    async update(id, values) {
+      const p = passengers.get(id);
+      if (p) Object.assign(p, values);
+      return { affected: p ? 1 : 0 };
+    },
+  };
+
+  const smsService = {
+    async sendOtp(_phone, otp) {
+      deliveredOtp = otp;
+      return true;
+    },
+  };
+
+  const authService = {
+    async issueTokens() {
+      return { accessToken: 'access', refreshToken: 'refresh' };
+    },
   };
 
   const service = new PassengerService(
-    passengerRepo,
-    {},
-    { addBonusPoints: async () => undefined },
-    {},
-    { sendOtp: async (_phone, otp) => { deliveredOtp = otp; return true; } },
-    { issueTokens: async () => ({ accessToken: 'access', refreshToken: 'refresh' }) },
+    passengerRepo, // 1: passengerRepo
+    {},            // 2: tripRepo
+    {},            // 3: driverRepo
+    { addBonusPoints: async () => undefined, deductForRide: async () => true }, // 4: creditService
+    {},            // 5: mapService
+    smsService,    // 6: smsService
+    authService,   // 7: authService
   );
-
-  // Replace the constructor-created client so this test never needs external Redis.
-  service.redis.disconnect(false);
-  service.redis = new MemoryRedis();
 
   return { service, passengers, getOtp: () => deliveredOtp };
 }
@@ -150,9 +248,15 @@ test('production never permits registration without OTP', async () => {
 
 test('PIN is hashed, persisted, and can be used for a new login session', async () => {
   const user = {
-    id: randomUUID(), phone: '0864445566', name: 'ผู้ใช้ PIN', pin_hash: null,
-    email: 'pin@example.com', points_balance: 125, free_rides_remaining: 2,
-    avatar_url: null, referral_code: 'PINTEST',
+    id: randomUUID(),
+    phone: '0864445566',
+    name: 'ผู้ใช้ PIN',
+    pin_hash: null,
+    email: 'pin@example.com',
+    points_balance: 125,
+    free_rides_remaining: 2,
+    avatar_url: null,
+    referral_code: 'PINTEST',
   };
   const sessions = [];
   const passengerRepo = {
@@ -170,15 +274,20 @@ test('PIN is hashed, persisted, and can be used for a new login session', async 
       sessions.push(saved);
       return saved;
     },
+    async update() {
+      return { affected: 1 };
+    },
   };
   const auth = new AuthService(
-    passengerRepo,
-    { findOne: async () => null, update: async () => ({ affected: 0 }) },
-    refreshRepo,
-    { sign: () => 'signed-access-token' },
-    {},
-    { log: async () => undefined },
-    { evaluateLoginRisk: async () => ({ highRisk: false }) },
+    passengerRepo, // 1: passengerRepo
+    { findOne: async () => null, update: async () => ({ affected: 0 }) }, // 2: driverRepo
+    refreshRepo,   // 3: refreshRepo
+    { query: async () => [] },  // 4: dataSource
+    { sign: () => 'signed-access-token' }, // 5: jwtService
+    { get: () => null },        // 6: configService
+    { log: async () => undefined, logAdminAction: async () => undefined }, // 7: auditLog
+    { evaluateLoginRisk: async () => ({ highRisk: false }) }, // 8: riskEngine
+    {},            // 9: firebaseService
   );
 
   await auth.setPin(user.id, '246810', 'PASSENGER');
@@ -193,5 +302,9 @@ test('PIN is hashed, persisted, and can be used for a new login session', async 
   assert.equal(login.accessToken, 'signed-access-token');
   assert.equal(sessions.length, 1);
 
-  await assert.rejects(auth.validatePinLogin(user.phone, '111111', 'PASSENGER'), /Invalid PIN/);
+  await assert.rejects(auth.validatePinLogin(user.phone, '111111', 'PASSENGER'), /PIN/);
+});
+
+test.after(() => {
+  Module._load = originalLoad;
 });

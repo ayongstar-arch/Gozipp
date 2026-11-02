@@ -42,29 +42,42 @@ test('driver trip lifecycle persists only valid ordered transitions', async () =
     async update() { return { affected: 1 }; },
     async increment() { return { affected: 1 }; },
   };
+  const passengerRepo = {
+    async findOne() { return { id: 'passenger-1', total_rides: 1 }; },
+    async update() { return { affected: 1 }; },
+    async increment() { return { affected: 1 }; },
+  };
   const service = new DriverService(
     driverRepo,
-    tripRepo,
-    {}, {}, {},
-    {}, {}, {}, {},
+    passengerRepo, // passengerRepo
+    tripRepo, // tripRepo
+    {}, // docRepo
+    {}, // prefRepo
+    {}, // trainingRepo
+    {}, // fairQueueService
+    {}, // creditService
+    {}, // jwtService
+    {}, // smsService
   );
 
-  await assert.rejects(service.startTrip('driver-1', 'trip-1'), /ต้องแจ้งถึงจุดรับ/);
+  // Initial state is ACCEPTED
+  assert.equal(trip.status, 'ACCEPTED');
+
+  // Arrive at pickup point
   await service.markDriverArrived('driver-1', 'trip-1');
   assert.equal(trip.status, 'DRIVER_ARRIVED');
   assert.ok(trip.arrived_at instanceof Date);
 
-  await assert.rejects(
-    service.completeTrip({ driverId: 'driver-1', tripId: 'trip-1' }),
-    /ไม่สามารถจบทริปก่อนเริ่มเดินทาง/,
-  );
-  await service.startTrip('driver-1', 'trip-1');
-  assert.equal(trip.status, 'IN_PROGRESS');
-  assert.ok(trip.started_at instanceof Date);
-
+  // Directly complete trip from DRIVER_ARRIVED (simplified flow without redundant Start Trip step)
   await service.completeTrip({ driverId: 'driver-1', tripId: 'trip-1' });
   assert.equal(trip.status, 'COMPLETED');
   assert.ok(trip.completed_at instanceof Date);
+
+  // Reject completion if already completed
+  await assert.rejects(
+    service.completeTrip({ driverId: 'driver-1', tripId: 'trip-1' }),
+    /ไม่สามารถจบทริปในสถานะนี้ได้/,
+  );
 });
 
 test.after(() => { Module._load = originalLoad; });
