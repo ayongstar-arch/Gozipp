@@ -18,7 +18,10 @@ const OnboardingView: React.FC = () => {
 
   return (
     <div className="flex flex-col justify-between h-[100dvh] bg-black font-kanit selection:bg-[#39B54A]/30 relative overflow-hidden text-white">
-      <InstallPwaPrompt />
+      {/* Top Header Action: Install PWA Button */}
+      <div className="absolute top-4 right-4 z-30">
+        <InstallPwaPrompt mode="button" />
+      </div>
 
       {/* Main Content Area (Logo + Slogans) */}
       <motion.div 

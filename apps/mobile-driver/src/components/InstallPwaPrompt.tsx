@@ -5,7 +5,7 @@ interface InstallPwaPromptProps {
   className?: string;
 }
 
-const InstallPwaPrompt: React.FC<InstallPwaPromptProps> = ({ mode = 'banner', className = '' }) => {
+const InstallPwaPrompt: React.FC<InstallPwaPromptProps> = ({ mode = 'button', className = '' }) => {
   const [supportsPWA, setSupportsPWA] = useState(false);
   const [promptInstall, setPromptInstall] = useState<any>(null);
   const [isIOS, setIsIOS] = useState(false);
