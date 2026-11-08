@@ -321,6 +321,23 @@ export class DatabaseMigrationService implements OnModuleInit {
     `);
     await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_admins_username ON admins(username);`);
     await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_admins_role ON admins(role);`);
+
+    // 12. SOS Events table
+    await this.safeQuery(`
+      CREATE TABLE IF NOT EXISTS sos_events (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id VARCHAR(255) NOT NULL,
+        user_type VARCHAR(50) NOT NULL,
+        trip_id UUID,
+        location GEOMETRY(POINT, 4326),
+        notes TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        resolved_by VARCHAR(255),
+        resolved_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_sos_events_status ON sos_events(status);`);
   }
 
   private async safeQuery(sql: string) {

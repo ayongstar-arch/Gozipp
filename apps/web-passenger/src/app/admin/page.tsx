@@ -35,7 +35,11 @@ import {
   Map as MapIcon,
   CircleDot,
   Trash2,
-  Edit2
+  Edit2,
+  DollarSign,
+  ShieldAlert,
+  Flame,
+  Check
 } from 'lucide-react';
 
 interface PendingDriver {
@@ -149,6 +153,53 @@ interface LiveFleetData {
   stations: StationItem[];
 }
 
+interface SosEventItem {
+  id: string;
+  user_id: string;
+  user_type: string;
+  trip_id?: string;
+  notes?: string;
+  status: 'ACTIVE' | 'RESOLVED' | 'FALSE_ALARM';
+  lat?: number;
+  lng?: number;
+  created_at: string;
+  resolved_by?: string;
+  resolved_at?: string;
+}
+
+interface FraudAnomalyItem {
+  id: string;
+  type: string;
+  severity: 'HIGH' | 'MEDIUM' | 'LOW';
+  title: string;
+  description: string;
+  targetId: string;
+  targetType: string;
+  timestamp: string;
+}
+
+interface FinancialLedgerData {
+  summary: {
+    totalGrossVolume: number;
+    totalDriverEarnings: number;
+    totalPlatformFeesCollected: number;
+    commissionModel: string;
+  };
+  ledgerEntries: {
+    id: string;
+    tripId: string;
+    date: string;
+    passengerId: string;
+    driverId?: string;
+    totalFare: number;
+    driverEarning: number;
+    systemFee: number;
+    status: string;
+    pickup: string;
+    destination: string;
+  }[];
+}
+
 interface AuditLogItem {
   id: string;
   action: string;
@@ -161,7 +212,7 @@ interface AuditLogItem {
   metadata?: any;
 }
 
-type AdminTab = 'STATS' | 'MAP' | 'STATIONS' | 'DRIVERS' | 'ALL_DRIVERS' | 'PASSENGERS' | 'PRICING' | 'INVITES' | 'QUEUE' | 'AUDIT';
+type AdminTab = 'STATS' | 'MAP' | 'SOS' | 'FRAUD' | 'FINANCE' | 'STATIONS' | 'DRIVERS' | 'ALL_DRIVERS' | 'PASSENGERS' | 'PRICING' | 'INVITES' | 'QUEUE' | 'AUDIT';
 
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -212,6 +263,11 @@ export default function AdminPage() {
     isActive: true,
   });
   const [isEditingStation, setIsEditingStation] = useState(false);
+
+  // SOS, Fraud, Finance state
+  const [sosEvents, setSosEvents] = useState<SosEventItem[]>([]);
+  const [fraudAlerts, setFraudAlerts] = useState<FraudAnomalyItem[]>([]);
+  const [financialLedger, setFinancialLedger] = useState<FinancialLedgerData | null>(null);
 
   // Modal: Adjust Points
   const [adjustModal, setAdjustModal] = useState<{ open: boolean; passenger: PassengerItem | null; delta: number; reason: string }>({
@@ -291,6 +347,42 @@ export default function AdminPage() {
     }
   }, []);
 
+  // Fetch SOS events
+  const fetchSosEvents = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/v1/admin/sos');
+      if (Array.isArray(res)) {
+        setSosEvents(res);
+      }
+    } catch (e: any) {
+      console.error('Failed to load SOS events:', e);
+    }
+  }, []);
+
+  // Fetch Fraud anomalies
+  const fetchFraudAlerts = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/v1/admin/fraud/anomalies');
+      if (res && Array.isArray(res.anomalies)) {
+        setFraudAlerts(res.anomalies);
+      }
+    } catch (e: any) {
+      console.error('Failed to load fraud alerts:', e);
+    }
+  }, []);
+
+  // Fetch Financial ledger
+  const fetchFinancialLedger = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/v1/admin/finance/ledger');
+      if (res && res.summary) {
+        setFinancialLedger(res);
+      }
+    } catch (e: any) {
+      console.error('Failed to load ledger:', e);
+    }
+  }, []);
+
   // Fetch stats & pricing & queues
   const fetchStatsAndConfig = useCallback(async () => {
     try {
@@ -329,8 +421,9 @@ export default function AdminPage() {
     if (token) {
       fetchPendingDrivers();
       fetchStatsAndConfig();
+      fetchSosEvents();
     }
-  }, [token, fetchPendingDrivers, fetchStatsAndConfig]);
+  }, [token, fetchPendingDrivers, fetchStatsAndConfig, fetchSosEvents]);
 
   useEffect(() => {
     if (token) {
@@ -339,9 +432,12 @@ export default function AdminPage() {
       if (activeTab === 'AUDIT') fetchAuditLogs();
       if (activeTab === 'MAP') fetchFleetData();
       if (activeTab === 'STATIONS') fetchStations();
+      if (activeTab === 'SOS') fetchSosEvents();
+      if (activeTab === 'FRAUD') fetchFraudAlerts();
+      if (activeTab === 'FINANCE') fetchFinancialLedger();
       if (activeTab === 'QUEUE' || activeTab === 'STATS') fetchStatsAndConfig();
     }
-  }, [token, activeTab, fetchAllDrivers, fetchPassengers, fetchAuditLogs, fetchFleetData, fetchStations, fetchStatsAndConfig]);
+  }, [token, activeTab, fetchAllDrivers, fetchPassengers, fetchAuditLogs, fetchFleetData, fetchStations, fetchSosEvents, fetchFraudAlerts, fetchFinancialLedger, fetchStatsAndConfig]);
 
   // Handle Admin Login
   const handleLogin = async (e: React.FormEvent) => {
@@ -611,6 +707,28 @@ export default function AdminPage() {
     }
   };
 
+  // Resolve SOS Event
+  const handleResolveSos = async (eventId: string, status: 'RESOLVED' | 'FALSE_ALARM') => {
+    const notes = prompt(
+      status === 'RESOLVED'
+        ? 'ระบุบันทึกการระงับเหตุฉุกเฉิน:'
+        : 'ระบุเหตุผลการระบุเป็นการแจ้งเตือนเท็จ:',
+      'เจ้าหน้าที่ติดต่อตรวจสอบความปลอดภัยแล้ว'
+    );
+    if (notes === null) return;
+    try {
+      await apiFetch(`/api/v1/admin/sos/${eventId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ status, notes }),
+      });
+      setActionMessage(`🚨 ระงับเหตุ SOS ${eventId.slice(0, 8)} สำเร็จ`);
+      fetchSosEvents();
+      setTimeout(() => setActionMessage(''), 3000);
+    } catch (err: any) {
+      alert('ระงับเหตุไม่สำเร็จ: ' + err.message);
+    }
+  };
+
   // Override Queue Driver
   const handleOverrideQueue = async (winId: string, driverId: string) => {
     const reason = prompt('กรุณาระบุเหตุผลการลัดคิวฉุกเฉิน:', 'งานด่วนจากศูนย์ควบคุม');
@@ -627,6 +745,8 @@ export default function AdminPage() {
       alert('เกิดข้อผิดพลาด: ' + err.message);
     }
   };
+
+  const activeSosCount = sosEvents.filter(e => e.status === 'ACTIVE').length;
 
   // ==========================================
   // VIEW: Admin Login Screen
@@ -741,8 +861,24 @@ export default function AdminPage() {
   // ==========================================
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-kanit flex flex-col">
+      {/* Top Emergency SOS Warning Banner */}
+      {activeSosCount > 0 && (
+        <div className="bg-red-600 text-white px-6 py-2.5 flex items-center justify-between text-xs font-bold animate-pulse shadow-xl sticky top-0 z-50">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🚨</span>
+            <span>แจ้งเตือนเหตุฉุกเฉินระดับสูง: พบสัญญาณขอความช่วยเหลือ SOS {activeSosCount} รายการที่ยังไม่ได้รับการระงับเหตุ!</span>
+          </div>
+          <button
+            onClick={() => setActiveTab('SOS')}
+            className="px-3 py-1 bg-white text-red-600 rounded-lg text-xs font-black shadow hover:bg-slate-100"
+          >
+            ตรวจสอบด่วน →
+          </button>
+        </div>
+      )}
+
       {/* Top Navigation */}
-      <header className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+      <header className={`bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky ${activeSosCount > 0 ? 'top-10' : 'top-0'} z-40`}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[#A3FF3F] text-slate-950 font-black text-xl flex items-center justify-center shadow-md">
             ⚡
@@ -751,10 +887,10 @@ export default function AdminPage() {
             <div className="font-extrabold text-base text-white flex items-center gap-2">
               <span>GOZIPP Operations Center</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#A3FF3F]/10 text-[#A3FF3F] border border-[#A3FF3F]/20 font-bold">
-                Phase 2 Live
+                Enterprise v4.0
               </span>
             </div>
-            <div className="text-[11px] text-slate-400">ศูนย์ควบคุมการเดินรถสด & จัดการ Geofence วินมอเตอร์ไซค์</div>
+            <div className="text-[11px] text-slate-400">ศูนย์ควบคุมความปลอดภัย ปฏิบัติการเดินรถ & บัญชีการเงิน</div>
           </div>
         </div>
 
@@ -773,6 +909,9 @@ export default function AdminPage() {
               if (activeTab === 'PASSENGERS') fetchPassengers();
               if (activeTab === 'MAP') fetchFleetData();
               if (activeTab === 'STATIONS') fetchStations();
+              if (activeTab === 'SOS') fetchSosEvents();
+              if (activeTab === 'FRAUD') fetchFraudAlerts();
+              if (activeTab === 'FINANCE') fetchFinancialLedger();
               if (activeTab === 'AUDIT') fetchAuditLogs();
             }}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
@@ -843,7 +982,7 @@ export default function AdminPage() {
             }`}
           >
             <Activity className="w-4 h-4" />
-            <span>ภาพรวมสด (Live Overview)</span>
+            <span>ภาพรวมสด (Overview)</span>
           </button>
 
           <button
@@ -856,6 +995,42 @@ export default function AdminPage() {
           >
             <Radio className="w-4 h-4" />
             <span>แผนที่เดินรถสด (Fleet Map)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('SOS')}
+            className={`flex items-center gap-2 px-4 py-3 text-xs md:text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'SOS'
+                ? 'border-red-500 text-red-400'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4" />
+            <span>เหตุฉุกเฉิน SOS {activeSosCount > 0 && `(${activeSosCount})`}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('FRAUD')}
+            className={`flex items-center gap-2 px-4 py-3 text-xs md:text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'FRAUD'
+                ? 'border-amber-400 text-amber-400'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4" />
+            <span>ตรวจจับทุจริต & Anomaly</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('FINANCE')}
+            className={`flex items-center gap-2 px-4 py-3 text-xs md:text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'FINANCE'
+                ? 'border-emerald-400 text-emerald-400'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            <span>บัญชีธุรกรรม (Ledger)</span>
           </button>
 
           <button
@@ -956,6 +1131,282 @@ export default function AdminPage() {
         </div>
 
         {/* ------------------------------------------------------------- */}
+        {/* Tab: SOS EMERGENCY CENTER */}
+        {/* ------------------------------------------------------------- */}
+        {activeTab === 'SOS' && (
+          <div className="space-y-6">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-black text-white flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-red-500 animate-pulse" />
+                    <span>ศูนย์รับแจ้งเหตุฉุกเฉินความปลอดภัย (Trust & Safety SOS Center)</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    ตรวจสอบเหตุฉุกเฉินที่กดมาจากคนขับหรือผู้โดยสาร พร้อมพิกัด GPS สด และการประสานงานช่วยเหลือ
+                  </p>
+                </div>
+                <button
+                  onClick={fetchSosEvents}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-white border border-slate-700"
+                >
+                  โหลดใหม่
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {sosEvents.length === 0 ? (
+                  <div className="text-center py-16 text-slate-500 text-xs bg-slate-950/40 rounded-2xl border border-slate-800/40">
+                    <CheckCircle className="w-10 h-10 text-emerald-400/50 mx-auto mb-2" />
+                    <p className="font-bold text-slate-300">ไม่มีการแจ้งเหตุฉุกเฉินที่ค้างอยู่ในระบบ</p>
+                    <p className="text-[11px] text-slate-600 mt-0.5">เมื่อมีคนขับหรือผู้โดยสารกดปุ่ม SOS จะส่งสัญญาณเตือนทันที</p>
+                  </div>
+                ) : (
+                  sosEvents.map((event) => {
+                    const isActive = event.status === 'ACTIVE';
+                    return (
+                      <div
+                        key={event.id}
+                        className={`p-4 rounded-2xl border transition-all ${
+                          isActive
+                            ? 'bg-red-950/30 border-red-500/40 shadow-lg shadow-red-950/40'
+                            : 'bg-slate-950 border-slate-800'
+                        }`}
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                                isActive ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-slate-400'
+                              }`}>
+                                {event.status}
+                              </span>
+                              <span className="font-bold text-sm text-white">
+                                แจ้งจาก: {event.user_type === 'DRIVER' ? '🛵 พาร์ทเนอร์คนขับ' : '🙋 ผู้โดยสาร'}
+                              </span>
+                              <span className="font-mono text-xs text-slate-400">({event.user_id.slice(0, 8)})</span>
+                            </div>
+
+                            <div className="text-xs text-slate-300">
+                              เหตุผล / รายละเอียด: <strong>{event.notes || 'กดปุ่ม SOS ฉุกเฉิน'}</strong>
+                            </div>
+
+                            <div className="text-[11px] text-slate-400 flex items-center gap-3">
+                              <span>เวลา: {new Date(event.created_at).toLocaleString('th-TH')}</span>
+                              {event.lat && event.lng && (
+                                <span className="font-mono text-amber-400">
+                                  พิกัด: {event.lat.toFixed(4)}, {event.lng.toFixed(4)}
+                                </span>
+                              )}
+                              {event.trip_id && (
+                                <span className="font-mono text-blue-400">
+                                  Trip ID: {event.trip_id.slice(0, 8)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {isActive && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleResolveSos(event.id, 'RESOLVED')}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition-all shadow-md"
+                              >
+                                ✓ ระงับเหตุแล้ว
+                              </button>
+                              <button
+                                onClick={() => handleResolveSos(event.id, 'FALSE_ALARM')}
+                                className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-3 py-1.5 rounded-xl text-xs border border-slate-700"
+                              >
+                                แจ้งเตือนเท็จ
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* Tab: FRAUD & ANOMALY DETECTION */}
+        {/* ------------------------------------------------------------- */}
+        {activeTab === 'FRAUD' && (
+          <div className="space-y-6">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-black text-white flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-400" />
+                    <span>ระบบตรวจจับความผิดปกติและการทุจริต (Fraud & Anomaly Engine)</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    ตรวจจับการจับคู่ปั๊มยอดซ้ำซ้อน, บัญชีคนขับคะแนนต่ำผิดปกติ, และผู้โดยสารที่มียอดแต้มติดลบ
+                  </p>
+                </div>
+                <button
+                  onClick={fetchFraudAlerts}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-white border border-slate-700"
+                >
+                  สแกนตรวจจับใหม่
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {fraudAlerts.length === 0 ? (
+                  <div className="text-center py-16 text-slate-500 text-xs bg-slate-950/40 rounded-2xl border border-slate-800/40">
+                    <CheckCircle className="w-10 h-10 text-emerald-400/50 mx-auto mb-2" />
+                    <p className="font-bold text-slate-300">ไม่พบพฤติกรรมผิดปกติหรือเข้าข่ายทุจริตในระบบขณะนี้</p>
+                    <p className="text-[11px] text-slate-600 mt-0.5">อัลกอริทึม Anomaly Engine กำลังตรวจสอบพฤติกรรมการวิ่งงานตลอด 24 ชม.</p>
+                  </div>
+                ) : (
+                  fraudAlerts.map((alert) => {
+                    const isHigh = alert.severity === 'HIGH';
+                    const isMed = alert.severity === 'MEDIUM';
+                    return (
+                      <div
+                        key={alert.id}
+                        className={`p-4 rounded-2xl border transition-all ${
+                          isHigh
+                            ? 'bg-red-950/20 border-red-500/30'
+                            : isMed
+                            ? 'bg-amber-950/20 border-amber-500/30'
+                            : 'bg-slate-950 border-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                                isHigh
+                                  ? 'bg-red-500 text-white'
+                                  : isMed
+                                  ? 'bg-amber-500 text-black'
+                                  : 'bg-blue-500 text-white'
+                              }`}>
+                                {alert.severity} RISK
+                              </span>
+                              <h4 className="font-bold text-sm text-white">{alert.title}</h4>
+                            </div>
+                            <p className="text-xs text-slate-300">{alert.description}</p>
+                            <div className="text-[11px] text-slate-500 font-mono">
+                              Target: {alert.targetType} ({alert.targetId}) • ตรวจพบเมื่อ: {new Date(alert.timestamp).toLocaleTimeString('th-TH')}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* Tab: FINANCIAL LEDGER */}
+        {/* ------------------------------------------------------------- */}
+        {activeTab === 'FINANCE' && (
+          <div className="space-y-6">
+            {/* Financial Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+                <div className="text-xs text-slate-400 mb-1">ยอดเงินสะพัดรวม (Gross Volume)</div>
+                <div className="text-2xl font-black text-white">
+                  {financialLedger?.summary.totalGrossVolume.toLocaleString() ?? 0} บาท
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">ยอดรวมค่าโดยสารที่เกิดขึ้นจริงในระบบ</div>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+                <div className="text-xs text-slate-400 mb-1">รายได้คนขับ 100% (No GP)</div>
+                <div className="text-2xl font-black text-[#A3FF3F]">
+                  {financialLedger?.summary.totalDriverEarnings.toLocaleString() ?? 0} บาท
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">คนขับได้รับเงินสดเต็ม 100% โดยไม่ถูกหัก %</div>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+                <div className="text-xs text-slate-400 mb-1">ค่าบริการระบบที่จัดเก็บได้ (Platform Fee)</div>
+                <div className="text-2xl font-black text-emerald-400">
+                  {financialLedger?.summary.totalPlatformFeesCollected.toLocaleString() ?? 0} บาท
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">โมเดลเหมาจ่ายแต้มต่อเที่ยว (Flat Fee)</div>
+              </div>
+            </div>
+
+            {/* Financial Ledger Table */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-white">บัญชีธุรกรรมการเดินรถ (Real Double-Entry Ledger)</h3>
+                  <p className="text-xs text-slate-400">บันทึกทุกเที่ยววิ่ง ค่าโดยสาร และค่าบริการเหมาจ่ายแต้มต่อเที่ยว</p>
+                </div>
+                <button
+                  onClick={fetchFinancialLedger}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-white border border-slate-700"
+                >
+                  โหลดใหม่
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="py-3 px-4">รหัสบัญชี</th>
+                      <th className="py-3 px-4">วันและเวลา</th>
+                      <th className="py-3 px-4">เส้นทาง (รับ ➔ ส่ง)</th>
+                      <th className="py-3 px-4">ค่าโดยสารรวม</th>
+                      <th className="py-3 px-4">คนขับได้รับ (100%)</th>
+                      <th className="py-3 px-4">ค่าบริการระบบ</th>
+                      <th className="py-3 px-4">สถานะ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-sans">
+                    {(!financialLedger || financialLedger.ledgerEntries.length === 0) ? (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-slate-500">
+                          ยังไม่มีรายการธุรกรรมในระบบ
+                        </td>
+                      </tr>
+                    ) : (
+                      financialLedger.ledgerEntries.map((e) => (
+                        <tr key={e.id} className="hover:bg-slate-800/30">
+                          <td className="py-3.5 px-4 font-mono font-bold text-white">{e.id}</td>
+                          <td className="py-3.5 px-4 text-slate-400 text-[11px]">
+                            {new Date(e.date).toLocaleString('th-TH')}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-300 truncate max-w-xs">
+                            {e.pickup || 'จุดรับ'} ➔ {e.destination || 'จุดส่ง'}
+                          </td>
+                          <td className="py-3.5 px-4 font-bold text-white">{e.totalFare} บ.</td>
+                          <td className="py-3.5 px-4 font-bold text-[#A3FF3F]">{e.driverEarning} บ.</td>
+                          <td className="py-3.5 px-4 font-bold text-emerald-400">{e.systemFee} บ.</td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              e.status === 'COMPLETED'
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {e.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
         {/* Tab: MAP & LIVE FLEET OPERATIONS */}
         {/* ------------------------------------------------------------- */}
         {activeTab === 'MAP' && (
@@ -984,17 +1435,13 @@ export default function AdminPage() {
 
                 {/* SVG Fleet Radar Map */}
                 <div className="relative w-full h-[400px] bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex items-center justify-center">
-                  {/* Grid Lines */}
                   <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:40px_40px] opacity-30"></div>
 
-                  {/* Concentric Radar Rings */}
                   <div className="absolute w-[360px] h-[360px] rounded-full border border-slate-800/60 pointer-events-none"></div>
                   <div className="absolute w-[240px] h-[240px] rounded-full border border-[#A3FF3F]/10 pointer-events-none"></div>
                   <div className="absolute w-[120px] h-[120px] rounded-full border border-[#A3FF3F]/20 pointer-events-none"></div>
 
-                  {/* Stations plotted on map */}
-                  {fleetData?.stations.map((st, idx) => {
-                    // Normalize lat/lng to container offset
+                  {fleetData?.stations.map((st) => {
                     const offsetX = 50 + ((st.lng - 100.5348) * 1200);
                     const offsetY = 50 - ((st.lat - 13.7463) * 1200);
                     return (
@@ -1013,7 +1460,6 @@ export default function AdminPage() {
                     );
                   })}
 
-                  {/* Drivers plotted on map */}
                   {fleetData?.drivers.map((d) => {
                     const offsetX = 50 + ((d.lng - 100.5348) * 1200);
                     const offsetY = 50 - ((d.lat - 13.7463) * 1200);
@@ -1047,7 +1493,6 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Fleet Overview Footer */}
                 <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
                   <div>
                     คนขับในพื้นที่ทั้งหมด: <strong className="text-white">{fleetData?.drivers.length ?? 0} คัน</strong>
@@ -1142,7 +1587,6 @@ export default function AdminPage() {
         {/* ------------------------------------------------------------- */}
         {activeTab === 'STATIONS' && (
           <div className="space-y-6">
-            {/* Create/Edit Station Form */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -1229,7 +1673,6 @@ export default function AdminPage() {
               </form>
             </div>
 
-            {/* Stations Directory Table */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-black text-white">จุดตั้งวินมอเตอร์ไซค์ที่เปิดให้บริการในระบบ</h3>
@@ -1691,7 +2134,6 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Current Win Detail */}
             {(() => {
               const currentQueue = activeQueues.find((q) => q.id === selectedWinId) || activeQueues[0];
               if (!currentQueue || currentQueue.drivers.length === 0) {

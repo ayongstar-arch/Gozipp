@@ -46,14 +46,39 @@ export class SosService {
   }
 
   async getActiveEvents(limit = 20) {
-    return this.dataSource.query(
-      `SELECT id, user_id, user_type, trip_id, notes, status, created_at,
-              ST_X(location) AS lng, ST_Y(location) AS lat
-       FROM sos_events
-       WHERE status = 'ACTIVE'
-       ORDER BY created_at DESC
-       LIMIT $1`,
-      [limit]
-    );
+    try {
+      return await this.dataSource.query(
+        `SELECT id, user_id, user_type, trip_id, notes, status, created_at,
+                ST_X(location) AS lng, ST_Y(location) AS lat
+         FROM sos_events
+         WHERE status = 'ACTIVE'
+         ORDER BY created_at DESC
+         LIMIT $1`,
+        [limit]
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  async getAllEvents(status?: string, limit = 50) {
+    try {
+      let query = `
+        SELECT id, user_id, user_type, trip_id, notes, status, created_at, resolved_by, resolved_at,
+               ST_X(location) AS lng, ST_Y(location) AS lat
+        FROM sos_events
+      `;
+      const params: any[] = [];
+      if (status && status !== 'ALL') {
+        params.push(status);
+        query += ` WHERE status = $${params.length}`;
+      }
+      params.push(limit);
+      query += ` ORDER BY created_at DESC LIMIT $${params.length}`;
+
+      return await this.dataSource.query(query, params);
+    } catch {
+      return [];
+    }
   }
 }

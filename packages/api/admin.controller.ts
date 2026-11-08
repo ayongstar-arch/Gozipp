@@ -3,6 +3,7 @@ import { AdminService } from './admin.service';
 import { PromotionService } from './promotion.service';
 import { DriverService } from './driver.service';
 import { AuthService } from './auth/auth.service';
+import { SosService } from './sos.service';
 import { OverrideQueueDto, DateRangeDto, DailyCloseDto, CreateInviteCodeDto } from './dtos';
 import { AuthGuard, RolesGuard } from './common/guards';
 import { Roles } from './common/decorators';
@@ -17,6 +18,7 @@ export class AdminController {
     private readonly driverService: DriverService,
     private readonly auditLogService: AuditLogService,
     private readonly authService: AuthService,
+    private readonly sosService: SosService,
   ) { }
 
   @Get('queue')
@@ -288,6 +290,53 @@ export class AdminController {
     });
 
     return result;
+  }
+
+  // --- SOS Alert & Trust & Safety Center ---
+
+  @Get('sos')
+  @Roles('ADMIN', 'SECURITY', 'SUPERADMIN')
+  async getSosEvents(@Query('status') status?: string) {
+    return this.sosService.getAllEvents(status);
+  }
+
+  @Post('sos/:id/resolve')
+  @Roles('ADMIN', 'SECURITY', 'SUPERADMIN')
+  async resolveSosEvent(
+    @Param('id') eventId: string,
+    @Body() body: { status?: 'RESOLVED' | 'FALSE_ALARM'; notes?: string },
+    @Req() req: any
+  ) {
+    const resolvedBy = req.user?.username || req.user?.id || 'admin';
+    const result = await this.sosService.resolveEvent(eventId, resolvedBy, body?.status || 'RESOLVED');
+
+    await this.auditLogService.logAdminAction({
+      actorId: req.user?.id,
+      actorRole: req.user?.roles?.[0] || 'ADMIN',
+      action: AdminAction.QUEUE_OVERRIDE,
+      resourceType: 'SOS_EVENT',
+      resourceId: eventId,
+      metadata: { status: body?.status, notes: body?.notes },
+      ipAddress: req.ip,
+    });
+
+    return result;
+  }
+
+  // --- Fraud & Anomaly Alerts ---
+
+  @Get('fraud/anomalies')
+  @Roles('ADMIN', 'SECURITY', 'SUPERADMIN')
+  async getFraudAnomalies() {
+    return this.adminService.getFraudAnomalies();
+  }
+
+  // --- Financial Ledger ---
+
+  @Get('finance/ledger')
+  @Roles('ADMIN', 'SUPERADMIN')
+  async getFinancialLedger(@Query('limit') limit?: string) {
+    return this.adminService.getFinancialLedger(limit ? parseInt(limit, 10) : 50);
   }
 
   // --- Driver Approval Management ---

@@ -675,6 +675,144 @@ export class AdminService {
     return { success: true, message: `บันทึกจบงาน ${tripId} สำเร็จ` };
   }
 
+  // --- Fraud & Anomaly Detection ---
+
+  async getFraudAnomalies() {
+    const anomalies: {
+      id: string;
+      type: 'SPEED_TELEPORT' | 'FREQUENT_PAIRING' | 'EXCESSIVE_CANCELLATION' | 'OVERDRAFT_ALERT';
+      severity: 'HIGH' | 'MEDIUM' | 'LOW';
+      title: string;
+      description: string;
+      targetId: string;
+      targetType: 'DRIVER' | 'PASSENGER' | 'PAIR';
+      timestamp: string;
+    }[] = [];
+
+    // 1. Check Excessive Cancellations / Low Rating
+    try {
+      const highCancelDrivers = await this.driverRepo.find({
+        where: { approval_status: 'APPROVED' },
+        take: 30
+      });
+      for (const d of highCancelDrivers) {
+        if (Number(d.rating) < 4.2 && d.total_trips > 5) {
+          anomalies.push({
+            id: `ANOM-RATING-${d.id.slice(0, 8)}`,
+            type: 'EXCESSIVE_CANCELLATION',
+            severity: 'MEDIUM',
+            title: 'คะแนนดาวคนขับต่ำกว่าเกณฑ์มาตรฐาน',
+            description: `คนขับ ${d.name} (${d.phone}) มีคะแนนดาวเฉลี่ย ${d.rating} ดาว ต่ำกว่าเกณฑ์ 4.2 ดาว`,
+            targetId: d.id,
+            targetType: 'DRIVER',
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    } catch {}
+
+    // 2. Check Overdraft Risk
+    try {
+      const overdraftPassengers = await this.passengerRepo.find({
+        take: 50
+      });
+      for (const p of overdraftPassengers) {
+        if (Number(p.points_balance) < 0) {
+          anomalies.push({
+            id: `ANOM-OVERDRAFT-${p.id.slice(0, 8)}`,
+            type: 'OVERDRAFT_ALERT',
+            severity: 'LOW',
+            title: 'ผู้โดยสารมียอดแต้มติดลบฉุกเฉิน',
+            description: `ผู้โดยสาร ${p.name} (${p.phone}) มียอดแต้มค้างชำระ ${p.points_balance} แต้ม`,
+            targetId: p.id,
+            targetType: 'PASSENGER',
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    } catch {}
+
+    // 3. Check Repeated Driver-Passenger Pairs (Collusion detection)
+    try {
+      const recentTrips = await this.tripRepo.find({
+        where: { status: 'COMPLETED' },
+        order: { completed_at: 'DESC' },
+        take: 100
+      });
+
+      const pairCounts = new Map<string, { count: number; passengerId: string; driverId: string }>();
+      for (const t of recentTrips) {
+        if (t.passenger_id && t.driver_id) {
+          const key = `${t.passenger_id}:${t.driver_id}`;
+          const current = pairCounts.get(key) || { count: 0, passengerId: t.passenger_id, driverId: t.driver_id };
+          current.count += 1;
+          pairCounts.set(key, current);
+        }
+      }
+
+      for (const [key, val] of pairCounts.entries()) {
+        if (val.count >= 4) {
+          anomalies.push({
+            id: `ANOM-PAIR-${val.passengerId.slice(0, 4)}-${val.driverId.slice(0, 4)}`,
+            type: 'FREQUENT_PAIRING',
+            severity: 'HIGH',
+            title: 'พบการจับคู่วิ่งงานซ้ำซ้อนผิดปกติ',
+            description: `ผู้โดยสาร (${val.passengerId.slice(0, 6)}) และคนขับ (${val.driverId.slice(0, 6)}) จบงานด้วยกันถึง ${val.count} เที่ยว อาจเข้าข่ายปั่นแต้มหรือปั๊มยอด`,
+            targetId: key,
+            targetType: 'PAIR',
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    } catch {}
+
+    return {
+      totalAlerts: anomalies.length,
+      anomalies
+    };
+  }
+
+  // --- Real Double-Entry Financial Ledger ---
+
+  async getFinancialLedger(limit = 50) {
+    const trips = await this.tripRepo.find({
+      order: { requested_at: 'DESC' },
+      take: limit
+    });
+
+    const entries = trips.map(t => {
+      const fare = Number(t.fare) || 0;
+      const fee = Number(t.credits_used) || 2;
+      return {
+        id: `LED-${t.id.slice(0, 8).toUpperCase()}`,
+        tripId: t.id,
+        date: t.requested_at,
+        passengerId: t.passenger_id,
+        driverId: t.driver_id,
+        totalFare: fare,
+        driverEarning: fare,
+        systemFee: fee,
+        status: t.status,
+        pickup: t.pickup_address,
+        destination: t.dest_address,
+      };
+    });
+
+    const completed = entries.filter(e => e.status === 'COMPLETED');
+    const totalFareSum = completed.reduce((acc, e) => acc + e.totalFare, 0);
+    const totalSystemFee = completed.reduce((acc, e) => acc + e.systemFee, 0);
+
+    return {
+      summary: {
+        totalGrossVolume: totalFareSum,
+        totalDriverEarnings: totalFareSum,
+        totalPlatformFeesCollected: totalSystemFee,
+        commissionModel: 'ZERO_COMMISSION_GP0'
+      },
+      ledgerEntries: entries
+    };
+  }
+
   async getAiSummary() {
     const stats = await this.getDashboardStats();
     const summary = await this.aiService.summarizeOperations({
