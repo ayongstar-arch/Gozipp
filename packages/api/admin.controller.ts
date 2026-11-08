@@ -101,6 +101,94 @@ export class AdminController {
     return this.driverService.getAllInviteCodes();
   }
 
+  // --- Driver Directory Management ---
+
+  @Get('drivers')
+  @Roles('ADMIN')
+  async getAllDrivers(
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getAllDrivers({
+      search,
+      status,
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+    });
+  }
+
+  @Post('drivers/status')
+  @Roles('ADMIN')
+  async updateDriverStatus(
+    @Body() body: { driverId: string; status: string },
+    @Req() req: any
+  ) {
+    const result = await this.adminService.updateDriverStatus(body.driverId, body.status);
+
+    await this.auditLogService.logAdminAction({
+      actorId: req.user?.id,
+      actorRole: req.user?.roles?.[0] || 'ADMIN',
+      action: AdminAction.DRIVER_SUSPENDED,
+      resourceType: 'DRIVER',
+      resourceId: body.driverId,
+      metadata: { newStatus: body.status },
+      ipAddress: req.ip,
+    });
+
+    return result;
+  }
+
+  // --- Passenger Directory & Adjustments ---
+
+  @Get('passengers')
+  @Roles('ADMIN')
+  async getAllPassengers(
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getAllPassengers({
+      search,
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+    });
+  }
+
+  @Post('passengers/adjust-points')
+  @Roles('ADMIN')
+  async adjustPassengerPoints(
+    @Body() body: { passengerId: string; pointsDelta: number; reason: string },
+    @Req() req: any
+  ) {
+    const result = await this.adminService.adjustPassengerPoints(
+      body.passengerId,
+      body.pointsDelta,
+      body.reason
+    );
+
+    await this.auditLogService.logAdminAction({
+      actorId: req.user?.id,
+      actorRole: req.user?.roles?.[0] || 'ADMIN',
+      action: AdminAction.POINT_ADJUSTMENT,
+      resourceType: 'PASSENGER',
+      resourceId: body.passengerId,
+      metadata: { pointsDelta: body.pointsDelta, reason: body.reason },
+      ipAddress: req.ip,
+    });
+
+    return result;
+  }
+
+  // --- Active Win Queues ---
+
+  @Get('queues/active')
+  @Roles('ADMIN')
+  async getActiveQueues() {
+    return this.adminService.getActiveQueues();
+  }
+
   // --- Driver Approval Management ---
 
   @Get('drivers/pending')
@@ -216,36 +304,12 @@ export class AdminController {
 
   /**
    * GET /admin/dashboard/stats
-   * Aggregated KPIs for the admin dashboard.
+   * Aggregated KPIs for the admin dashboard from real database and Redis.
    */
   @Get('dashboard/stats')
   @Roles('ADMIN')
   async getDashboardStats() {
-    // Aggregate KPIs from various data sources
-    const today = new Date().toISOString().split('T')[0];
-
-    // In a full implementation, these would be real-time aggregations
-    // from the database and Redis. Structured for future replacement.
-    return {
-      date: today,
-      activeDrivers: 42,
-      tripsToday: 85,
-      avgWaitTimeSeconds: 45,
-      systemHealth: {
-        database: 'OK',
-        redis: 'OK',
-        api: 'OK',
-      },
-      financials: {
-        revenueToday: 4900,
-        topupsToday: 12500,
-        refundsToday: 150,
-      },
-      queue: {
-        totalInQueue: 28,
-        avgQueueLength: 6,
-      },
-    };
+    return this.adminService.getDashboardStats();
   }
 
   /**

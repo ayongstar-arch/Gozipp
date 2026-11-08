@@ -5,11 +5,11 @@ import { STATION_ZONES, FAIRNESS_WEIGHTS } from '../constants';
 import { calculateFairnessScore } from '../services/scheduler';
 
 interface AdminQueueDashboardProps {
-  drivers: Driver[];
-  onOverrideQueue: (driverId: string, reason: string) => void;
+  drivers?: Driver[];
+  onOverrideQueue?: (driverId: string, reason: string) => void;
 }
 
-const AdminQueueDashboard: React.FC<AdminQueueDashboardProps> = ({ drivers, onOverrideQueue }) => {
+const AdminQueueDashboard: React.FC<AdminQueueDashboardProps> = ({ drivers = [], onOverrideQueue = () => {} }) => {
   const [selectedWin, setSelectedWin] = useState('WIN-CENTRAL-01');
   
   // Override Modal State

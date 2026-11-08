@@ -6,6 +6,9 @@ import AdminHeader from './AdminHeader';
 import OperationsDashboard from './OperationsDashboard';
 import AuditLogViewer from './AuditLogViewer';
 import AdminRateDashboard from '@/components/AdminRateDashboard';
+import AdminReviewDashboard from '@/components/AdminReviewDashboard';
+import AdminQueueDashboard from '@/components/AdminQueueDashboard';
+import AdminMarketingDashboard from '@/components/AdminMarketingDashboard';
 import ReferralManagement from './ReferralManagement';
 import { useAdminStore } from '@/stores/adminStore';
 
@@ -30,7 +33,7 @@ export default function AdminShell() {
         return <OperationsDashboard />;
 
       case 'drivers':
-        return <AdminRateDashboard />;
+        return <AdminReviewDashboard />;
 
       case 'finance':
         return <AdminRateDashboard />;
@@ -42,31 +45,16 @@ export default function AdminShell() {
         return <AuditLogViewer />;
 
       case 'queue':
-        return (
-          <PlaceholderView
-            title="ตรวจสอบคิววินมอเตอร์ไซค์ (Queue Monitor)"
-            subtitle="ระบบตรวจสอบคิววินและลำดับการเรียกจะเชื่อมต่ออัตโนมัติเมื่อมีคนขับออนไลน์ในพื้นที่"
-          />
-        );
+        return <AdminQueueDashboard />;
 
       case 'campaigns':
-        return (
-          <PlaceholderView
-            title="แคมเปญและโปรโมชัน (Campaigns)"
-            subtitle="ระบบจัดการแคมเปญส่งเสริมการตลาดและโค้ดส่วนลด"
-          />
-        );
+        return <AdminMarketingDashboard />;
 
       case 'referrals':
         return <ReferralManagement />;
 
       case 'settings':
-        return (
-          <PlaceholderView
-            title="ตั้งค่าระบบส่วนกลาง (System Settings)"
-            subtitle="ศูนย์ควบคุมการตั้งค่าระบบ ความปลอดภัย และนโยบายแพลตฟอร์ม"
-          />
-        );
+        return <AdminRateDashboard />;
 
       default:
         return <OperationsDashboard />;
