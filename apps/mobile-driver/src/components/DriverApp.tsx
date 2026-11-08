@@ -104,6 +104,27 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     // Score Info Modal
     const [showScoreInfo, setShowScoreInfo] = useState(false);
 
+    // Real Queue Status State
+    const [queueData, setQueueData] = useState<{
+        status: string;
+        winId: string | null;
+        winName: string;
+        position: number | null;
+        totalDrivers: number;
+        score: number;
+    }>({
+        status: 'ROAMING',
+        winId: null,
+        winName: 'กำลังเชื่อมต่อคิว...',
+        position: null,
+        totalDrivers: 1,
+        score: 0,
+    });
+
+    // Real Driver Trips History State
+    const [driverTrips, setDriverTrips] = useState<any[]>([]);
+    const [isLoadingTrips, setIsLoadingTrips] = useState(false);
+
     // Auto-detect returning driver with saved phone and PIN
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -127,6 +148,63 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
     const isOnline = driverData?.status !== undefined;
     const isBusy = driverData?.status === 'MATCHED' || driverData?.status === 'EN_ROUTE';
+
+    // Poll real queue status periodically when online
+    useEffect(() => {
+        if (!isOnline || authStep !== 'DASHBOARD') return;
+        const driverId = driverData?.id || useAuthStore.getState().user?.id || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_driver_id') : null);
+        if (!driverId) return;
+
+        const fetchQueue = async () => {
+            try {
+                const token = useAuthStore.getState().token || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_access_token') : null);
+                const res = await fetch(`${API_BASE_URL}/api/v1/driver/queue-status?driverId=${driverId}`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setQueueData({
+                        status: data.status || 'ROAMING',
+                        winId: data.winId || null,
+                        winName: data.winName || regForm.winName || 'วินประจำ',
+                        position: data.position !== null ? data.position : 1,
+                        totalDrivers: data.totalDrivers || 1,
+                        score: Number(data.score) || 0,
+                    });
+                }
+            } catch (err) {
+                console.warn('Queue status poll error:', err);
+            }
+        };
+
+        fetchQueue();
+        const interval = setInterval(fetchQueue, 5000);
+        return () => clearInterval(interval);
+    }, [isOnline, authStep, driverData?.id]);
+
+    // Fetch real driver trips when Performance view is opened
+    useEffect(() => {
+        if (!showPerformance) return;
+        const fetchTrips = async () => {
+            setIsLoadingTrips(true);
+            try {
+                const token = useAuthStore.getState().token || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_access_token') : null);
+                if (!token) return;
+                const res = await fetch(`${API_BASE_URL}/api/v1/driver/trips?page=1&limit=10`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setDriverTrips(data.trips || []);
+                }
+            } catch (e) {
+                console.warn('Failed to load driver trips:', e);
+            } finally {
+                setIsLoadingTrips(false);
+            }
+        };
+        fetchTrips();
+    }, [showPerformance]);
 
     // --- LOGIC: STATION SEARCH & CREATE ---
     const filteredStations = useMemo(() => {
@@ -665,28 +743,61 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     // Load active driver profile from database on mount if user exists
     useEffect(() => {
         const currentUser = useAuthStore.getState().user;
-        if (currentUser && authStep === 'DASHBOARD') {
+        const driverId = currentUser?.id || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_driver_id') : null);
+        if (authStep === 'DASHBOARD' && driverId) {
             const loadDriverProfile = async () => {
-                const { data: dbDriver } = await supabase
-                    .from('drivers')
-                    .select('*')
-                    .eq('id', currentUser.id)
-                    .maybeSingle();
+                let profile: any = null;
+                const token = useAuthStore.getState().token || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_access_token') : null);
+                
+                try {
+                    if (token) {
+                        const res = await fetch(`${API_BASE_URL}/api/v1/driver/profile`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        if (res.ok) profile = await res.json();
+                    }
+                    if (!profile && driverId) {
+                        const res = await fetch(`${API_BASE_URL}/api/v1/driver/onboarding/status?driverId=${driverId}`);
+                        if (res.ok) profile = await res.json();
+                    }
+                } catch (apiErr) {
+                    console.warn('API driver profile fetch error, trying Supabase fallback:', apiErr);
+                }
 
-                if (dbDriver) {
-                    setDriverData({
-                        id: dbDriver.id,
-                        status: dbDriver.current_status === 'OFFLINE' ? undefined : dbDriver.current_status,
+                if (!profile) {
+                    try {
+                        const { data: dbDriver } = await supabase
+                            .from('drivers')
+                            .select('*')
+                            .eq('id', driverId)
+                            .maybeSingle();
+                        if (dbDriver) profile = dbDriver;
+                    } catch {}
+                }
+
+                if (profile) {
+                    setDriverData(prev => ({
+                        ...(prev || {}),
+                        id: profile.id,
+                        name: profile.name || prev?.name || 'พาร์ทเนอร์คนขับ',
+                        plate: profile.plate || prev?.plate || '',
+                        photoUrl: profile.profile_pic_url || profile.profilePicUrl,
+                        status: (profile.current_status || profile.currentStatus) === 'OFFLINE' ? undefined : (profile.current_status || profile.currentStatus || 'IDLE'),
                         location: MAP_CENTER,
-                        earnings: Number(dbDriver.total_earnings || 0),
-                        totalTrips: dbDriver.total_trips || 0,
-                        rating: Number(dbDriver.rating || 5),
+                        earnings: Number(profile.total_earnings || profile.totalEarnings || 0),
+                        totalTrips: Number(profile.total_trips || profile.totalTrips || 0),
+                        rating: Number(profile.rating || 5),
                         lastTripTime: Date.now(),
                         joinedQueueTime: Date.now(),
-                    });
+                    }));
                     
-                    if (dbDriver.station_id) {
-                        useRideStore.getState().setStationId(dbDriver.station_id);
+                    const stationId = profile.station_id || profile.stationId;
+                    if (stationId) {
+                        useRideStore.getState().setStationId(stationId);
+                    }
+                    const stationName = profile.stationName || profile.winName;
+                    if (stationName) {
+                        setRegForm(prev => ({ ...prev, winName: stationName }));
                     }
                 }
             };
@@ -764,16 +875,85 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             setAuthError(data?.message || 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์');
         };
 
+        const handleStateRestored = (data: any) => {
+            if (data?.type === 'ACTIVE_TRIP' && data.trip) {
+                const trip = data.trip;
+                const job: DriverJob = {
+                    tripId: trip.id || trip.tripId,
+                    passengerId: trip.passengerId || trip.passenger_id || '',
+                    passengerName: trip.passengerName || 'ผู้โดยสาร',
+                    pickup: {
+                        lat: Number(trip.pickup?.lat || trip.pickup_lat),
+                        lng: Number(trip.pickup?.lng || trip.pickup_lng),
+                        address: trip.pickup?.address || trip.pickup_address || 'จุดรับ (ดูหมุดบนแผนที่)',
+                    },
+                    destination: {
+                        lat: Number(trip.destination?.lat || trip.dest_lat),
+                        lng: Number(trip.destination?.lng || trip.dest_lng),
+                        address: trip.destination?.address || trip.dest_address || 'จุดหมาย (ดูหมุดบนแผนที่)',
+                    },
+                    distanceKm: Number(trip.distanceKm || trip.distance_km) || 0,
+                    fare: Number(trip.fare) || 0,
+                    message: trip.message,
+                };
+                setActiveJob(job);
+                setMatchedRider({
+                    id: job.tripId,
+                    location: { lat: job.pickup.lat, lng: job.pickup.lng },
+                    destination: { lat: job.destination.lat, lng: job.destination.lng },
+                    requestTime: Date.now(),
+                    waitTime: 0,
+                    status: 'MATCHED',
+                    priorityScore: 0,
+                    message: job.message,
+                } as Rider);
+                setCurrentTripId(job.tripId);
+                setHasNewJob(false);
+                if (trip.status === 'DRIVER_ARRIVED' || trip.status === 'IN_PROGRESS') {
+                    setTripPhase('TO_DEST');
+                } else {
+                    setTripPhase('TO_PICKUP');
+                }
+                setDriverData(prev => ({
+                    ...(prev || {
+                        location: MAP_CENTER,
+                        earnings: 0,
+                        totalTrips: 0,
+                        rating: 5,
+                        lastTripTime: Date.now(),
+                        joinedQueueTime: Date.now(),
+                    }),
+                    id: prev?.id || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_driver_id') || 'driver' : 'driver'),
+                    status: 'MATCHED',
+                } as Driver));
+            }
+        };
+
+        const handleTripStatusUpdate = (data: any) => {
+            if (data?.status === 'DRIVER_ARRIVED' || data?.status === 'IN_PROGRESS') {
+                setTripPhase('TO_DEST');
+            } else if (data?.status === 'COMPLETED' || data?.status === 'CANCELLED') {
+                setMatchedRider(undefined);
+                setActiveJob(null);
+                setHasNewJob(false);
+                setDriverData(prev => prev ? { ...prev, status: 'IDLE' } : undefined);
+            }
+        };
+
         socket.on('RIDE_OFFER', handleRideOffer);
         socket.on('RIDE_CANCEL', handleRideCancel);
         socket.on('TRIP_COMPLETE', handleTripComplete);
         socket.on('TRIP_ERROR', handleTripError);
+        socket.on('STATE_RESTORED', handleStateRestored);
+        socket.on('TRIP_STATUS_UPDATE', handleTripStatusUpdate);
 
         return () => {
             socket.off('RIDE_OFFER', handleRideOffer);
             socket.off('RIDE_CANCEL', handleRideCancel);
             socket.off('TRIP_COMPLETE', handleTripComplete);
             socket.off('TRIP_ERROR', handleTripError);
+            socket.off('STATE_RESTORED', handleStateRestored);
+            socket.off('TRIP_STATUS_UPDATE', handleTripStatusUpdate);
         };
     }, []);
 
@@ -819,12 +999,15 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             location: MAP_CENTER
         });
         setDriverData(prev => ({
-            id: prev?.id,
+            id: prev?.id || (typeof window !== 'undefined' ? localStorage.getItem('gozipp_driver_id') || 'driver' : 'driver'),
+            name: prev?.name || regForm.name || 'พาร์ทเนอร์คนขับ',
+            plate: prev?.plate || regForm.plate || '',
+            photoUrl: prev?.photoUrl || regForm.profilePic || undefined,
             status: 'IDLE',
             location: MAP_CENTER,
-            earnings: prev?.earnings || 120,
-            totalTrips: prev?.totalTrips || 5,
-            rating: prev?.rating || 4.8,
+            earnings: prev?.earnings ?? 0,
+            totalTrips: prev?.totalTrips ?? 0,
+            rating: prev?.rating ?? 5.0,
             lastTripTime: Date.now(),
             joinedQueueTime: Date.now(),
         }));
@@ -2113,17 +2296,21 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                 <div className="bg-slate-900 border-b border-slate-800 p-6 shadow-xl z-20">
                     <div className="flex justify-between items-center mb-6">
                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-slate-800 rounded-full border-2 border-emerald-500 overflow-hidden relative">
-                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" className="w-full h-full" />
+                            <div className="w-12 h-12 bg-slate-800 rounded-full border-2 border-emerald-500 overflow-hidden relative flex items-center justify-center font-bold text-white text-lg">
+                                {driverData?.photoUrl || regForm.profilePic ? (
+                                    <img src={driverData?.photoUrl || regForm.profilePic || ''} className="w-full h-full object-cover" />
+                                ) : (
+                                    <span>{(driverData?.name || regForm.name || 'G')[0]}</span>
+                                )}
                                 <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-900"></div>
                             </div>
                             <div>
-                                <div className="font-bold text-white text-lg">สมชาย ใจดี</div>
+                                <div className="font-bold text-white text-lg">{driverData?.name || regForm.name || 'พาร์ทเนอร์คนขับ'}</div>
                                 <div className="flex items-center gap-1 text-xs text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded-full w-fit">
                                     <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span> ออนไลน์
                                 </div>
                                 <div className="mt-1 text-[9px] font-bold text-emerald-500/80 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md w-fit">
-                                    ค่า GP 0% • รับเงินเต็ม 100%
+                                    {driverData?.plate ? `${driverData.plate} • ` : ''}ค่า GP 0% รับเงินเต็ม
                                 </div>
                             </div>
                         </div>
@@ -2141,8 +2328,8 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                             </div>
                         </div>
                         <div className="bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50 flex flex-col items-center">
-                            <div className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">งานวันนี้</div>
-                            <div className="text-2xl font-bold text-white">5 <span className="text-xs font-normal text-slate-500">เที่ยว</span></div>
+                            <div className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">งานสะสม</div>
+                            <div className="text-2xl font-bold text-white">{driverData?.totalTrips ?? 0} <span className="text-xs font-normal text-slate-500">เที่ยว</span></div>
                         </div>
                     </div>
                 </div>
@@ -2171,16 +2358,24 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                         <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
                         <div className="flex justify-between items-center mb-3 border-b border-slate-800 pb-3">
                             <span className="text-xs font-bold text-slate-400 uppercase">ตำแหน่งคิว (Queue)</span>
-                            <span className="text-emerald-400 font-bold bg-emerald-900/20 px-2 py-1 rounded text-xs">{regForm.winName || 'วินตลาดกลาง'}</span>
+                            <span className="text-emerald-400 font-bold bg-emerald-900/20 px-2 py-1 rounded text-xs">{queueData.winName || regForm.winName || 'วินประจำ'}</span>
                         </div>
                         <div className="flex justify-between items-end relative">
                             <div className="text-left">
-                                <div className="text-3xl font-bold text-white">#3</div>
-                                <div className="text-[10px] text-slate-500">จากทั้งหมด 8 คัน</div>
+                                <div className="text-3xl font-bold text-white">{queueData.status === 'ROAMING' ? 'อิสระ' : `#${queueData.position ?? 1}`}</div>
+                                <div className="text-[10px] text-slate-500">{queueData.status === 'ROAMING' ? 'รับงานอิสระ' : `จากทั้งหมด ${queueData.totalDrivers || 1} คัน`}</div>
                             </div>
                             <div className="text-right">
                                 <div className="text-xs text-slate-400">เวลารอสะสม</div>
-                                <div className="font-mono text-emerald-400">12:45 <span className="text-[10px] text-slate-600">นาที</span></div>
+                                <div className="font-mono text-emerald-400">
+                                    {(() => {
+                                        const now = Date.now();
+                                        const elapsedSec = Math.max(0, Math.floor((now - (driverData?.joinedQueueTime || now)) / 1000));
+                                        const mins = Math.floor(elapsedSec / 60);
+                                        const secs = elapsedSec % 60;
+                                        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+                                    })()} <span className="text-[10px] text-slate-600">นาที</span>
+                                </div>
                             </div>
 
                             {/* INFO BUTTON */}
@@ -2235,24 +2430,30 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             )}
 
             <div className="absolute top-6 right-6">
-                <div className="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 overflow-hidden shadow-lg">
-                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" className="w-full h-full opacity-60 grayscale" />
+                <div className="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 overflow-hidden shadow-lg flex items-center justify-center font-bold text-white text-base">
+                    {driverData?.photoUrl || regForm.profilePic ? (
+                        <img src={driverData?.photoUrl || regForm.profilePic || ''} className="w-full h-full object-cover" />
+                    ) : (
+                        <span>{(driverData?.name || regForm.name || 'G')[0]}</span>
+                    )}
                 </div>
             </div>
 
-            <div className="w-48 h-48 bg-slate-900 rounded-full flex items-center justify-center mb-10 relative shadow-inner border border-slate-800">
+            <div className="w-48 h-48 bg-slate-900 rounded-full flex items-center justify-center mb-8 relative shadow-inner border border-slate-800">
                 <div className="text-7xl opacity-30 grayscale">😴</div>
                 <div className="absolute bottom-2 right-6 w-8 h-8 bg-red-500 border-4 border-slate-950 rounded-full shadow-lg"></div>
             </div>
 
-            <h2 className="text-3xl font-bold mb-2">สถานะ: พักผ่อน</h2>
-            <p className="text-slate-400 text-sm mb-4 max-w-xs leading-relaxed">
-                คุณกำลังออฟไลน์อยู่<br />กดปุ่มด้านล่างเพื่อเริ่มรับงานและเข้าคิว
-            </p>
+            <div className="text-2xl font-bold text-white mb-1">
+                {driverData?.name || regForm.name || 'พาร์ทเนอร์คนขับ'}
+            </div>
+            <div className="text-xs text-slate-400 mb-4">
+                ทะเบียน: {driverData?.plate || regForm.plate || 'ยังไม่ระบุ'} • {queueData.winName || regForm.winName || 'วินประจำ'}
+            </div>
 
             <div className="flex items-center gap-2 mb-8 bg-emerald-950/30 px-4 py-2 rounded-2xl border border-emerald-500/20">
                 <span className="text-emerald-500 text-lg">💰</span>
-                <span className="text-xs font-bold text-emerald-400 tracking-wide uppercase">รายได้ทั้งหมดเป็นของคุณ (No GP)</span>
+                <span className="text-xs font-bold text-emerald-400 tracking-wide uppercase">รายได้ทั้งหมดเป็นของคุณ (GP 0%)</span>
             </div>
 
             <button
@@ -2301,8 +2502,8 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                 className="mt-8 grid grid-cols-2 gap-4 w-full text-center cursor-pointer group"
             >
                 <div className="bg-slate-900/50 hover:bg-slate-900 p-4 rounded-2xl border border-slate-800 transition-colors">
-                    <div className="font-bold text-2xl text-emerald-400">120 <span className="text-xs text-slate-500">฿</span></div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">รายได้วันนี้</div>
+                    <div className="font-bold text-2xl text-emerald-400">฿{Number(driverData?.earnings || 0).toLocaleString()}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">รายได้สะสม (100%)</div>
                 </div>
                 <div className="bg-slate-900/50 hover:bg-slate-900 p-4 rounded-2xl border border-slate-800 transition-colors">
                     <div className="font-bold text-2xl text-slate-300 flex items-center justify-center gap-1">
@@ -2317,26 +2518,19 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                 <div className="absolute inset-0 z-[60] bg-slate-950 flex flex-col animate-in slide-in-from-right duration-300">
                     <div className="p-6 border-b border-slate-900 flex items-center justify-between">
                         <button onClick={() => setShowPerformance(false)} className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-slate-400">←</button>
-                        <h2 className="text-xl font-bold">ผลการทำงาน</h2>
+                        <h2 className="text-xl font-bold">ผลการทำงาน & รายได้</h2>
                         <div className="w-10"></div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                        {/* Weekly Earnings Chart (Mock) */}
+                        {/* Real Earnings Card */}
                         <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-                            <div className="text-sm text-slate-400 mb-4">รายได้สัปดาห์นี้</div>
-                            <div className="flex items-end gap-2 h-32 mb-4">
-                                {[30, 60, 45, 90, 20, 100, 40].map((h, i) => (
-                                    <div key={i} className="flex-1 bg-emerald-500/20 rounded-t-lg relative group">
-                                        <div 
-                                            className="absolute bottom-0 w-full bg-emerald-500 rounded-t-lg transition-all" 
-                                            style={{ height: `${h}%` }}
-                                        ></div>
-                                    </div>
-                                ))}
+                            <div className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-2">รายได้รวมสะสม (ไม่มีหักค่า GP)</div>
+                            <div className="text-4xl font-black text-emerald-400 mb-2">
+                                ฿{Number(driverData?.earnings || 0).toLocaleString()}
                             </div>
-                            <div className="flex justify-between text-[10px] text-slate-600 font-bold uppercase tracking-widest">
-                                <span>จ.</span><span>อ.</span><span>พ.</span><span>พฤ.</span><span>ศ.</span><span>ส.</span><span>อา.</span>
+                            <div className="text-xs text-slate-400">
+                                วิ่งสะสมทั้งหมด <span className="text-white font-bold">{driverData?.totalTrips ?? 0}</span> เที่ยวงาน
                             </div>
                         </div>
 
@@ -2344,33 +2538,48 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800">
                                 <div className="text-[10px] text-slate-500 uppercase mb-1">งานที่สำเร็จ</div>
-                                <div className="text-2xl font-bold text-white">42</div>
+                                <div className="text-2xl font-bold text-white">{driverData?.totalTrips ?? 0} เที่ยว</div>
                             </div>
                             <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800">
-                                <div className="text-[10px] text-slate-500 uppercase mb-1">อัตราการรับงาน</div>
-                                <div className="text-2xl font-bold text-blue-400">98%</div>
+                                <div className="text-[10px] text-slate-500 uppercase mb-1">คะแนนรีวิว</div>
+                                <div className="text-2xl font-bold text-yellow-400">{driverData?.rating?.toFixed(1) || '5.0'} ⭐</div>
                             </div>
                         </div>
 
                         {/* Recent History List */}
                         <div className="space-y-4">
-                            <h3 className="text-sm font-bold text-slate-400 px-1">ประวัติล่าสุด</h3>
-                            {[
-                                { t: '12:30', p: '20', l: 'สุขุมวิท 21' },
-                                { t: '11:15', p: '35', l: 'อโศกมนตรี' },
-                                { t: '09:45', p: '25', l: 'พญาไท' }
-                            ].map((job, i) => (
-                                <div key={i} className="bg-slate-900/50 p-4 rounded-2xl border border-slate-900 flex justify-between items-center">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs">🛵</div>
-                                        <div className="text-left">
-                                            <div className="text-sm font-bold">{job.l}</div>
-                                            <div className="text-[10px] text-slate-500">{job.t}</div>
+                            <div className="flex justify-between items-center px-1">
+                                <h3 className="text-sm font-bold text-slate-400">ประวัติการวิ่งงานล่าสุด</h3>
+                                <span className="text-[10px] text-slate-500 font-mono">10 รายการล่าสุด</span>
+                            </div>
+
+                            {isLoadingTrips ? (
+                                <div className="p-8 text-center text-slate-500 text-xs">กำลังโหลดประวัติ...</div>
+                            ) : driverTrips.length === 0 ? (
+                                <div className="p-8 bg-slate-900/40 rounded-2xl border border-slate-900 text-center text-slate-500 text-xs">
+                                    🛵 ยังไม่มีประวัติการวิ่งงาน เริ่มรับงานเพื่อสร้างรายได้
+                                </div>
+                            ) : (
+                                driverTrips.map((job, i) => (
+                                    <div key={job.id || i} className="bg-slate-900/50 p-4 rounded-2xl border border-slate-900 flex justify-between items-center">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs">🛵</div>
+                                            <div className="text-left">
+                                                <div className="text-sm font-bold text-white truncate max-w-[180px]">
+                                                    {job.dest_address || job.pickup_address || 'ทริปการเดินทาง'}
+                                                </div>
+                                                <div className="text-[10px] text-slate-500">
+                                                    {job.completed_at ? new Date(job.completed_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : 'เมื่อสักครู่'} • {job.passenger_name || 'ผู้โดยสาร'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-emerald-400 font-bold">+{job.fare} ฿</div>
+                                            <div className="text-[9px] text-emerald-500/80 font-bold uppercase">{job.status}</div>
                                         </div>
                                     </div>
-                                    <div className="text-emerald-400 font-bold">+{job.p} ฿</div>
-                                </div>
-                            ))}
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>

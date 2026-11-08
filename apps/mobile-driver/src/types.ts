@@ -7,6 +7,10 @@ export interface Location {
 
 export interface Driver {
   id: string;
+  name?: string;
+  plate?: string;
+  nickname?: string;
+  photoUrl?: string;
   location: Location;
   status: EntityStatus;
   earnings: number;

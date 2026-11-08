@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, UseGuards, GoneException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Req, UseGuards, GoneException } from '@nestjs/common';
 import { DriverService } from './driver.service';
 import { DriverLoginDto, DriverOnlineDto, TripActionDto, DriverRegisterDto, UpdateDriverProfileDto, UploadDriverDocumentDto, SaveDriverPreferencesDto, SubmitTrainingDto } from './dtos';
 import { AuthGuard, RolesGuard } from './common/guards';
@@ -20,6 +20,30 @@ export class DriverController {
     return this.driverService.register(body);
   }
 
+  @Get('profile')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async getProfile(@Req() req: any) {
+    return this.driverService.getProfile(req.user.sub);
+  }
+
+  @Get('trips')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async getMyTrips(
+    @Req() req: any,
+    @Query('page') page = '1',
+    @Query('limit') limit = '10',
+    @Query('status') status?: string,
+  ) {
+    return this.driverService.getDriverTrips(
+      req.user.sub,
+      parseInt(page) || 1,
+      parseInt(limit) || 10,
+      status,
+    );
+  }
+
   @Post('online')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('DRIVER')
@@ -30,8 +54,9 @@ export class DriverController {
   @Get('queue-status')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('DRIVER')
-  async getQueueStatus(@Query('driverId') driverId: string) {
-    return this.driverService.getQueueStatus(driverId);
+  async getQueueStatus(@Req() req: any, @Query('driverId') driverId?: string) {
+    const targetId = driverId || req.user?.sub;
+    return this.driverService.getQueueStatus(targetId);
   }
 
   // --- ONBOARDING ENDPOINTS ---

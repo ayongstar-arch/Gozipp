@@ -226,13 +226,34 @@ export class DriverService implements OnModuleInit {
   }
 
   async getQueueStatus(driverId: string) {
+    if (!driverId) return { status: 'ROAMING', message: 'No driverId' };
     const winId = await this.redis.hget(`driver:${driverId}:stats`, 'currentWin');
-    if (!winId) return { status: 'ROAMING' };
+    if (!winId) {
+      const driver = await this.driverRepo.findOne({ where: { id: driverId } });
+      const station = driver?.station_id ? this.stations.get(driver.station_id) : null;
+      return {
+        status: 'ROAMING',
+        winId: driver?.station_id || null,
+        winName: station?.name || 'รับงานอิสระ (Roaming)',
+        position: null,
+        totalDrivers: 0,
+        score: 0,
+      };
+    }
 
     const rank = await this.redis.zrevrank(`win:${winId}:queue`, driverId);
     const score = await this.redis.zscore(`win:${winId}:queue`, driverId);
+    const totalDrivers = await this.redis.zcard(`win:${winId}:queue`);
+    const station = this.stations.get(winId);
 
-    return { status: 'QUEUED', winId, position: rank !== null ? rank + 1 : null, score };
+    return {
+      status: 'QUEUED',
+      winId,
+      winName: station?.name || winId,
+      position: rank !== null ? rank + 1 : 1,
+      totalDrivers: Math.max(totalDrivers || 1, 1),
+      score: score ? parseFloat(score) : 0,
+    };
   }
 
   async acceptTrip(dto: TripActionDto) {
@@ -429,6 +450,11 @@ export class DriverService implements OnModuleInit {
     await this.driverRepo.update(dto.driverId, { current_status: 'IDLE' });
     await this.driverRepo.increment({ id: dto.driverId }, 'total_trips', 1);
 
+    const tripFare = Number(trip.fare) || 0;
+    if (tripFare > 0) {
+      await this.driverRepo.increment({ id: dto.driverId }, 'total_earnings', tripFare);
+    }
+
     // Passenger Referral Logic (Award points on first trip)
     const passenger = await this.passengerRepo.findOne({ where: { id: trip.passenger_id } });
     if (passenger) {
@@ -448,13 +474,109 @@ export class DriverService implements OnModuleInit {
     return { success: true };
   }
 
-  async getActiveTripForDriver(driverId: string): Promise<TripEntity | null> {
-    return this.tripRepo.findOne({
+  async getProfile(driverId: string) {
+    const driver = await this.driverRepo.findOne({ where: { id: driverId } });
+    if (!driver) throw new NotFoundException('Driver not found');
+
+    let stationName = driver.station_id || '';
+    if (driver.station_id) {
+      const station = this.stations.get(driver.station_id);
+      if (station) stationName = station.name;
+    }
+
+    return {
+      id: driver.id,
+      phone: driver.phone,
+      name: driver.name,
+      nickname: driver.nickname,
+      plate: driver.plate,
+      lineId: driver.line_id,
+      stationId: driver.station_id,
+      stationName,
+      approvalStatus: driver.approval_status,
+      currentStatus: driver.current_status,
+      rating: Number(driver.rating) || 5.0,
+      totalTrips: driver.total_trips || 0,
+      totalEarnings: Number(driver.total_earnings) || 0,
+      profilePicUrl: driver.profile_pic_url,
+      hasPin: Boolean(driver.pin_hash),
+    };
+  }
+
+  async getDriverTrips(driverId: string, page = 1, limit = 10, statusFilter?: string) {
+    const where: any = { driver_id: driverId };
+    if (statusFilter && statusFilter !== 'ALL') {
+      where.status = statusFilter;
+    }
+
+    const [trips, total] = await this.tripRepo.findAndCount({
+      where,
+      order: { requested_at: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    const passengerIds = Array.from(new Set(trips.map(t => t.passenger_id).filter(Boolean)));
+    const passengers = passengerIds.length > 0
+      ? await this.passengerRepo.find({ where: { id: In(passengerIds) } })
+      : [];
+    const passengerMap = new Map(passengers.map(p => [p.id, p.name]));
+
+    return {
+      trips: trips.map(t => ({
+        id: t.id,
+        status: t.status,
+        fare: Number(t.fare) || 0,
+        credits_used: Number(t.credits_used) || 0,
+        distance_km: Number(t.distance_km) || 0,
+        pickup_address: t.pickup_address,
+        dest_address: t.dest_address,
+        passenger_name: passengerMap.get(t.passenger_id) || 'ผู้โดยสาร',
+        requested_at: t.requested_at,
+        completed_at: t.completed_at,
+        passenger_rating: t.passenger_rating,
+        driver_rating: t.driver_rating,
+      })),
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    };
+  }
+
+  async getActiveTripForDriver(driverId: string): Promise<any | null> {
+    const trip = await this.tripRepo.findOne({
       where: {
         driver_id: driverId,
-        status: In(['ACCEPTED', 'DRIVER_ARRIVED', 'IN_PROGRESS'])
-      }
+        status: In(['ACCEPTED', 'DRIVER_ARRIVED', 'IN_PROGRESS']),
+      },
     });
+    if (!trip) return null;
+
+    const passenger = await this.passengerRepo.findOne({ where: { id: trip.passenger_id } });
+
+    return {
+      id: trip.id,
+      tripId: trip.id,
+      status: trip.status,
+      passengerId: trip.passenger_id,
+      passengerName: passenger?.name || 'ผู้โดยสาร',
+      passengerPhone: passenger?.phone,
+      pickup: {
+        lat: Number(trip.pickup_lat),
+        lng: Number(trip.pickup_lng),
+        address: trip.pickup_address,
+      },
+      destination: {
+        lat: Number(trip.dest_lat),
+        lng: Number(trip.dest_lng),
+        address: trip.dest_address,
+      },
+      distanceKm: Number(trip.distance_km),
+      fare: Number(trip.fare),
+      requestedAt: trip.requested_at,
+      arrivedAt: trip.arrived_at,
+      startedAt: trip.started_at,
+    };
   }
 
   async getPublicDriver(driverId: string | null | undefined) {
