@@ -452,18 +452,69 @@ export class AdminService {
     };
   }
 
-  // --- Active Win Station Queues ---
+  // --- Active Win Station Queues & Geofence Management ---
 
-  async getActiveQueues() {
+  async getStations() {
     const defaultStations = [
-      { id: 'WIN-CENTRAL-01', name: 'วินเซ็นทรัลพลาซา (Central Plaza)', area: 'กรุงเทพฯ ชั้นใน' },
-      { id: 'WIN-MRT-SUTHISAN', name: 'วิน MRT สุทธิสาร ประตู 2', area: 'รัชดาภิเษก' },
-      { id: 'WIN-BTS-ARI', name: 'วิน BTS อารีย์ ฝั่งลาวิลล่า', area: 'พหลโยธิน' },
-      { id: 'WIN-BTS-SILOM', name: 'วิน BTS ศาลาแดง / สีลม', area: 'สีลม' },
+      { id: 'WIN-CENTRAL-01', name: 'วินเซ็นทรัลพลาซา (Central Plaza)', area: 'ปทุมวัน', lat: 13.7463, lng: 100.5348, radius_m: 120, isActive: true },
+      { id: 'WIN-MRT-SUTHISAN', name: 'วิน MRT สุทธิสาร ประตู 2', area: 'ห้วยขวาง', lat: 13.7898, lng: 100.5744, radius_m: 100, isActive: true },
+      { id: 'WIN-BTS-ARI', name: 'วิน BTS อารีย์ ฝั่งลาวิลล่า', area: 'พญาไท', lat: 13.7797, lng: 100.5448, radius_m: 100, isActive: true },
+      { id: 'WIN-BTS-SILOM', name: 'วิน BTS ศาลาแดง / สีลม', area: 'บางรัก', lat: 13.7285, lng: 100.5342, radius_m: 100, isActive: true },
     ];
 
+    try {
+      const raw = await this.redis.get('config:win_stations');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+
+    // Seed default stations into Redis
+    try {
+      await this.redis.set('config:win_stations', JSON.stringify(defaultStations));
+    } catch {}
+
+    return defaultStations;
+  }
+
+  async saveStation(dto: { id: string; name: string; area?: string; lat: number; lng: number; radius_m: number; isActive?: boolean }) {
+    const stations = await this.getStations();
+    const index = stations.findIndex((s: any) => s.id === dto.id);
+
+    const stationData = {
+      id: dto.id.trim().toUpperCase(),
+      name: dto.name.trim(),
+      area: dto.area || 'กรุงเทพมหานคร',
+      lat: Number(dto.lat),
+      lng: Number(dto.lng),
+      radius_m: Number(dto.radius_m) || 100,
+      isActive: dto.isActive !== undefined ? dto.isActive : true,
+      updatedAt: new Date().toISOString()
+    };
+
+    if (index >= 0) {
+      stations[index] = { ...stations[index], ...stationData };
+    } else {
+      stations.push(stationData);
+    }
+
+    await this.redis.set('config:win_stations', JSON.stringify(stations));
+    this.logger.log(`Saved station ${dto.id} with geofence radius ${dto.radius_m}m`);
+    return { success: true, message: `บันทึกข้อมูลวิน ${dto.name} สำเร็จ`, station: stationData };
+  }
+
+  async deleteStation(id: string) {
+    const stations = await this.getStations();
+    const filtered = stations.filter((s: any) => s.id !== id);
+    await this.redis.set('config:win_stations', JSON.stringify(filtered));
+    return { success: true, message: `ลบสถานีวิน ${id} สำเร็จ` };
+  }
+
+  async getActiveQueues() {
+    const stations = await this.getStations();
     const results = [];
-    for (const station of defaultStations) {
+    for (const station of stations) {
       let queueData: { driverId: string; score: number }[] = [];
       try {
         queueData = await this.getQueue(station.id);
@@ -496,6 +547,132 @@ export class AdminService {
     }
 
     return results;
+  }
+
+  // --- Live Fleet "God View" & Active Trip Operations ---
+
+  async getLiveFleet() {
+    const stations = await this.getStations();
+
+    // 1. Fetch active drivers
+    const drivers = await this.driverRepo.find({
+      order: { updated_at: 'DESC' },
+      take: 100
+    });
+
+    const enrichedDrivers = [];
+    for (const d of drivers) {
+      let lat = 13.7463;
+      let lng = 100.5348;
+      let hasLiveGps = false;
+
+      try {
+        const pos = await (this.redis as any).geopos('drivers:locations', d.id);
+        if (pos && pos[0] && pos[0][0] !== null) {
+          lng = parseFloat(pos[0][0]);
+          lat = parseFloat(pos[0][1]);
+          hasLiveGps = true;
+        }
+      } catch {}
+
+      // If no live redis pos, fallback to station coordinates with jitter
+      if (!hasLiveGps) {
+        const matchingStation = stations.find((s: any) => s.id === d.station_id) || stations[0];
+        if (matchingStation) {
+          const jitterLat = (Math.random() - 0.5) * 0.005;
+          const jitterLng = (Math.random() - 0.5) * 0.005;
+          lat = matchingStation.lat + jitterLat;
+          lng = matchingStation.lng + jitterLng;
+        }
+      }
+
+      enrichedDrivers.push({
+        id: d.id,
+        name: d.name,
+        phone: d.phone,
+        plate: d.plate,
+        nickname: d.nickname,
+        stationId: d.station_id || 'WIN-CENTRAL-01',
+        currentStatus: d.current_status,
+        approvalStatus: d.approval_status,
+        rating: Number(d.rating) || 5.0,
+        totalTrips: d.total_trips || 0,
+        lat,
+        lng,
+        hasLiveGps
+      });
+    }
+
+    // 2. Fetch ongoing active trips
+    const activeTrips = await this.tripRepo.find({
+      where: {
+        status: In(['SEARCHING', 'SCHEDULED', 'ACCEPTED', 'DRIVER_ARRIVED', 'IN_PROGRESS'])
+      },
+      order: { requested_at: 'DESC' }
+    });
+
+    return {
+      timestamp: new Date().toISOString(),
+      drivers: enrichedDrivers,
+      activeTrips: activeTrips.map(t => ({
+        id: t.id,
+        passengerId: t.passenger_id,
+        driverId: t.driver_id,
+        stationId: t.station_id,
+        pickupAddress: t.pickup_address,
+        destAddress: t.dest_address,
+        pickupLat: t.pickup_lat,
+        pickupLng: t.pickup_lng,
+        destLat: t.dest_lat,
+        destLng: t.dest_lng,
+        fare: Number(t.fare) || 2,
+        status: t.status,
+        requestedAt: t.requested_at,
+        acceptedAt: t.accepted_at,
+      })),
+      stations
+    };
+  }
+
+  async cancelTripByAdmin(tripId: string, reason: string) {
+    const trip = await this.tripRepo.findOne({ where: { id: tripId } });
+    if (!trip) throw new BadRequestException('ไม่พบข้อมูลการเดินทาง');
+
+    await this.tripRepo.update(tripId, { status: 'CANCELLED' });
+
+    if (trip.driver_id) {
+      await this.driverRepo.update(trip.driver_id, { current_status: 'IDLE' });
+    }
+
+    try {
+      await this.redis.del(`trip:${tripId}`);
+      await this.redis.del(`dispatch:${tripId}:lock`);
+    } catch {}
+
+    this.logger.log(`Trip ${tripId} cancelled by admin: ${reason}`);
+    return { success: true, message: `ยกเลิกการเดินทาง ${tripId} สำเร็จ` };
+  }
+
+  async completeTripByAdmin(tripId: string) {
+    const trip = await this.tripRepo.findOne({ where: { id: tripId } });
+    if (!trip) throw new BadRequestException('ไม่พบข้อมูลการเดินทาง');
+
+    await this.tripRepo.update(tripId, {
+      status: 'COMPLETED',
+      completed_at: new Date()
+    });
+
+    if (trip.driver_id) {
+      await this.driverRepo.update(trip.driver_id, { current_status: 'IDLE' });
+      await this.driverRepo.increment({ id: trip.driver_id }, 'total_trips', 1);
+    }
+
+    try {
+      await this.redis.del(`trip:${tripId}`);
+    } catch {}
+
+    this.logger.log(`Trip ${tripId} completed by admin`);
+    return { success: true, message: `บันทึกจบงาน ${tripId} สำเร็จ` };
   }
 
   async getAiSummary() {

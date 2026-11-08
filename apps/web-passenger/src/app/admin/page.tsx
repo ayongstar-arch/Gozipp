@@ -27,7 +27,15 @@ import {
   ArrowUpDown,
   Filter,
   Eye,
-  AlertCircle
+  AlertCircle,
+  MapPin,
+  Navigation,
+  Compass,
+  Radio,
+  Map as MapIcon,
+  CircleDot,
+  Trash2,
+  Edit2
 } from 'lucide-react';
 
 interface PendingDriver {
@@ -91,6 +99,56 @@ interface ActiveQueueItem {
   }[];
 }
 
+interface StationItem {
+  id: string;
+  name: string;
+  area?: string;
+  lat: number;
+  lng: number;
+  radius_m: number;
+  isActive?: boolean;
+}
+
+interface LiveFleetDriver {
+  id: string;
+  name: string;
+  phone: string;
+  plate: string;
+  nickname?: string;
+  stationId: string;
+  currentStatus: string;
+  approvalStatus: string;
+  rating: number;
+  totalTrips: number;
+  lat: number;
+  lng: number;
+  hasLiveGps: boolean;
+}
+
+interface LiveFleetTrip {
+  id: string;
+  passengerId: string;
+  driverId?: string;
+  stationId?: string;
+  pickupAddress: string;
+  destAddress: string;
+  pickupLat: number;
+  pickupLng: number;
+  destLat: number;
+  destLng: number;
+  fare: number;
+  status: string;
+  requestedAt: string;
+  acceptedAt?: string;
+}
+
+interface LiveFleetData {
+  timestamp: string;
+  drivers: LiveFleetDriver[];
+  activeTrips: LiveFleetTrip[];
+  stations: StationItem[];
+}
+
 interface AuditLogItem {
   id: string;
   action: string;
@@ -103,7 +161,7 @@ interface AuditLogItem {
   metadata?: any;
 }
 
-type AdminTab = 'STATS' | 'DRIVERS' | 'ALL_DRIVERS' | 'PASSENGERS' | 'PRICING' | 'INVITES' | 'QUEUE' | 'AUDIT';
+type AdminTab = 'STATS' | 'MAP' | 'STATIONS' | 'DRIVERS' | 'ALL_DRIVERS' | 'PASSENGERS' | 'PRICING' | 'INVITES' | 'QUEUE' | 'AUDIT';
 
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -140,6 +198,20 @@ export default function AdminPage() {
 
   // Audit state
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+
+  // Fleet & Station state
+  const [fleetData, setFleetData] = useState<LiveFleetData | null>(null);
+  const [stationList, setStationList] = useState<StationItem[]>([]);
+  const [stationForm, setStationForm] = useState<StationItem>({
+    id: '',
+    name: '',
+    area: 'กรุงเทพมหานคร',
+    lat: 13.7463,
+    lng: 100.5348,
+    radius_m: 100,
+    isActive: true,
+  });
+  const [isEditingStation, setIsEditingStation] = useState(false);
 
   // Modal: Adjust Points
   const [adjustModal, setAdjustModal] = useState<{ open: boolean; passenger: PassengerItem | null; delta: number; reason: string }>({
@@ -195,6 +267,30 @@ export default function AdminPage() {
     }
   }, [passengerSearch]);
 
+  // Fetch stations
+  const fetchStations = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/v1/admin/stations');
+      if (Array.isArray(res)) {
+        setStationList(res);
+      }
+    } catch (e: any) {
+      console.error('Failed to load stations:', e);
+    }
+  }, []);
+
+  // Fetch live fleet data
+  const fetchFleetData = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/v1/admin/fleet/live');
+      if (res && res.drivers) {
+        setFleetData(res);
+      }
+    } catch (e: any) {
+      console.error('Failed to load live fleet:', e);
+    }
+  }, []);
+
   // Fetch stats & pricing & queues
   const fetchStatsAndConfig = useCallback(async () => {
     try {
@@ -241,9 +337,11 @@ export default function AdminPage() {
       if (activeTab === 'ALL_DRIVERS') fetchAllDrivers();
       if (activeTab === 'PASSENGERS') fetchPassengers();
       if (activeTab === 'AUDIT') fetchAuditLogs();
+      if (activeTab === 'MAP') fetchFleetData();
+      if (activeTab === 'STATIONS') fetchStations();
       if (activeTab === 'QUEUE' || activeTab === 'STATS') fetchStatsAndConfig();
     }
-  }, [token, activeTab, fetchAllDrivers, fetchPassengers, fetchAuditLogs, fetchStatsAndConfig]);
+  }, [token, activeTab, fetchAllDrivers, fetchPassengers, fetchAuditLogs, fetchFleetData, fetchStations, fetchStatsAndConfig]);
 
   // Handle Admin Login
   const handleLogin = async (e: React.FormEvent) => {
@@ -442,6 +540,77 @@ export default function AdminPage() {
     }
   };
 
+  // Save Station (Geofence CRUD)
+  const handleSaveStation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stationForm.id.trim() || !stationForm.name.trim()) return;
+    try {
+      await apiFetch('/api/v1/admin/stations', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...stationForm,
+          lat: Number(stationForm.lat),
+          lng: Number(stationForm.lng),
+          radius_m: Number(stationForm.radius_m)
+        }),
+      });
+      setActionMessage('📍 บันทึกข้อมูลวินและรัศมี Geofence สำเร็จ');
+      setStationForm({ id: '', name: '', area: 'กรุงเทพมหานคร', lat: 13.7463, lng: 100.5348, radius_m: 100, isActive: true });
+      setIsEditingStation(false);
+      fetchStations();
+      setTimeout(() => setActionMessage(''), 3000);
+    } catch (err: any) {
+      alert('บันทึกวินไม่สำเร็จ: ' + err.message);
+    }
+  };
+
+  // Delete Station
+  const handleDeleteStation = async (id: string, name: string) => {
+    if (!confirm(`คุณต้องการลบวิน ${name} (${id}) ใช่หรือไม่?`)) return;
+    try {
+      await apiFetch(`/api/v1/admin/stations/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      setActionMessage(`🗑️ ลบวิน ${id} สำเร็จ`);
+      fetchStations();
+      setTimeout(() => setActionMessage(''), 3000);
+    } catch (err: any) {
+      alert('ลบไม่สำเร็จ: ' + err.message);
+    }
+  };
+
+  // Cancel Trip by Admin
+  const handleCancelTrip = async (tripId: string) => {
+    const reason = prompt('ระบุเหตุผลการยกเลิกการเดินทางฉุกเฉิน:', 'ยกเลิกโดยศูนย์ควบคุมระบบ');
+    if (!reason) return;
+    try {
+      await apiFetch(`/api/v1/admin/trips/${tripId}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      });
+      setActionMessage('🛑 ยกเลิกการเดินทางเรียบร้อยแล้ว');
+      fetchFleetData();
+      setTimeout(() => setActionMessage(''), 3000);
+    } catch (err: any) {
+      alert('ยกเลิกไม่สำเร็จ: ' + err.message);
+    }
+  };
+
+  // Complete Trip by Admin
+  const handleCompleteTrip = async (tripId: string) => {
+    if (!confirm('ยืนยันบันทึกจบงานและปล่อยคนขับกลับสู่สถานะว่างหรือไม่?')) return;
+    try {
+      await apiFetch(`/api/v1/admin/trips/${tripId}/complete`, {
+        method: 'POST',
+      });
+      setActionMessage('🏁 บันทึกจบงานสำเร็จ');
+      fetchFleetData();
+      setTimeout(() => setActionMessage(''), 3000);
+    } catch (err: any) {
+      alert('จบงานไม่สำเร็จ: ' + err.message);
+    }
+  };
+
   // Override Queue Driver
   const handleOverrideQueue = async (winId: string, driverId: string) => {
     const reason = prompt('กรุณาระบุเหตุผลการลัดคิวฉุกเฉิน:', 'งานด่วนจากศูนย์ควบคุม');
@@ -582,10 +751,10 @@ export default function AdminPage() {
             <div className="font-extrabold text-base text-white flex items-center gap-2">
               <span>GOZIPP Operations Center</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#A3FF3F]/10 text-[#A3FF3F] border border-[#A3FF3F]/20 font-bold">
-                Live Data
+                Phase 2 Live
               </span>
             </div>
-            <div className="text-[11px] text-slate-400">ศูนย์ควบคุมการเดินรถและจัดการข้อมูลกลาง</div>
+            <div className="text-[11px] text-slate-400">ศูนย์ควบคุมการเดินรถสด & จัดการ Geofence วินมอเตอร์ไซค์</div>
           </div>
         </div>
 
@@ -602,6 +771,8 @@ export default function AdminPage() {
               fetchStatsAndConfig();
               if (activeTab === 'ALL_DRIVERS') fetchAllDrivers();
               if (activeTab === 'PASSENGERS') fetchPassengers();
+              if (activeTab === 'MAP') fetchFleetData();
+              if (activeTab === 'STATIONS') fetchStations();
               if (activeTab === 'AUDIT') fetchAuditLogs();
             }}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
@@ -673,6 +844,30 @@ export default function AdminPage() {
           >
             <Activity className="w-4 h-4" />
             <span>ภาพรวมสด (Live Overview)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('MAP')}
+            className={`flex items-center gap-2 px-4 py-3 text-xs md:text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'MAP'
+                ? 'border-[#A3FF3F] text-[#A3FF3F]'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Radio className="w-4 h-4" />
+            <span>แผนที่เดินรถสด (Fleet Map)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('STATIONS')}
+            className={`flex items-center gap-2 px-4 py-3 text-xs md:text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'STATIONS'
+                ? 'border-[#A3FF3F] text-[#A3FF3F]'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <MapPin className="w-4 h-4" />
+            <span>จัดการวิน & Geofence</span>
           </button>
 
           <button
@@ -759,6 +954,354 @@ export default function AdminPage() {
             <span>ประวัติระบบ (Audit)</span>
           </button>
         </div>
+
+        {/* ------------------------------------------------------------- */}
+        {/* Tab: MAP & LIVE FLEET OPERATIONS */}
+        {/* ------------------------------------------------------------- */}
+        {activeTab === 'MAP' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Radar Live Map Board */}
+              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-lg font-black text-white flex items-center gap-2">
+                      <Radio className="w-5 h-5 text-[#A3FF3F] animate-pulse" />
+                      <span>ศูนย์ติดตามพิกัดรถสด (Live GPS Fleet View)</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      แสดงตำแหน่งคนขับที่กำลังออนไลน์ พิกัดจุดตั้งวิน และรัศมี Geofence
+                    </p>
+                  </div>
+                  <button
+                    onClick={fetchFleetData}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-[#A3FF3F] font-bold border border-slate-700"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>อัปเดตตำแหน่งสด</span>
+                  </button>
+                </div>
+
+                {/* SVG Fleet Radar Map */}
+                <div className="relative w-full h-[400px] bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex items-center justify-center">
+                  {/* Grid Lines */}
+                  <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:40px_40px] opacity-30"></div>
+
+                  {/* Concentric Radar Rings */}
+                  <div className="absolute w-[360px] h-[360px] rounded-full border border-slate-800/60 pointer-events-none"></div>
+                  <div className="absolute w-[240px] h-[240px] rounded-full border border-[#A3FF3F]/10 pointer-events-none"></div>
+                  <div className="absolute w-[120px] h-[120px] rounded-full border border-[#A3FF3F]/20 pointer-events-none"></div>
+
+                  {/* Stations plotted on map */}
+                  {fleetData?.stations.map((st, idx) => {
+                    // Normalize lat/lng to container offset
+                    const offsetX = 50 + ((st.lng - 100.5348) * 1200);
+                    const offsetY = 50 - ((st.lat - 13.7463) * 1200);
+                    return (
+                      <div
+                        key={st.id}
+                        style={{ left: `${Math.max(10, Math.min(90, offsetX))}%`, top: `${Math.max(10, Math.min(90, offsetY))}%` }}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer z-10"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-blue-500/20 border-2 border-blue-400 flex items-center justify-center text-xs shadow-lg shadow-blue-900/40 animate-pulse">
+                          📍
+                        </div>
+                        <span className="text-[10px] font-bold bg-slate-900/90 text-blue-300 px-2 py-0.5 rounded border border-slate-700 mt-1 whitespace-nowrap shadow-md">
+                          {st.name} ({st.radius_m}m)
+                        </span>
+                      </div>
+                    );
+                  })}
+
+                  {/* Drivers plotted on map */}
+                  {fleetData?.drivers.map((d) => {
+                    const offsetX = 50 + ((d.lng - 100.5348) * 1200);
+                    const offsetY = 50 - ((d.lat - 13.7463) * 1200);
+                    const isBusy = d.currentStatus === 'BUSY';
+                    const isIdle = d.currentStatus === 'IDLE';
+                    return (
+                      <div
+                        key={d.id}
+                        style={{ left: `${Math.max(10, Math.min(90, offsetX))}%`, top: `${Math.max(10, Math.min(90, offsetY))}%` }}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer z-20"
+                        title={`${d.name} (${d.plate}) - ${d.currentStatus}`}
+                      >
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs shadow-lg transition-transform hover:scale-125 ${
+                          isBusy
+                            ? 'bg-blue-500 text-white shadow-blue-500/50'
+                            : isIdle
+                            ? 'bg-[#A3FF3F] text-slate-950 shadow-green-900/50'
+                            : 'bg-slate-700 text-slate-300'
+                        }`}>
+                          🛵
+                        </div>
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-bold bg-black/90 text-white px-2 py-0.5 rounded border border-slate-700 mt-1 whitespace-nowrap shadow-md">
+                          {d.name} ({d.plate})
+                        </span>
+                      </div>
+                    );
+                  })}
+
+                  <div className="absolute bottom-3 right-3 text-[10px] text-slate-500 bg-slate-900/80 px-2.5 py-1 rounded-md border border-slate-800">
+                    🟢 ว่างพร้อมรับงาน • 🔵 กำลังวิ่งงาน • 📍 จุดวินมอเตอร์ไซค์
+                  </div>
+                </div>
+
+                {/* Fleet Overview Footer */}
+                <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                  <div>
+                    คนขับในพื้นที่ทั้งหมด: <strong className="text-white">{fleetData?.drivers.length ?? 0} คัน</strong>
+                  </div>
+                  <div>
+                    จุดบริการวิน: <strong className="text-white">{fleetData?.stations.length ?? 0} แห่ง</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Trips Monitor */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <Navigation className="w-4 h-4 text-blue-400" />
+                    <span>เที่ยววิ่งที่กำลังดำเนินการ ({fleetData?.activeTrips.length ?? 0})</span>
+                  </h3>
+                  <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded font-bold">
+                    Live Monitor
+                  </span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-3 max-h-[400px]">
+                  {(!fleetData?.activeTrips || fleetData.activeTrips.length === 0) ? (
+                    <div className="text-center py-16 text-slate-500 text-xs">
+                      <CheckCircle className="w-8 h-8 text-slate-700 mx-auto mb-2" />
+                      <p>ไม่มีเที่ยววิ่งที่ค้างอยู่ขณะนี้</p>
+                      <p className="text-[11px] text-slate-600 mt-0.5">การเรียกงานใหม่จะปรากฏขึ้นที่นี่ทันที</p>
+                    </div>
+                  ) : (
+                    fleetData.activeTrips.map((trip) => (
+                      <div
+                        key={trip.id}
+                        className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl hover:border-slate-700 transition-all space-y-2.5 text-xs"
+                      >
+                        <div className="flex justify-between items-start">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            trip.status === 'IN_PROGRESS'
+                              ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                              : trip.status === 'ACCEPTED'
+                              ? 'bg-[#A3FF3F]/10 text-[#A3FF3F] border border-[#A3FF3F]/20'
+                              : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                          }`}>
+                            {trip.status}
+                          </span>
+                          <span className="font-mono text-slate-400 text-[11px]">
+                            {trip.fare} บ.
+                          </span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-slate-200 truncate flex items-center gap-1.5">
+                            <span className="text-amber-400 text-[10px]">●</span> รับ: {trip.pickupAddress || 'จุดรับผู้โดยสาร'}
+                          </div>
+                          <div className="text-slate-400 truncate flex items-center gap-1.5">
+                            <span className="text-purple-400 text-[10px]">●</span> ส่ง: {trip.destAddress || 'จุดหมายปลายทาง'}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[11px]">
+                          <span className="text-slate-500">
+                            คนขับ: {trip.driverId ? trip.driverId.slice(0, 8) : 'กำลังจับคู่'}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleCancelTrip(trip.id)}
+                              className="text-red-400 hover:text-red-300 font-bold px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20"
+                              title="ยกเลิกการเดินทาง"
+                            >
+                              ยกเลิก
+                            </button>
+                            <button
+                              onClick={() => handleCompleteTrip(trip.id)}
+                              className="text-[#A3FF3F] hover:text-green-300 font-bold px-2 py-1 rounded bg-[#A3FF3F]/10 hover:bg-[#A3FF3F]/20"
+                              title="บังคับจบงาน"
+                            >
+                              จบงาน
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* Tab: STATIONS & GEOFENCE MANAGEMENT */}
+        {/* ------------------------------------------------------------- */}
+        {activeTab === 'STATIONS' && (
+          <div className="space-y-6">
+            {/* Create/Edit Station Form */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-black text-white flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-[#A3FF3F]" />
+                    <span>{isEditingStation ? 'แก้ไขข้อมูลจุดตั้งวิน & รัศมี' : 'เพิ่มจุดตั้งวินมอเตอร์ไซค์ใหม่ (Add Win Station)'}</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    กำหนดพิกัด GPS จุดจอดวิน และรัศมี Geofence (เมตร) เพื่อควบคุมการเข้าคิวอัตโนมัติ
+                  </p>
+                </div>
+
+                {isEditingStation && (
+                  <button
+                    onClick={() => {
+                      setIsEditingStation(false);
+                      setStationForm({ id: '', name: '', area: 'กรุงเทพมหานคร', lat: 13.7463, lng: 100.5348, radius_m: 100, isActive: true });
+                    }}
+                    className="text-xs text-slate-400 hover:text-white underline"
+                  >
+                    ยกเลิกการแก้ไข
+                  </button>
+                )}
+              </div>
+
+              <form onSubmit={handleSaveStation} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+                <div className="md:col-span-1">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">รหัสวิน (ID)</label>
+                  <input
+                    type="text"
+                    placeholder="WIN-CENTRAL-01"
+                    value={stationForm.id}
+                    onChange={(e) => setStationForm({ ...stationForm, id: e.target.value })}
+                    disabled={isEditingStation}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-white outline-none focus:border-[#A3FF3F] uppercase disabled:opacity-50"
+                    required
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">ชื่อจุดตั้งวิน (Name)</label>
+                  <input
+                    type="text"
+                    placeholder="วินหน้าเซ็นทรัลพลาซา ปทุมวัน"
+                    value={stationForm.name}
+                    onChange={(e) => setStationForm({ ...stationForm, name: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#A3FF3F]"
+                    required
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">เขต/พื้นที่</label>
+                  <input
+                    type="text"
+                    placeholder="ปทุมวัน"
+                    value={stationForm.area}
+                    onChange={(e) => setStationForm({ ...stationForm, area: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#A3FF3F]"
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">รัศมี Geofence (เมตร)</label>
+                  <input
+                    type="number"
+                    min={30}
+                    max={1000}
+                    value={stationForm.radius_m}
+                    onChange={(e) => setStationForm({ ...stationForm, radius_m: Number(e.target.value) })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-bold text-amber-400 outline-none focus:border-amber-400"
+                    required
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <button
+                    type="submit"
+                    className="w-full bg-[#A3FF3F] hover:bg-[#B7FF57] text-[#04070B] font-extrabold py-2.5 rounded-xl text-xs transition-all shadow-md active:scale-95"
+                  >
+                    {isEditingStation ? '✓ อัปเดตวิน' : '+ บันทึกวิน'}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Stations Directory Table */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-white">จุดตั้งวินมอเตอร์ไซค์ที่เปิดให้บริการในระบบ</h3>
+                <span className="text-xs text-slate-400">ทั้งหมด {stationList.length} วิน</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="py-3 px-4">รหัสวิน</th>
+                      <th className="py-3 px-4">ชื่อจุดตั้งวิน</th>
+                      <th className="py-3 px-4">เขต/พื้นที่</th>
+                      <th className="py-3 px-4">พิกัด GPS (Lat, Lng)</th>
+                      <th className="py-3 px-4">รัศมี Geofence</th>
+                      <th className="py-3 px-4">สถานะ</th>
+                      <th className="py-3 px-4 text-right">ดำเนินการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {stationList.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-slate-500">
+                          ยังไม่มีข้อมูลจุดตั้งวิน
+                        </td>
+                      </tr>
+                    ) : (
+                      stationList.map((st) => (
+                        <tr key={st.id} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3.5 px-4 font-mono font-bold text-[#A3FF3F]">{st.id}</td>
+                          <td className="py-3.5 px-4 font-bold text-white text-sm font-kanit">{st.name}</td>
+                          <td className="py-3.5 px-4 text-slate-300">{st.area || 'กรุงเทพมหานคร'}</td>
+                          <td className="py-3.5 px-4 font-mono text-slate-400 text-[11px]">
+                            {st.lat.toFixed(4)}, {st.lng.toFixed(4)}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-400/10 text-amber-400 border border-amber-400/20">
+                              รัศมี {st.radius_m} ม.
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 font-kanit">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              เปิดใช้งาน
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right space-x-2">
+                            <button
+                              onClick={() => {
+                                setStationForm({ ...st });
+                                setIsEditingStation(true);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-lg text-xs font-bold border border-slate-700"
+                            >
+                              แก้ไข
+                            </button>
+                            <button
+                              onClick={() => handleDeleteStation(st.id, st.name)}
+                              className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs font-bold border border-red-500/20"
+                            >
+                              ลบ
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ------------------------------------------------------------- */}
         {/* Tab 0: STATS & LIVE OVERVIEW */}

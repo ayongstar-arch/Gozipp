@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Query, Param, Req, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { PromotionService } from './promotion.service';
 import { DriverService } from './driver.service';
@@ -187,6 +187,107 @@ export class AdminController {
   @Roles('ADMIN')
   async getActiveQueues() {
     return this.adminService.getActiveQueues();
+  }
+
+  // --- Live Fleet Operations & Trip Controls ---
+
+  @Get('fleet/live')
+  @Roles('ADMIN')
+  async getLiveFleet() {
+    return this.adminService.getLiveFleet();
+  }
+
+  @Post('trips/:tripId/cancel')
+  @Roles('ADMIN')
+  async cancelTripByAdmin(
+    @Param('tripId') tripId: string,
+    @Body() body: { reason?: string },
+    @Req() req: any
+  ) {
+    const result = await this.adminService.cancelTripByAdmin(tripId, body?.reason || 'ยกเลิกโดยศูนย์ควบคุม');
+
+    await this.auditLogService.logAdminAction({
+      actorId: req.user?.id,
+      actorRole: req.user?.roles?.[0] || 'ADMIN',
+      action: AdminAction.QUEUE_OVERRIDE,
+      resourceType: 'TRIP',
+      resourceId: tripId,
+      metadata: { reason: body?.reason },
+      ipAddress: req.ip,
+    });
+
+    return result;
+  }
+
+  @Post('trips/:tripId/complete')
+  @Roles('ADMIN')
+  async completeTripByAdmin(
+    @Param('tripId') tripId: string,
+    @Req() req: any
+  ) {
+    const result = await this.adminService.completeTripByAdmin(tripId);
+
+    await this.auditLogService.logAdminAction({
+      actorId: req.user?.id,
+      actorRole: req.user?.roles?.[0] || 'ADMIN',
+      action: AdminAction.QUEUE_OVERRIDE,
+      resourceType: 'TRIP',
+      resourceId: tripId,
+      metadata: { action: 'FORCE_COMPLETE' },
+      ipAddress: req.ip,
+    });
+
+    return result;
+  }
+
+  // --- Win Station & Geofence Management ---
+
+  @Get('stations')
+  @Roles('ADMIN')
+  async getStations() {
+    return this.adminService.getStations();
+  }
+
+  @Post('stations')
+  @Roles('ADMIN')
+  async saveStation(
+    @Body() body: { id: string; name: string; area?: string; lat: number; lng: number; radius_m: number; isActive?: boolean },
+    @Req() req: any
+  ) {
+    const result = await this.adminService.saveStation(body);
+
+    await this.auditLogService.logAdminAction({
+      actorId: req.user?.id,
+      actorRole: req.user?.roles?.[0] || 'ADMIN',
+      action: AdminAction.CONFIG_CHANGED,
+      resourceType: 'STATION',
+      resourceId: body.id,
+      metadata: body,
+      ipAddress: req.ip,
+    });
+
+    return result;
+  }
+
+  @Delete('stations/:id')
+  @Roles('ADMIN')
+  async deleteStation(
+    @Param('id') id: string,
+    @Req() req: any
+  ) {
+    const result = await this.adminService.deleteStation(id);
+
+    await this.auditLogService.logAdminAction({
+      actorId: req.user?.id,
+      actorRole: req.user?.roles?.[0] || 'ADMIN',
+      action: AdminAction.CONFIG_CHANGED,
+      resourceType: 'STATION',
+      resourceId: id,
+      metadata: { action: 'DELETE' },
+      ipAddress: req.ip,
+    });
+
+    return result;
   }
 
   // --- Driver Approval Management ---
