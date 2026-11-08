@@ -8,6 +8,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
 import { supabase } from '../lib/supabaseClient';
 import { apiFetch } from '../services/api';
+import { socket } from '../services/socket';
 
 export interface RideEstimate {
   tripId: string;
@@ -35,7 +36,93 @@ export const useRide = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Setup Supabase Realtime subscriptions
+  // Setup Real-time Socket.IO subscriptions (Primary for NestJS Backend)
+  useEffect(() => {
+    if (!currentTripId) return;
+
+    socket.emit('TRIP_JOIN_ROOM', { tripId: currentTripId });
+
+    const handleTripAccept = (data: any) => {
+      console.log('[Socket] TRIP_ACCEPT received:', data);
+      if (data?.driver) {
+        setActiveDriver({
+          id: data.driver.id,
+          name: data.driver.name,
+          plate: data.driver.plate,
+          phone: data.driver.phone || '',
+          rating: Number(data.driver.rating || 5),
+        });
+      }
+      setRideStatus('ACCEPTED');
+      setIsSearching(false);
+      setToastMessage('🛵 คนขับรับงานแล้ว! กำลังเดินทางมา...');
+    };
+
+    const handleStatusUpdate = (data: any) => {
+      console.log('[Socket] TRIP_STATUS_UPDATE received:', data);
+      if (!data?.status) return;
+      setRideStatus(data.status);
+
+      if (data.status === 'SEARCHING') {
+        setIsSearching(true);
+      } else {
+        setIsSearching(false);
+      }
+
+      if (data.driver) {
+        setActiveDriver({
+          id: data.driver.id,
+          name: data.driver.name,
+          plate: data.driver.plate,
+          phone: data.driver.phone || '',
+          rating: Number(data.driver.rating || 5),
+        });
+      }
+
+      if (data.status === 'DRIVER_ARRIVED') {
+        setToastMessage('📍 คนขับถึงจุดรับแล้ว กำลังรอคุณอยู่ครับ');
+      } else if (data.status === 'IN_PROGRESS') {
+        setToastMessage('🛵 เริ่มออกเดินทางไปจุดหมายแล้ว');
+      } else if (data.status === 'COMPLETED') {
+        setToastMessage('✅ ถึงจุดหมายแล้ว! ขอบคุณที่ใช้บริการ GOZIPP');
+      } else if (data.status === 'CANCELLED') {
+        setRideStatus('CANCELLED');
+        setIsSearching(false);
+        setActiveDriver(null);
+        setToastMessage('❌ ทริปถูกยกเลิกแล้ว');
+      }
+    };
+
+    const handleLocationUpdate = (data: any) => {
+      if (data?.lat && data?.lng) {
+        setDriverLocation({
+          lat: Number(data.lat),
+          lng: Number(data.lng),
+          heading: data.heading,
+        });
+      }
+    };
+
+    const handleTripComplete = () => {
+      setRideStatus('COMPLETED');
+      setIsSearching(false);
+      setToastMessage('✅ ถึงจุดหมายแล้ว! ขอบคุณที่ใช้บริการ GOZIPP');
+    };
+
+    socket.on('TRIP_ACCEPT', handleTripAccept);
+    socket.on('TRIP_STATUS_UPDATE', handleStatusUpdate);
+    socket.on('DRIVER_LOCATION_UPDATE', handleLocationUpdate);
+    socket.on('TRIP_COMPLETE', handleTripComplete);
+
+    return () => {
+      socket.off('TRIP_ACCEPT', handleTripAccept);
+      socket.off('TRIP_STATUS_UPDATE', handleStatusUpdate);
+      socket.off('DRIVER_LOCATION_UPDATE', handleLocationUpdate);
+      socket.off('TRIP_COMPLETE', handleTripComplete);
+    };
+  }, [currentTripId, setActiveDriver, setIsSearching, setRideStatus, setDriverLocation, setToastMessage]);
+
+  // Setup Supabase Realtime subscriptions (Secondary Fallback)
   useEffect(() => {
     if (!currentTripId) return;
 
@@ -216,28 +303,52 @@ export const useRide = () => {
     setToastMessage('ยกเลิกการค้นหาแล้ว');
   }, [currentTripId, resetRide, setToastMessage, setEstimate, setRideStatus]);
 
-  // Poll ride status (fallback query using Supabase SDK)
+  // Poll ride status (primary via NestJS API, fallback via Supabase SDK)
   const pollRideStatus = useCallback(async (): Promise<void> => {
     if (!currentTripId) return;
     try {
-      const { data: trip } = await supabase
-        .from('trips')
-        .select('status')
-        .eq('id', currentTripId)
-        .maybeSingle();
-
-      if (trip?.status) {
-        setRideStatus(trip.status);
-        if (['TIMEOUT_NO_DRIVER', 'CANCELLED'].includes(trip.status)) {
+      // 1. Primary: NestJS Production API
+      const res = await apiFetch(`/api/v1/passenger/ride/${currentTripId}/status`);
+      if (res?.status) {
+        setRideStatus(res.status);
+        if (res.driver) {
+          setActiveDriver({
+            id: res.driver.id,
+            name: res.driver.name,
+            plate: res.driver.plate,
+            phone: res.driver.phone || '',
+            rating: Number(res.driver.rating || 5),
+          });
+        }
+        if (['TIMEOUT_NO_DRIVER', 'CANCELLED'].includes(res.status)) {
           setIsSearching(false);
-          setToastMessage(trip.status === 'TIMEOUT_NO_DRIVER' ? 'ยังไม่พบคนขับในขณะนี้ กรุณาลองใหม่อีกครั้ง' : 'ทริปถูกยกเลิกแล้ว');
+          setToastMessage(res.status === 'TIMEOUT_NO_DRIVER' ? 'ยังไม่พบคนขับในขณะนี้ กรุณาลองใหม่อีกครั้ง' : 'ทริปถูกยกเลิกแล้ว');
           resetRide();
         }
+        return;
       }
-    } catch (err) {
-      console.error('Failed to poll ride status:', err);
+    } catch {
+      // 2. Fallback: Supabase SDK
+      try {
+        const { data: trip } = await supabase
+          .from('trips')
+          .select('status')
+          .eq('id', currentTripId)
+          .maybeSingle();
+
+        if (trip?.status) {
+          setRideStatus(trip.status);
+          if (['TIMEOUT_NO_DRIVER', 'CANCELLED'].includes(trip.status)) {
+            setIsSearching(false);
+            setToastMessage(trip.status === 'TIMEOUT_NO_DRIVER' ? 'ยังไม่พบคนขับในขณะนี้ กรุณาลองใหม่อีกครั้ง' : 'ทริปถูกยกเลิกแล้ว');
+            resetRide();
+          }
+        }
+      } catch (err) {
+        console.error('Failed to poll ride status:', err);
+      }
     }
-  }, [currentTripId, resetRide, setIsSearching, setRideStatus, setToastMessage]);
+  }, [currentTripId, resetRide, setIsSearching, setRideStatus, setActiveDriver, setToastMessage]);
 
   // Setup periodic polling fallback
   useEffect(() => {

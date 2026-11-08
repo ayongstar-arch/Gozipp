@@ -328,19 +328,31 @@ export class PassengerService implements OnModuleInit {
       take: limit,
     });
 
+    const driverIds = Array.from(new Set(trips.map(t => t.driver_id).filter(Boolean)));
+    const drivers = driverIds.length > 0
+      ? await this.driverRepo.find({ where: { id: In(driverIds) } })
+      : [];
+    const driverMap = new Map(drivers.map(d => [d.id, d]));
+
     return {
-      trips: trips.map(t => ({
-        id: t.id,
-        status: t.status,
-        fare: t.fare,
-        credits_used: t.credits_used,
-        distance_km: t.distance_km,
-        pickup_address: t.pickup_address,
-        dest_address: t.dest_address,
-        requested_at: t.requested_at,
-        completed_at: t.completed_at,
-        passenger_rating: t.passenger_rating,
-      })),
+      trips: trips.map(t => {
+        const d = t.driver_id ? driverMap.get(t.driver_id) : null;
+        return {
+          id: t.id,
+          status: t.status,
+          fare: Number(t.fare) || 0,
+          credits_used: Number(t.credits_used) || 0,
+          distance_km: Number(t.distance_km) || 0,
+          pickup_address: t.pickup_address,
+          dest_address: t.dest_address,
+          driver_name: d?.name || 'พาร์ทเนอร์คนขับ',
+          driver_plate: d?.plate || '',
+          driver_rating: d?.rating ? Number(d.rating) : 5.0,
+          requested_at: t.requested_at,
+          completed_at: t.completed_at,
+          passenger_rating: t.passenger_rating,
+        };
+      }),
       total,
       page,
       pages: Math.ceil(total / limit),
@@ -533,11 +545,27 @@ export class PassengerService implements OnModuleInit {
 
     const status = await this.redis.hget(`trip:${tripId}`, 'status');
     const driverId = await this.redis.hget(`trip:${tripId}`, 'driverId');
+    const effectiveDriverId = driverId || trip.driver_id;
+
+    let driverData: any = null;
+    if (effectiveDriverId) {
+      const driver = await this.driverRepo.findOne({ where: { id: effectiveDriverId } });
+      if (driver) {
+        driverData = {
+          id: driver.id,
+          name: driver.name,
+          plate: driver.plate,
+          phone: driver.phone || '',
+          rating: Number(driver.rating) || 5.0,
+        };
+      }
+    }
 
     return {
       tripId,
       status: status || trip.status,
-      driverId: driverId || trip.driver_id,
+      driverId: effectiveDriverId,
+      driver: driverData,
       scheduledAt: trip.scheduled_at,
       preferredDriverId: trip.preferred_driver_id,
     };
@@ -602,6 +630,22 @@ export class PassengerService implements OnModuleInit {
       passenger_rating: rating,
       passenger_note: note,
     });
+
+    if (trip.driver_id) {
+      try {
+        const stats = await this.tripRepo
+          .createQueryBuilder('trip')
+          .select('AVG(trip.passenger_rating)', 'avgRating')
+          .where('trip.driver_id = :driverId AND trip.passenger_rating IS NOT NULL', { driverId: trip.driver_id })
+          .getRawOne();
+        const avg = parseFloat(stats?.avgRating);
+        if (!isNaN(avg)) {
+          await this.driverRepo.update(trip.driver_id, { rating: Number(avg.toFixed(2)) });
+        }
+      } catch (e: any) {
+        this.logger.warn(`Failed to update driver avg rating: ${e?.message}`);
+      }
+    }
 
     return { success: true };
   }
