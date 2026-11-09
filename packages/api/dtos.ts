@@ -293,6 +293,52 @@ export class RideRequestDto {
   @IsString()
   @IsOptional()
   preferredDriverId?: string;
+
+  @IsEnum(['MOTO', 'TAXI'])
+  @IsOptional()
+  serviceType?: 'MOTO' | 'TAXI';
+
+  @IsEnum(['PUBLIC_TAXI', 'PRIVATE_CAR_FOR_HIRE'])
+  @IsOptional()
+  taxiCategory?: 'PUBLIC_TAXI' | 'PRIVATE_CAR_FOR_HIRE';
+
+  @IsString()
+  @IsOptional()
+  idempotencyKey?: string;
+}
+
+export class FareEstimateDto {
+  @IsNumber()
+  pickupLat: number;
+
+  @IsNumber()
+  pickupLng: number;
+
+  @IsNumber()
+  destLat: number;
+
+  @IsNumber()
+  destLng: number;
+
+  @IsString()
+  @IsOptional()
+  serviceType?: string;
+}
+
+export class DriverArrivalDto {
+  @IsNumber()
+  lat: number;
+
+  @IsNumber()
+  lng: number;
+
+  @IsNumber()
+  @IsOptional()
+  accuracyMeters?: number;
+
+  @IsNumber()
+  @IsOptional()
+  clientTimestamp?: number;
 }
 
 // --- Credit System DTOs ---
@@ -464,4 +510,84 @@ export interface AreaPerformance {
   revenue: number; // Based on 2 THB per ride (or actual rate)
   bonusCost: number; // Points given as bonuses used in this area
   grossMargin: number;
+}
+
+// --- Dual Mobility DTOs (Stage 2) ---
+
+export class RegisterVehicleDto {
+  @IsEnum(['MOTORCYCLE', 'PUBLIC_TAXI', 'PRIVATE_CAR_FOR_HIRE'])
+  @IsNotEmpty()
+  category: 'MOTORCYCLE' | 'PUBLIC_TAXI' | 'PRIVATE_CAR_FOR_HIRE';
+
+  @IsString()
+  @IsNotEmpty()
+  plate: string;
+
+  @IsString()
+  @IsNotEmpty()
+  province: string;
+
+  @IsString()
+  @IsNotEmpty()
+  brand: string;
+
+  @IsString()
+  @IsNotEmpty()
+  model: string;
+
+  @IsString()
+  @IsNotEmpty()
+  color: string;
+
+  @IsNumber()
+  @IsOptional()
+  year?: number;
+
+  @IsNumber()
+  @IsOptional()
+  passenger_capacity?: number;
+}
+
+export class UploadVehicleDocumentDto {
+  @IsString()
+  @IsNotEmpty()
+  document_type: string;
+
+  @IsString()
+  @IsNotEmpty()
+  file_url: string;
+
+  @IsDateString()
+  @IsOptional()
+  expiry_date?: string;
+}
+
+export class ToggleServiceDto {
+  @IsBoolean()
+  @IsOptional()
+  is_online?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  is_enabled?: boolean;
+}
+
+export class SelectActiveVehicleDto {
+  @IsString()
+  @IsNotEmpty()
+  vehicle_id: string;
+}
+
+export class TaxiOfferActionDto {
+  @IsString()
+  @IsNotEmpty()
+  offerId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  tripId: string;
+
+  @IsString()
+  @IsOptional()
+  reason?: string;
 }

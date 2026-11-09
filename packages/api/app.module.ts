@@ -21,6 +21,11 @@ import { DriverDocumentEntity } from './entities/driver-document.entity';
 import { DriverPreferenceEntity } from './entities/driver-preference.entity';
 import { DriverTrainingStatusEntity } from './entities/driver-training-status.entity';
 import { AdminEntity } from './entities/admin.entity';
+import { DriverVehicleEntity } from './entities/driver-vehicle.entity';
+import { VehicleDocumentEntity } from './entities/vehicle-document.entity';
+import { DriverServiceProfileEntity } from './entities/driver-service-profile.entity';
+import { DriverActiveAssignmentEntity } from './entities/driver-active-assignment.entity';
+import { OutboxEventEntity } from './entities/outbox-event.entity';
 
 import { AppGateway } from './app.gateway';
 
@@ -48,6 +53,9 @@ import { AuthModule } from './auth/auth.module'; // NEW
 import { LoggingInterceptor, ResilienceInterceptor } from './common/interceptors';
 import { AiService } from './ai.service';
 import { DatabaseMigrationService } from './database/database-migration.service';
+import { TaxiMatchingService } from './taxi-matching.service';
+import { OutboxService } from './common/outbox.service';
+import { FareEstimationService } from './fare-estimation.service';
 
 @Global()
 @Module({
@@ -97,7 +105,23 @@ import { DatabaseMigrationService } from './database/database-migration.service'
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || '',
       database: process.env.DB_NAME || 'gozipp_db',
-      entities: [DriverEntity, TripEntity, ChatMessageEntity, PassengerEntity, AuditLogEntity, RefreshTokenEntity, DriverDocumentEntity, DriverPreferenceEntity, DriverTrainingStatusEntity, AdminEntity, __dirname + '/**/*.entity{.ts,.js}'],
+      entities: [
+        DriverEntity,
+        TripEntity,
+        ChatMessageEntity,
+        PassengerEntity,
+        AuditLogEntity,
+        RefreshTokenEntity,
+        DriverDocumentEntity,
+        DriverPreferenceEntity,
+        DriverTrainingStatusEntity,
+        AdminEntity,
+        DriverVehicleEntity,
+        VehicleDocumentEntity,
+        DriverServiceProfileEntity,
+        DriverActiveAssignmentEntity,
+        __dirname + '/**/*.entity{.ts,.js}',
+      ],
       // CRITICAL FOR PRODUCTION: Disable synchronize to prevent data loss
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
@@ -107,7 +131,23 @@ import { DatabaseMigrationService } from './database/database-migration.service'
       autoLoadEntities: true,
     }),
 
-    TypeOrmModule.forFeature([DriverEntity, TripEntity, ChatMessageEntity, PassengerEntity, AuditLogEntity, RefreshTokenEntity, DriverDocumentEntity, DriverPreferenceEntity, DriverTrainingStatusEntity, AdminEntity]),
+    TypeOrmModule.forFeature([
+      DriverEntity,
+      TripEntity,
+      ChatMessageEntity,
+      PassengerEntity,
+      AuditLogEntity,
+      RefreshTokenEntity,
+      DriverDocumentEntity,
+      DriverPreferenceEntity,
+      DriverTrainingStatusEntity,
+      AdminEntity,
+      DriverVehicleEntity,
+      VehicleDocumentEntity,
+      DriverServiceProfileEntity,
+      DriverActiveAssignmentEntity,
+      OutboxEventEntity,
+    ]),
   ],
   controllers: [
     DriverController,
@@ -136,11 +176,14 @@ import { DatabaseMigrationService } from './database/database-migration.service'
     AuditLogService,
     S3Service,
     DatabaseMigrationService,
+    TaxiMatchingService,
+    OutboxService,
+    FareEstimationService,
     // Add Throttler Guard globally
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     { provide: APP_INTERCEPTOR, useClass: ResilienceInterceptor },
   ],
-  exports: [JwtModule, SmsService, MapService, AiService]
+  exports: [JwtModule, SmsService, MapService, AiService, TaxiMatchingService]
 })
 export class AppModule { }

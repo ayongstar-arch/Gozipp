@@ -1,12 +1,31 @@
-import { Controller, Post, Get, Body, Query, Req, UseGuards, GoneException } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, Query, Req, UseGuards, GoneException, Optional } from '@nestjs/common';
 import { DriverService } from './driver.service';
-import { DriverLoginDto, DriverOnlineDto, TripActionDto, DriverRegisterDto, UpdateDriverProfileDto, UploadDriverDocumentDto, SaveDriverPreferencesDto, SubmitTrainingDto } from './dtos';
+import { TaxiMatchingService } from './taxi-matching.service';
+import {
+  DriverLoginDto,
+  DriverOnlineDto,
+  TripActionDto,
+  DriverRegisterDto,
+  UpdateDriverProfileDto,
+  UploadDriverDocumentDto,
+  SaveDriverPreferencesDto,
+  SubmitTrainingDto,
+  RegisterVehicleDto,
+  UploadVehicleDocumentDto,
+  ToggleServiceDto,
+  SelectActiveVehicleDto,
+  DriverArrivalDto,
+} from './dtos';
 import { AuthGuard, RolesGuard } from './common/guards';
 import { Roles } from './common/decorators';
 
 @Controller('driver')
 export class DriverController {
-  constructor(private readonly driverService: DriverService) {}
+  constructor(
+    private readonly driverService: DriverService,
+    @Optional()
+    private readonly taxiMatchingService?: TaxiMatchingService,
+  ) {}
 
   @Post('login')
   async login(@Body() body: DriverLoginDto) {
@@ -90,6 +109,93 @@ export class DriverController {
   async getStatus(@Query('driverId') driverId: string) {
     return this.driverService.getOnboardingStatus(driverId);
   }
+
+  // --- Dual Mobility Vehicle Management Endpoints (Gate 2.6) ---
+
+  @Get('vehicles')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async getVehicles(@Req() req: any) {
+    return this.driverService.getDriverVehicles(req.user.sub);
+  }
+
+  @Post('vehicles')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async registerVehicle(@Req() req: any, @Body() body: RegisterVehicleDto) {
+    return this.driverService.registerVehicle(req.user.sub, body);
+  }
+
+  @Get('vehicles/:id')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async getVehicle(@Req() req: any, @Param('id') id: string) {
+    return this.driverService.getVehicleById(req.user.sub, id);
+  }
+
+  @Post('vehicles/:id/documents')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async uploadVehicleDoc(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: UploadVehicleDocumentDto,
+  ) {
+    return this.driverService.uploadVehicleDocument(req.user.sub, id, body);
+  }
+
+  @Patch('vehicles/:id/select')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async selectActiveVehicle(@Req() req: any, @Param('id') id: string) {
+    return this.driverService.selectActiveVehicle(req.user.sub, id);
+  }
+
+  // --- Dual Mobility Service Profiles (Gate 2.7) ---
+
+  @Get('services')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async getServices(@Req() req: any) {
+    return this.driverService.getServiceProfiles(req.user.sub);
+  }
+
+  @Patch('services/:serviceType/toggle')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async toggleService(
+    @Req() req: any,
+    @Param('serviceType') serviceType: 'MOTO' | 'TAXI',
+    @Body() body: ToggleServiceDto,
+  ) {
+    return this.driverService.toggleServiceAvailability(req.user.sub, serviceType, body);
+  }
+
+  // --- Taxi Offer Endpoints (Stage 3) ---
+
+  @Post('taxi/offers/:offerId/accept')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async acceptTaxiOffer(@Req() req: any, @Param('offerId') offerId: string) {
+    if (!this.taxiMatchingService) {
+      throw new GoneException('Taxi matching engine is not available');
+    }
+    return this.taxiMatchingService.acceptOffer(req.user.sub, offerId);
+  }
+
+  @Post('taxi/offers/:offerId/reject')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('DRIVER')
+  async rejectTaxiOffer(
+    @Req() req: any,
+    @Param('offerId') offerId: string,
+    @Body() body: { reason?: string },
+  ) {
+    if (!this.taxiMatchingService) {
+      return { success: true };
+    }
+    return this.taxiMatchingService.rejectOffer(req.user.sub, offerId, body?.reason);
+  }
 }
 
 @Controller('trip')
@@ -108,6 +214,13 @@ export class TripController {
   @Roles('DRIVER')
   async rejectTrip(@Body() body: TripActionDto) {
     return this.driverService.rejectTrip(body);
+  }
+
+  @Post('arrive')
+  @Roles('DRIVER')
+  async arriveTrip(@Body() body: DriverArrivalDto & { tripId: string }, @Req() req: any) {
+    const driverId = req.user?.sub || req.user?.id;
+    return this.driverService.markDriverArrived(driverId, body.tripId, body);
   }
 
   @Post('complete')

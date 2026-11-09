@@ -8,7 +8,8 @@ import { Throttle } from '@nestjs/throttler';
 import { PassengerService } from './passenger.service';
 import {
   RideRequestDto, PassengerRequestOtpDto,
-  PassengerVerifyOtpDto, PassengerRegisterDto
+  PassengerVerifyOtpDto, PassengerRegisterDto,
+  FareEstimateDto
 } from './dtos';
 import { AuthGuard, RolesGuard } from './common/guards';
 import { Roles } from './common/decorators';
@@ -137,12 +138,25 @@ export class RideController {
 
   constructor(private readonly passengerService: PassengerService) { }
 
+  /** POST /api/v1/passenger/ride/fare-estimate (Stage 4) */
+  @Post('fare-estimate')
+  @UseGuards(AuthGuard)
+  async getFareEstimate(@Body() body: FareEstimateDto) {
+    return this.passengerService.getFareEstimate(body);
+  }
+
   /** POST /api/v1/passenger/ride/request */
   @Post('request')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('PASSENGER')
   async requestRide(@Body() body: RideRequestDto, @Req() req: any) {
     try {
+      // Inject Idempotency-Key from headers if present
+      const idempotencyKey = req.headers['idempotency-key'] || req.headers['x-idempotency-key'];
+      if (idempotencyKey && typeof idempotencyKey === 'string') {
+        body.idempotencyKey = idempotencyKey;
+      }
+
       // Inject passengerId from JWT token (don't trust client-sent ID)
       const tokenSub = req.user?.sub || req.user?.id;
       const clientSentId = body.passengerId && typeof body.passengerId === 'string' && body.passengerId.trim() !== '' ? body.passengerId.trim() : undefined;

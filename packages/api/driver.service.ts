@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, UnauthorizedException, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, UnauthorizedException, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import Redis from 'ioredis';
@@ -13,7 +13,20 @@ import { TripEntity } from './entities/trip.entity';
 import { DriverDocumentEntity } from './entities/driver-document.entity';
 import { DriverPreferenceEntity } from './entities/driver-preference.entity';
 import { DriverTrainingStatusEntity } from './entities/driver-training-status.entity';
-import { UpdateDriverProfileDto, UploadDriverDocumentDto, SaveDriverPreferencesDto, SubmitTrainingDto } from './dtos';
+import { DriverVehicleEntity } from './entities/driver-vehicle.entity';
+import { VehicleDocumentEntity } from './entities/vehicle-document.entity';
+import { DriverServiceProfileEntity } from './entities/driver-service-profile.entity';
+import { DriverActiveAssignmentEntity } from './entities/driver-active-assignment.entity';
+import {
+  UpdateDriverProfileDto,
+  UploadDriverDocumentDto,
+  SaveDriverPreferencesDto,
+  SubmitTrainingDto,
+  RegisterVehicleDto,
+  UploadVehicleDocumentDto,
+  ToggleServiceDto,
+  SelectActiveVehicleDto,
+} from './dtos';
 
 @Injectable()
 export class DriverService implements OnModuleInit {
@@ -42,7 +55,19 @@ export class DriverService implements OnModuleInit {
     private fairQueueService: FairQueueService,
     private creditService: CreditService,
     private jwtService: JwtService,
-    private smsService: SmsService // ADDED
+    private smsService: SmsService, // ADDED
+    @Optional()
+    @InjectRepository(DriverVehicleEntity)
+    private vehicleRepo?: Repository<DriverVehicleEntity>,
+    @Optional()
+    @InjectRepository(VehicleDocumentEntity)
+    private vehicleDocRepo?: Repository<VehicleDocumentEntity>,
+    @Optional()
+    @InjectRepository(DriverServiceProfileEntity)
+    private serviceProfileRepo?: Repository<DriverServiceProfileEntity>,
+    @Optional()
+    @InjectRepository(DriverActiveAssignmentEntity)
+    private assignmentRepo?: Repository<DriverActiveAssignmentEntity>,
   ) {
     this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
 
@@ -257,6 +282,14 @@ export class DriverService implements OnModuleInit {
   }
 
   async acceptTrip(dto: TripActionDto) {
+    // Global Active Ride Lock Check (P0) — PostgreSQL backed
+    if (this.assignmentRepo) {
+      const activeAssignment = await this.assignmentRepo.findOne({ where: { driver_id: dto.driverId } });
+      if (activeAssignment) {
+        throw new ConflictException('ท่านมีงานที่กำลังดำเนินการอยู่แล้ว ไม่สามารถรับงานซ้อนได้');
+      }
+    }
+
     const lockKey = `trip:${dto.tripId}:lock`;
     // Correct order: key, value, 'EX', seconds, 'NX'
     // Or key, value, 'NX', 'EX', seconds (depending on lib version, but usually options come after value)
@@ -288,11 +321,51 @@ export class DriverService implements OnModuleInit {
     }
 
     try {
+      const serviceType = trip.service_type || 'MOTO';
+      let vehicleId = trip.vehicle_id;
+      if (!vehicleId && this.serviceProfileRepo) {
+        const profile = await this.serviceProfileRepo.findOne({
+          where: { driver_id: dto.driverId, service_type: serviceType as any },
+        });
+        vehicleId = profile?.active_vehicle_id || null;
+      }
+      if (!vehicleId && this.vehicleRepo) {
+        const defaultVeh = await this.vehicleRepo.findOne({
+          where: { driver_id: dto.driverId },
+        });
+        vehicleId = defaultVeh?.id || null;
+      }
+
+      // Enforce Global Active Ride Lock via PostgreSQL Unique Constraint
+      if (this.assignmentRepo) {
+        try {
+          const assignment = this.assignmentRepo.create({
+            driver_id: dto.driverId,
+            trip_id: dto.tripId,
+            service_type: (serviceType as any) || 'MOTO',
+            vehicle_id: vehicleId || dto.driverId,
+            state: 'ACCEPTED',
+          });
+          await this.assignmentRepo.save(assignment);
+        } catch (err: any) {
+          if (err?.code === '23505' || err?.message?.includes('duplicate') || err?.message?.includes('driver_active_assignments')) {
+            throw new ConflictException('ท่านมีงานที่กำลังดำเนินการอยู่แล้ว ไม่สามารถรับงานซ้อนได้');
+          }
+          throw err;
+        }
+      }
+
+      await this.redis.set(`driver:${dto.driverId}:active_assignment`, dto.tripId, 'EX', 7200);
       await this.redis.hset(`trip:${dto.tripId}`, 'status', 'ACCEPTED', 'driverId', dto.driverId);
       await this.redis.hset(`driver:${dto.driverId}:stats`, 'status', 'BUSY');
 
       await this.driverRepo.update(dto.driverId, { current_status: 'BUSY' });
-      await this.tripRepo.update(dto.tripId, { driver_id: dto.driverId, status: 'ACCEPTED' });
+      await this.tripRepo.update(dto.tripId, {
+        driver_id: dto.driverId,
+        status: 'ACCEPTED',
+        vehicle_id: vehicleId || undefined,
+        accepted_at: new Date(),
+      });
 
       const winId = await this.redis.hget(`driver:${dto.driverId}:stats`, 'currentWin');
       if (winId) {
@@ -321,14 +394,68 @@ export class DriverService implements OnModuleInit {
     }
   }
 
-  async markDriverArrived(driverId: string, tripId: string) {
+  async markDriverArrived(
+    driverId: string,
+    tripId: string,
+    telemetry?: { lat?: number; lng?: number; accuracyMeters?: number; clientTimestamp?: number }
+  ) {
     const trip = await this.tripRepo.findOne({ where: { id: tripId, driver_id: driverId } });
     if (!trip || trip.status !== 'ACCEPTED') {
       throw new BadRequestException('ไม่สามารถแจ้งถึงจุดรับในสถานะปัจจุบัน');
     }
-    await this.tripRepo.update(tripId, { status: 'DRIVER_ARRIVED', arrived_at: new Date() });
-    await this.redis.hset(`trip:${tripId}`, 'status', 'DRIVER_ARRIVED');
-    return { success: true, status: 'DRIVER_ARRIVED' };
+
+    let arrivalVerified = false;
+    let distanceMeters = 0;
+    const accuracyMeters = telemetry?.accuracyMeters || 0;
+    let verificationStatus = 'UNVERIFIED';
+
+    if (telemetry && telemetry.lat !== undefined && telemetry.lng !== undefined) {
+      distanceMeters = this.calculateDistanceMeters(
+        telemetry.lat,
+        telemetry.lng,
+        trip.pickup_lat,
+        trip.pickup_lng
+      );
+
+      const isWithinGeofence = distanceMeters <= 100;
+      const isAccurateGps = accuracyMeters <= 50;
+      const isFreshTimestamp = !telemetry.clientTimestamp || Math.abs(Date.now() - telemetry.clientTimestamp) <= 60000;
+
+      if (isWithinGeofence && isAccurateGps && isFreshTimestamp) {
+        arrivalVerified = true;
+        verificationStatus = 'VERIFIED';
+      } else {
+        arrivalVerified = false;
+        verificationStatus = 'LOCATION_UNVERIFIED';
+        this.logger.warn(
+          `Driver ${driverId} arrival unverified for trip ${tripId}: dist=${distanceMeters.toFixed(1)}m, acc=${accuracyMeters}m`
+        );
+      }
+    }
+
+    await this.tripRepo.update(tripId, {
+      status: 'DRIVER_ARRIVED',
+      arrived_at: new Date(),
+      arrival_verified: arrivalVerified,
+      arrival_gps_accuracy: accuracyMeters || undefined,
+      arrival_distance_meters: Math.round(distanceMeters),
+      arrival_verification_status: verificationStatus,
+    });
+    await this.redis.hset(`trip:${tripId}`, {
+      status: 'DRIVER_ARRIVED',
+      arrivalVerified: arrivalVerified ? 'true' : 'false',
+      verificationStatus,
+    });
+    if (this.assignmentRepo) {
+      await this.assignmentRepo.update({ trip_id: tripId }, { state: 'ARRIVED' });
+    }
+    return {
+      success: true,
+      status: 'DRIVER_ARRIVED',
+      arrivalVerified,
+      distanceToPickupMeters: Math.round(distanceMeters),
+      verificationStatus,
+    };
   }
 
   async startTrip(driverId: string, tripId: string) {
@@ -338,6 +465,9 @@ export class DriverService implements OnModuleInit {
     }
     await this.tripRepo.update(tripId, { status: 'IN_PROGRESS', started_at: new Date() });
     await this.redis.hset(`trip:${tripId}`, 'status', 'IN_PROGRESS');
+    if (this.assignmentRepo) {
+      await this.assignmentRepo.update({ trip_id: tripId }, { state: 'IN_PROGRESS' });
+    }
     return { success: true, status: 'IN_PROGRESS' };
   }
 
@@ -441,6 +571,11 @@ export class DriverService implements OnModuleInit {
     }
     await this.redis.hset(`trip:${dto.tripId}`, 'status', 'COMPLETED');
     await this.redis.hset(`driver:${dto.driverId}:stats`, 'status', 'IDLE');
+    await this.redis.del(`driver:${dto.driverId}:active_assignment`);
+
+    if (this.assignmentRepo) {
+      await this.assignmentRepo.delete({ trip_id: dto.tripId });
+    }
 
     await this.tripRepo.update(dto.tripId, {
       status: 'COMPLETED',
@@ -589,6 +724,260 @@ export class DriverService implements OnModuleInit {
       plate: driver.plate,
       phone: driver.phone,
       rating: Number(driver.rating),
+    };
+  }
+
+  // ==========================================
+  // VEHICLE MANAGEMENT API (GATE 2.6)
+  // ==========================================
+
+  async getDriverVehicles(driverId: string) {
+    if (!this.vehicleRepo) return [];
+    return this.vehicleRepo.find({
+      where: { driver_id: driverId },
+      relations: ['documents'],
+      order: { created_at: 'DESC' },
+    });
+  }
+
+  async getVehicleById(driverId: string, vehicleId: string) {
+    if (!this.vehicleRepo) throw new NotFoundException('Vehicle repository not initialized');
+    const vehicle = await this.vehicleRepo.findOne({
+      where: { id: vehicleId, driver_id: driverId },
+      relations: ['documents'],
+    });
+    if (!vehicle) throw new NotFoundException('ไม่พบข้อมูลยานพาหนะ');
+    return vehicle;
+  }
+
+  async registerVehicle(driverId: string, dto: RegisterVehicleDto) {
+    if (!this.vehicleRepo) throw new BadRequestException('Vehicle repository not initialized');
+
+    // DLT Compliance checks
+    if (dto.category === 'PRIVATE_CAR_FOR_HIRE') {
+      if (dto.passenger_capacity && dto.passenger_capacity < 4) {
+        throw new BadRequestException('รถยนต์รับจ้างผ่านระบบอิเล็กทรอนิกส์ต้องมีความจุผู้โดยสารไม่น้อยกว่า 4 ที่นั่ง');
+      }
+      if (dto.year) {
+        const currentYear = new Date().getFullYear();
+        if (currentYear - dto.year > 9) {
+          throw new BadRequestException('รถยนต์รับจ้างผ่านระบบอิเล็กทรอนิกส์ต้องมีอายุการใช้งานไม่เกิน 9 ปี');
+        }
+      }
+    }
+
+    const vehicle = this.vehicleRepo.create({
+      driver_id: driverId,
+      category: dto.category,
+      plate: dto.plate,
+      province: dto.province || 'กรุงเทพมหานคร',
+      brand: dto.brand,
+      model: dto.model,
+      color: dto.color,
+      year: dto.year || null,
+      passenger_capacity: dto.passenger_capacity || (dto.category === 'MOTORCYCLE' ? 1 : 4),
+      verification_status: 'PENDING',
+    });
+
+    const saved = await this.vehicleRepo.save(vehicle);
+
+    // If driver has no active vehicle for this service type, auto-link it
+    const serviceType = dto.category === 'MOTORCYCLE' ? 'MOTO' : 'TAXI';
+    if (this.serviceProfileRepo) {
+      let profile = await this.serviceProfileRepo.findOne({
+        where: { driver_id: driverId, service_type: serviceType },
+      });
+      if (!profile) {
+        profile = this.serviceProfileRepo.create({
+          driver_id: driverId,
+          service_type: serviceType,
+          active_vehicle_id: saved.id,
+          is_enabled: serviceType === 'MOTO',
+          is_online: false,
+          eligibility_status: 'PENDING',
+        });
+        await this.serviceProfileRepo.save(profile);
+      } else if (!profile.active_vehicle_id) {
+        await this.serviceProfileRepo.update(profile.id, { active_vehicle_id: saved.id });
+      }
+    }
+
+    return saved;
+  }
+
+  async uploadVehicleDocument(driverId: string, vehicleId: string, dto: UploadVehicleDocumentDto) {
+    if (!this.vehicleRepo || !this.vehicleDocRepo) {
+      throw new BadRequestException('Repositories not initialized');
+    }
+    const vehicle = await this.vehicleRepo.findOne({ where: { id: vehicleId, driver_id: driverId } });
+    if (!vehicle) throw new NotFoundException('ไม่พบข้อมูลยานพาหนะ');
+
+    const doc = this.vehicleDocRepo.create({
+      vehicle_id: vehicleId,
+      document_type: dto.document_type as any,
+      file_url: dto.file_url,
+      expiry_date: dto.expiry_date ? new Date(dto.expiry_date) : null,
+      verification_status: 'PENDING',
+    });
+    const savedDoc = await this.vehicleDocRepo.save(doc);
+
+    // If vehicle was REJECTED, reset to PENDING when new documents are provided
+    if (vehicle.verification_status === 'REJECTED') {
+      await this.vehicleRepo.update(vehicleId, {
+        verification_status: 'PENDING',
+        rejection_reason: null,
+      });
+    }
+
+    return savedDoc;
+  }
+
+  async selectActiveVehicle(driverId: string, vehicleId: string) {
+    if (!this.vehicleRepo || !this.serviceProfileRepo) {
+      throw new BadRequestException('Repositories not initialized');
+    }
+    const vehicle = await this.vehicleRepo.findOne({ where: { id: vehicleId, driver_id: driverId } });
+    if (!vehicle) throw new NotFoundException('ไม่พบข้อมูลยานพาหนะ');
+
+    const serviceType: 'MOTO' | 'TAXI' = vehicle.category === 'MOTORCYCLE' ? 'MOTO' : 'TAXI';
+
+    // Gate verification: TAXI strictly requires VERIFIED status
+    if (serviceType === 'TAXI' && vehicle.verification_status !== 'VERIFIED') {
+      throw new BadRequestException('ยานพาหนะสำหรับบริการ TAXI ต้องผ่านการตรวจสอบเอกสาร (VERIFIED) จากเจ้าหน้าที่ก่อนเลือกใช้งาน');
+    }
+
+    // For MOTO: allow VERIFIED or LEGACY_REVIEW (backward compatibility)
+    if (serviceType === 'MOTO' && !['VERIFIED', 'LEGACY_REVIEW'].includes(vehicle.verification_status)) {
+      throw new BadRequestException('ยานพาหนะสำหรับบริการ MOTO ไม่อยู่ในสถานะที่ใช้งานได้');
+    }
+
+    let profile = await this.serviceProfileRepo.findOne({
+      where: { driver_id: driverId, service_type: serviceType },
+    });
+
+    if (!profile) {
+      profile = this.serviceProfileRepo.create({
+        driver_id: driverId,
+        service_type: serviceType,
+        active_vehicle_id: vehicleId,
+        is_enabled: true,
+        is_online: false,
+        eligibility_status: serviceType === 'TAXI' ? 'ELIGIBLE' : 'ELIGIBLE',
+      });
+      await this.serviceProfileRepo.save(profile);
+    } else {
+      await this.serviceProfileRepo.update(profile.id, {
+        active_vehicle_id: vehicleId,
+        eligibility_status: 'ELIGIBLE',
+      });
+    }
+
+    return { success: true, service_type: serviceType, active_vehicle_id: vehicleId };
+  }
+
+  // ==========================================
+  // DRIVER SERVICE PROFILE API (GATE 2.7)
+  // ==========================================
+
+  async getServiceProfiles(driverId: string) {
+    const profiles = this.serviceProfileRepo
+      ? await this.serviceProfileRepo.find({
+          where: { driver_id: driverId },
+          relations: ['active_vehicle'],
+        })
+      : [];
+
+    const activeAssignment = this.assignmentRepo
+      ? await this.assignmentRepo.findOne({
+          where: { driver_id: driverId },
+        })
+      : null;
+
+    return {
+      profiles,
+      active_assignment: activeAssignment
+        ? {
+            trip_id: activeAssignment.trip_id,
+            service_type: activeAssignment.service_type,
+            state: activeAssignment.state,
+            assigned_at: activeAssignment.assigned_at,
+          }
+        : null,
+    };
+  }
+
+  async toggleServiceAvailability(driverId: string, serviceType: 'MOTO' | 'TAXI', dto: ToggleServiceDto) {
+    if (!this.serviceProfileRepo) throw new BadRequestException('ServiceProfile repository not initialized');
+
+    let profile = await this.serviceProfileRepo.findOne({
+      where: { driver_id: driverId, service_type: serviceType },
+      relations: ['active_vehicle'],
+    });
+
+    if (!profile) {
+      const category = serviceType === 'MOTO' ? 'MOTORCYCLE' : 'PUBLIC_TAXI';
+      const defaultVehicle = this.vehicleRepo
+        ? await this.vehicleRepo.findOne({
+            where: { driver_id: driverId, category: category as any },
+          })
+        : null;
+
+      profile = this.serviceProfileRepo.create({
+        driver_id: driverId,
+        service_type: serviceType,
+        active_vehicle_id: defaultVehicle?.id || null,
+        is_enabled: true,
+        is_online: false,
+        eligibility_status: serviceType === 'MOTO' ? 'ELIGIBLE' : 'PENDING',
+      });
+      profile = await this.serviceProfileRepo.save(profile);
+    }
+
+    // Eligibility and verification enforcement on going online
+    if (dto.is_online === true) {
+      if (!profile.active_vehicle_id) {
+        throw new BadRequestException(`กรุณาเลือกยานพาหนะที่ต้องการใช้สำหรับบริการ ${serviceType} ก่อนเปิดรับงาน`);
+      }
+
+      const vehicle = profile.active_vehicle || (this.vehicleRepo ? await this.vehicleRepo.findOne({ where: { id: profile.active_vehicle_id } }) : null);
+      if (!vehicle) {
+        throw new BadRequestException('ไม่พบข้อมูลยานพาหนะที่เลือก');
+      }
+
+      if (serviceType === 'TAXI') {
+        if (vehicle.verification_status !== 'VERIFIED') {
+          throw new BadRequestException('ไม่สามารถเปิดรับงาน TAXI ได้ เนื่องจากยานพาหนะยังไม่ผ่านการอนุมัติ (ต้องเป็น VERIFIED)');
+        }
+        if (profile.eligibility_status !== 'ELIGIBLE') {
+          throw new BadRequestException('สถานะของคุณยังไม่ผ่านคุณสมบัติผู้ขับ TAXI');
+        }
+      } else if (serviceType === 'MOTO') {
+        if (!['VERIFIED', 'LEGACY_REVIEW'].includes(vehicle.verification_status)) {
+          throw new BadRequestException('ยานพาหนะไม่อยู่ในสถานะพร้อมให้บริการ');
+        }
+      }
+    }
+
+    const updates: Partial<DriverServiceProfileEntity> = {};
+    if (typeof dto.is_online === 'boolean') updates.is_online = dto.is_online;
+    if (typeof dto.is_enabled === 'boolean') updates.is_enabled = dto.is_enabled;
+
+    await this.serviceProfileRepo.update(profile.id, updates);
+
+    // Redis presence update
+    const redisKey = `driver:${driverId}:services:${serviceType}`;
+    if (dto.is_online !== undefined) {
+      if (dto.is_online) {
+        await this.redis.hset(redisKey, 'online', '1', 'vehicleId', profile.active_vehicle_id || '');
+      } else {
+        await this.redis.hset(redisKey, 'online', '0');
+      }
+    }
+
+    return {
+      success: true,
+      service_type: serviceType,
+      ...updates,
     };
   }
 }

@@ -1,17 +1,57 @@
 version: '3.8'
+
 services:
+  gozipp-db:
+    image: postgis/postgis:15-3.4-alpine
+    container_name: gozipp-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-gozipp_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-gozipp_secure_pass_2026}
+      POSTGRES_DB: ${DB_NAME:-gozipp_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-gozipp_user} -d ${DB_NAME:-gozipp_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  gozipp-redis:
+    image: redis:7-alpine
+    container_name: gozipp-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   gozipp-api:
     build:
       context: .
-      dockerfile: Dockerfile.api
-    ports:
-      - "3000:3000"
+      dockerfile: Dockerfile
+    container_name: gozipp-api
     restart: always
+    ports:
+      - "${PORT:-3000}:3000"
+    depends_on:
+      gozipp-db:
+        condition: service_healthy
+      gozipp-redis:
+        condition: service_healthy
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - REDIS_URL=${REDIS_URL}
-      - FIREBASE_SERVICE_ACCOUNT_JSON=${FIREBASE_SERVICE_ACCOUNT_JSON}
+
+volumes:
+  pgdata:
+  redisdata:

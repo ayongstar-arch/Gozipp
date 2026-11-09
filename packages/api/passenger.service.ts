@@ -1,9 +1,9 @@
-import { Injectable, BadRequestException, Logger, OnModuleInit, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, OnModuleInit, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import Redis from 'ioredis';
 import * as argon2 from 'argon2';
-import { RideRequestDto, PassengerRegisterDto } from './dtos';
+import { RideRequestDto, PassengerRegisterDto, FareEstimateDto } from './dtos';
 import { CreditService } from './credit.service';
 import { MapService } from './map.service';
 import { SmsService } from './sms.service';
@@ -11,6 +11,8 @@ import { PassengerEntity } from './entities/passenger.entity';
 import { TripEntity } from './entities/trip.entity';
 import { DriverEntity } from './entities/driver.entity';
 import { AuthService, DeviceMetadata } from './auth/auth.service';
+import { OutboxService } from './common/outbox.service';
+import { FareEstimationService } from './fare-estimation.service';
 import { normalizeThaiMobileNumber } from './common/phone.util';
 import { hashPin } from './common/pin-crypto';
 import { randomInt } from 'crypto';
@@ -33,6 +35,10 @@ export class PassengerService implements OnModuleInit {
     private mapService: MapService,
     private smsService: SmsService,
     private authService: AuthService,
+    @Optional()
+    private outboxService?: OutboxService,
+    @Optional()
+    private fareService?: FareEstimationService,
   ) {
     this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
   }
@@ -372,6 +378,30 @@ export class PassengerService implements OnModuleInit {
 
   async requestRide(dto: RideRequestDto) {
     try {
+      // 0. Idempotency Check (Stage 4)
+      if (dto.idempotencyKey) {
+        try {
+          const existing = await this.tripRepo.findOne({ where: { idempotency_key: dto.idempotencyKey } });
+          if (existing) {
+            this.logger.log(`Idempotent request returning existing trip ${existing.id}`);
+            return {
+              tripId: existing.id,
+              status: existing.status,
+              fare: Number(existing.fare),
+              isFreeRide: Number(existing.fare) === 0,
+              distance: `${existing.distance_km || 0} กม.`,
+              eta: `${existing.duration_mins || 5} นาที`,
+              scheduledAt: existing.scheduled_at ? existing.scheduled_at.toISOString() : undefined,
+              preferredDriverId: existing.preferred_driver_id || undefined,
+              isDuplicate: true,
+              correlationId: `corr-${existing.id}`,
+            };
+          }
+        } catch (e: any) {
+          this.logger.debug(`Idempotency check warning: ${e?.message || e}`);
+        }
+      }
+
       // 1. Resolve & normalize passenger entity
       let passengerId = dto.passengerId;
       const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(passengerId || '');
@@ -456,13 +486,28 @@ export class PassengerService implements OnModuleInit {
       }
 
       const tripId = crypto.randomUUID();
-      const tripFare = hasFreeRides ? 0 : pointsRequired;
+      const serviceType = (dto.serviceType || 'MOTO').toUpperCase();
+
+      // Feature Flag Check: Staging isolation — public TAXI booking blocked if disabled
+      if (serviceType === 'TAXI') {
+        const publicBooking = process.env.TAXI_PUBLIC_BOOKING_ENABLED === 'true';
+        if (!publicBooking) {
+          throw new BadRequestException('บริการ GOZIPP TAXI ยังไม่เปิดให้บริการสาธารณะในขณะนี้ (อยู่ระหว่างการทดสอบระบบ)');
+        }
+      }
+
+      const tripFare = serviceType === 'TAXI'
+        ? (this.fareService ? this.fareService.estimateFare({ pickupLat: dto.pickupLat, pickupLng: dto.pickupLng, destLat: dto.destLat, destLng: dto.destLng, serviceType: 'TAXI', distanceKm: route.distanceKm }).estimatedFare : 60)
+        : (hasFreeRides ? 0 : pointsRequired);
+
+      const correlationId = `corr-${tripId}-${Date.now()}`;
 
       // 5. Save to DB with resilience
       try {
         await this.tripRepo.save({
           id: tripId,
           passenger_id: dto.passengerId,
+          service_type: serviceType,
           pickup_lat: dto.pickupLat,
           pickup_lng: dto.pickupLng,
           pickup_address: dto.pickupAddress,
@@ -475,17 +520,46 @@ export class PassengerService implements OnModuleInit {
           status: tripStatus,
           scheduled_at: scheduledDate || undefined,
           preferred_driver_id: dto.preferredDriverId || undefined,
+          idempotency_key: dto.idempotencyKey || undefined,
+          arrival_verified: false,
+          arrival_verification_status: 'UNVERIFIED',
         });
       } catch (dbErr: any) {
         this.logger.warn(`tripRepo.save encountered error (${dbErr.message}), attempting fallback insert`);
         try {
           await this.tripRepo.query(
-            `INSERT INTO trips (id, passenger_id, pickup_address, dest_address, distance_km, fare, credits_used, status, scheduled_at, preferred_driver_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [tripId, dto.passengerId, dto.pickupAddress, dto.destAddress, route.distanceKm, tripFare, 0, tripStatus, scheduledDate || null, dto.preferredDriverId || null]
+            `INSERT INTO trips (id, passenger_id, service_type, pickup_address, dest_address, distance_km, fare, credits_used, status, scheduled_at, preferred_driver_id, idempotency_key, arrival_verified, arrival_verification_status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            [tripId, dto.passengerId, serviceType, dto.pickupAddress, dto.destAddress, route.distanceKm, tripFare, 0, tripStatus, scheduledDate || null, dto.preferredDriverId || null, dto.idempotencyKey || null, false, 'UNVERIFIED']
           );
         } catch (fbErr: any) {
           this.logger.error(`Fallback trip insert failed: ${fbErr.message}`);
+        }
+      }
+
+      // Record in Outbox table (Stage 4 Transactional Reliability)
+      if (this.outboxService) {
+        try {
+          await this.outboxService.recordEvent(
+            'TRIP',
+            tripId,
+            tripStatus === 'SEARCHING' ? 'RIDE_REQUESTED' : 'RIDE_SCHEDULED',
+            {
+              tripId,
+              serviceType,
+              passengerId: dto.passengerId,
+              pickupLat: dto.pickupLat,
+              pickupLng: dto.pickupLng,
+              destLat: dto.destLat,
+              destLng: dto.destLng,
+              fare: tripFare,
+              scheduledAt: scheduledDate ? scheduledDate.toISOString() : null,
+              preferredDriverId: dto.preferredDriverId || null,
+            },
+            correlationId
+          );
+        } catch (outboxErr: any) {
+          this.logger.error(`Failed recording outbox event for trip ${tripId}: ${outboxErr.message}`);
         }
       }
 
@@ -494,6 +568,7 @@ export class PassengerService implements OnModuleInit {
         await this.redis.hset(`trip:${tripId}`, {
           id: tripId,
           passengerId: dto.passengerId,
+          serviceType: serviceType,
           status: tripStatus,
           fare: tripFare,
           pickupLat: dto.pickupLat,
@@ -505,6 +580,7 @@ export class PassengerService implements OnModuleInit {
           isEmergency: dto.isEmergency ? 'true' : 'false',
           scheduledAt: scheduledDate ? scheduledDate.toISOString() : '',
           preferredDriverId: dto.preferredDriverId || '',
+          correlationId,
         } as any);
 
         if (tripStatus === 'SEARCHING') {
@@ -531,12 +607,43 @@ export class PassengerService implements OnModuleInit {
         eta: route.durationMins + ' นาที',
         scheduledAt: scheduledDate ? scheduledDate.toISOString() : undefined,
         preferredDriverId: dto.preferredDriverId || undefined,
+        correlationId,
       };
     } catch (err: any) {
       this.logger.error(`requestRide error: ${err.message}`, err.stack);
       if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(err.message || 'เกิดข้อผิดพลาดในการเรียกรถ กรุณาลองใหม่อีกครั้ง');
     }
+  }
+
+  async getFareEstimate(dto: FareEstimateDto) {
+    if (this.fareService) {
+      return this.fareService.estimateFare(dto);
+    }
+    const serviceType = (dto.serviceType || 'MOTO').toUpperCase();
+    if (serviceType === 'MOTO') {
+      return {
+        serviceType: 'MOTO',
+        distanceKm: 3.5,
+        durationMins: 10,
+        estimatedFare: 2,
+        currency: 'THB',
+        breakdown: { driverCommissionRate: 0, passengerSystemFee: 2 },
+        isQuotationConfirmed: true,
+        requiresPoints: 2,
+      };
+    }
+    return {
+      serviceType: 'TAXI',
+      distanceKm: 3.5,
+      durationMins: 15,
+      estimatedFare: 60,
+      currency: 'THB',
+      breakdown: { baseFare: 35, distanceFare: 25 },
+      isQuotationConfirmed: false,
+      isTestingQuotation: true,
+      disclaimer: 'GOZIPP TAXI is currently in staging certification.',
+    };
   }
 
   async getRideStatus(tripId: string, passengerId: string) {
@@ -585,6 +692,7 @@ export class PassengerService implements OnModuleInit {
       passengerId: trip.passenger_id,
       passengerName: passenger?.name || 'ผู้โดยสาร',
       status: trip.status,
+      service_type: trip.service_type || 'MOTO',
       pickup: { lat: trip.pickup_lat, lng: trip.pickup_lng, address: trip.pickup_address },
       destination: { lat: trip.dest_lat, lng: trip.dest_lng, address: trip.dest_address },
       fare: Number(trip.fare),
@@ -608,6 +716,15 @@ export class PassengerService implements OnModuleInit {
       cancel_reason: 'PASSENGER_CANCELLED',
     });
     await this.redis.hset(`trip:${tripId}`, 'status', 'CANCELLED');
+
+    if (trip.driver_id) {
+      await this.redis.del(`driver:${trip.driver_id}:active_assignment`);
+      await this.driverRepo.update(trip.driver_id, { current_status: 'IDLE' });
+      await this.redis.hset(`driver:${trip.driver_id}:stats`, 'status', 'IDLE');
+      try {
+        await this.tripRepo.manager.query('DELETE FROM driver_active_assignments WHERE trip_id = $1', [tripId]);
+      } catch {}
+    }
 
     if (trip.status === 'ACCEPTED' && Number(trip.fare) > 0) {
       await this.creditService.refundForRide(passengerId, tripId, Number(trip.fare), 'Trip cancelled before departure');
@@ -652,7 +769,7 @@ export class PassengerService implements OnModuleInit {
 
   private setupTimeout(tripId: string) {
     const TIMEOUT_MS = 60000;
-    setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const currentStatus = await this.redis.hget(`trip:${tripId}`, 'status');
       if (currentStatus === 'SEARCHING') {
         await this.redis.hset(`trip:${tripId}`, 'status', 'TIMEOUT_NO_DRIVER');
@@ -660,6 +777,9 @@ export class PassengerService implements OnModuleInit {
         this.logger.log(`Trip ${tripId} timed out.`);
       }
     }, TIMEOUT_MS);
+    if (timer.unref) {
+      timer.unref();
+    }
   }
 
   async resumeSearchingTrips(): Promise<string[]> {

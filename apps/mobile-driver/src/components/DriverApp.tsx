@@ -26,6 +26,8 @@ type AuthStep = 'ONBOARDING' | 'LOGIN' | 'LOGIN_PIN' | 'OTP' | 'REGISTER' | 'PEN
 // getTripForDispatch(): { id, passengerId, passengerName, status, pickup{lat,lng,address}, destination{lat,lng,address}, fare, distanceKm, requestedAt }
 interface DriverJob {
     tripId: string;
+    offerId?: string;
+    serviceType?: string;
     passengerId: string;
     passengerName: string;
     pickup: { lat: number; lng: number; address: string };
@@ -856,6 +858,50 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             audio.play().catch(e => console.error("Audio play failed", e));
         };
 
+        // Dual Mobility: TAXI Ride Offer (Stage 4)
+        const handleTaxiRideOffer = (data: any) => {
+            console.log('[Socket] TAXI_RIDE_OFFER received:', data);
+            const trip = data?.trip;
+            const offer = data?.offer;
+            if (trip?.id && trip?.pickup) {
+                const job: DriverJob = {
+                    tripId: trip.id,
+                    offerId: offer?.offerId,
+                    serviceType: 'TAXI',
+                    passengerId: trip.passengerId || '',
+                    passengerName: trip.passengerName || 'ผู้โดยสาร (GOZIPP TAXI)',
+                    pickup: {
+                        lat: Number(trip.pickup.lat),
+                        lng: Number(trip.pickup.lng),
+                        address: trip.pickup.address || 'จุดรับผู้โดยสาร TAXI',
+                    },
+                    destination: {
+                        lat: Number(trip.destination?.lat),
+                        lng: Number(trip.destination?.lng),
+                        address: trip.destination?.address || 'จุดหมายปลายทาง',
+                    },
+                    distanceKm: Number(trip.distanceKm) || 0,
+                    fare: Number(trip.fare) || 0,
+                    message: `GOZIPP TAXI (${trip.vehicleCategory || 'PUBLIC_TAXI'})`,
+                };
+                setActiveJob(job);
+                setMatchedRider({
+                    id: job.tripId,
+                    location: { lat: job.pickup.lat, lng: job.pickup.lng },
+                    destination: { lat: job.destination.lat, lng: job.destination.lng },
+                    requestTime: Date.now(),
+                    waitTime: 0,
+                    status: 'MATCHED',
+                    priorityScore: 0,
+                    message: job.message,
+                } as Rider);
+                setCurrentTripId(job.tripId);
+                setTripPhase('TO_PICKUP');
+                setHasNewJob(true);
+                if (window.navigator.vibrate) window.navigator.vibrate([200, 100, 200, 100, 500]);
+            }
+        };
+
         const handleRideCancel = () => {
             setMatchedRider(undefined);
             setActiveJob(null);
@@ -941,6 +987,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         };
 
         socket.on('RIDE_OFFER', handleRideOffer);
+        socket.on('TAXI_RIDE_OFFER', handleTaxiRideOffer);
         socket.on('RIDE_CANCEL', handleRideCancel);
         socket.on('TRIP_COMPLETE', handleTripComplete);
         socket.on('TRIP_ERROR', handleTripError);
@@ -949,6 +996,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
         return () => {
             socket.off('RIDE_OFFER', handleRideOffer);
+            socket.off('TAXI_RIDE_OFFER', handleTaxiRideOffer);
             socket.off('RIDE_CANCEL', handleRideCancel);
             socket.off('TRIP_COMPLETE', handleTripComplete);
             socket.off('TRIP_ERROR', handleTripError);
@@ -961,6 +1009,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     useEffect(() => {
         if (isOnline) {
             const id = watchPosition((loc) => {
+                setDriverData(prev => prev ? { ...prev, location: loc } : undefined);
                 socket.emit('DRIVER_UPDATE_STATUS', {
                     id: driverData?.id,
                     status: isBusy ? 'BUSY' : 'IDLE',
@@ -1027,14 +1076,22 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             setAuthError('ไม่พบข้อมูลทริป กรุณารอรับงานใหม่');
             return;
         }
-        socket.emit('TRIP_ACCEPT', { driverId: driverData?.id, tripId: activeTripId });
+        if (activeJob?.serviceType === 'TAXI' && activeJob?.offerId) {
+            socket.emit('TAXI_OFFER_ACCEPT', { offerId: activeJob.offerId, tripId: activeTripId });
+        } else {
+            socket.emit('TRIP_ACCEPT', { driverId: driverData?.id, tripId: activeTripId });
+        }
         setHasNewJob(false);
         setTripPhase('TO_PICKUP');
         setDriverData(prev => prev ? { ...prev, status: 'MATCHED' } : undefined);
     };
 
     const handleRejectJob = () => {
-        if (activeTripId) socket.emit('TRIP_REJECT', { tripId: activeTripId });
+        if (activeJob?.serviceType === 'TAXI' && activeJob?.offerId) {
+            socket.emit('TAXI_OFFER_REJECT', { offerId: activeJob.offerId, tripId: activeTripId });
+        } else if (activeTripId) {
+            socket.emit('TRIP_REJECT', { tripId: activeTripId });
+        }
         setHasNewJob(false);
         setMatchedRider(undefined);
         setActiveJob(null);
@@ -1042,7 +1099,15 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     };
 
     const handleArrivedPickup = () => {
-        if (activeTripId) socket.emit('TRIP_DRIVER_ARRIVED', { tripId: activeTripId });
+        if (activeTripId) {
+            socket.emit('TRIP_DRIVER_ARRIVED', {
+                tripId: activeTripId,
+                lat: driverData?.location?.lat || MAP_CENTER.lat,
+                lng: driverData?.location?.lng || MAP_CENTER.lng,
+                accuracyMeters: 15,
+                clientTimestamp: Date.now(),
+            });
+        }
         setTripPhase('TO_DEST');
     };
 

@@ -642,6 +642,10 @@ export class AdminService {
 
     if (trip.driver_id) {
       await this.driverRepo.update(trip.driver_id, { current_status: 'IDLE' });
+      await this.redis.del(`driver:${trip.driver_id}:active_assignment`);
+      try {
+        await this.tripRepo.manager.query('DELETE FROM driver_active_assignments WHERE trip_id = $1', [tripId]);
+      } catch {}
     }
 
     try {

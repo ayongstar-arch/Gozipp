@@ -19,18 +19,23 @@ export class S3Service {
     const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
     const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
     const region = this.configService.get<string>('AWS_REGION') || 'ap-southeast-1';
+    const endpoint = this.configService.get<string>('S3_ENDPOINT') || this.configService.get<string>('AWS_ENDPOINT_URL');
 
     if (accessKeyId && secretAccessKey) {
       this.s3Client = new S3Client({
-        region,
+        region: endpoint ? (region || 'auto') : region,
+        endpoint: endpoint || undefined,
         credentials: {
           accessKeyId,
           secretAccessKey,
         },
       });
-      this.logger.log('S3 Client initialized in production mode');
+      const providerLabel = endpoint && endpoint.includes('r2.cloudflarestorage.com')
+        ? 'Cloudflare R2'
+        : (endpoint ? `Custom S3 (${endpoint})` : 'AWS S3');
+      this.logger.log(`Storage client initialized successfully with provider: ${providerLabel}`);
     } else {
-      this.logger.warn('AWS Credentials missing. Falling back to local storage.');
+      this.logger.warn('Storage credentials missing. Falling back to local storage.');
     }
   }
 
@@ -57,6 +62,15 @@ export class S3Service {
         });
 
         await this.s3Client.send(command);
+
+        const customPublicUrl = this.configService.get<string>('S3_PUBLIC_URL');
+        if (customPublicUrl) {
+          return `${customPublicUrl.replace(/\/$/, '')}/${key}`;
+        }
+        const endpoint = this.configService.get<string>('S3_ENDPOINT') || this.configService.get<string>('AWS_ENDPOINT_URL');
+        if (endpoint && endpoint.includes('r2.cloudflarestorage.com')) {
+          return `https://${this.bucketName}.r2.cloudflarestorage.com/${key}`;
+        }
         return `https://${this.bucketName}.s3.amazonaws.com/${key}`;
       } catch (error) {
         this.logger.error(`S3 Upload failed: ${error.message}`);

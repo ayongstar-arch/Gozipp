@@ -1,4 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, OneToMany } from 'typeorm';
+import { DriverVehicleEntity } from './driver-vehicle.entity';
+import { DriverServiceProfileEntity } from './driver-service-profile.entity';
 
 @Entity('drivers')
 export class DriverEntity {
@@ -106,6 +108,12 @@ export class DriverEntity {
   // Training statuses (JSON stored)
   @Column({ nullable: true, type: 'jsonb' })
   training_statuses: any;
+
+  @OneToMany(() => DriverVehicleEntity, vehicle => vehicle.driver)
+  vehicles: DriverVehicleEntity[];
+
+  @OneToMany(() => DriverServiceProfileEntity, profile => profile.driver)
+  service_profiles: DriverServiceProfileEntity[];
 
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;

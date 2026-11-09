@@ -45,6 +45,7 @@ import {
   Download,
   ArrowLeft,
   Smartphone,
+  Car,
 } from 'lucide-react';
 
 // Dynamic import for Leaflet map to prevent SSR errors
@@ -103,6 +104,10 @@ export default function HomeView() {
     promptpayId?: string;
   } | null>(null);
   const [isTopupLoading, setIsTopupLoading] = useState(false);
+
+  // Stage 4 Dual Mobility Selection
+  const [selectedService, setSelectedService] = useState<'MOTO' | 'TAXI'>('MOTO');
+  const [taxiCategory, setTaxiCategory] = useState<'PUBLIC_TAXI' | 'PRIVATE_CAR_FOR_HIRE'>('PUBLIC_TAXI');
   const [isSavingQrImage, setIsSavingQrImage] = useState(false);
 
   // Advance Ride Appointment (นัดหมายเวลาวินล่วงหน้า)
@@ -513,6 +518,8 @@ export default function HomeView() {
     const rideOptions = {
       scheduledAt: bookingMode === 'SCHEDULE' && scheduledAt ? scheduledAt : undefined,
       preferredDriverId: preferredDriver?.id || undefined,
+      serviceType: selectedService,
+      taxiCategory: selectedService === 'TAXI' ? taxiCategory : undefined,
     };
 
     const success = await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress, false, rideOptions);
@@ -523,6 +530,8 @@ export default function HomeView() {
         setToastMessage(`⏱️ นัดหมายเวลาล่วงหน้าสำเร็จ! (${scheduledDisplay}) หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
       } else if (preferredDriver) {
         setToastMessage(`⭐ เรียกพี่วินขาประจำ "${preferredDriver.nickname || preferredDriver.name}" สำเร็จ! หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
+      } else if (selectedService === 'TAXI') {
+        setToastMessage(`🚗 ส่งคำขอเรียกรถ TAXI สำเร็จ! ระบบกำลังค้นหาคนขับรถยนต์ใกล้คุณ`);
       } else {
         setToastMessage(`🛵 เรียกวินสำเร็จ! หัก ${tripPoints} แต้ม (คงเหลือ ${remaining} แต้ม)`);
       }
@@ -552,6 +561,8 @@ export default function HomeView() {
     const rideOptions = {
       scheduledAt: bookingMode === 'SCHEDULE' && scheduledAt ? scheduledAt : undefined,
       preferredDriverId: preferredDriver?.id || undefined,
+      serviceType: selectedService,
+      taxiCategory: selectedService === 'TAXI' ? taxiCategory : undefined,
     };
 
     const success = await requestRide(lat, lng, fullPickup, destLat, destLng, destAddress, true, rideOptions);
@@ -942,20 +953,60 @@ export default function HomeView() {
           <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
         </div>
 
+        {/* Dual Mobility Service Selector (Stage 4) */}
+        <div className="pointer-events-auto w-full mb-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-1.5 flex gap-1 shadow-md">
+          <button
+            type="button"
+            onClick={() => setSelectedService('MOTO')}
+            className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              selectedService === 'MOTO'
+                ? 'bg-[#00e58b] text-[#041a12] shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Bike className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>GOZIPP MOTO</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedService('TAXI')}
+            className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              selectedService === 'TAXI'
+                ? 'bg-amber-400 text-slate-950 shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Car className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>GOZIPP TAXI</span>
+            <span className="text-[9px] bg-slate-950/60 text-amber-300 px-1 py-0.2 rounded font-normal">Staging</span>
+          </button>
+        </div>
+
+        {selectedService === 'TAXI' && (
+          <div className="pointer-events-auto w-full mb-2 bg-amber-950/40 border border-amber-500/30 rounded-xl p-2 text-[11px] text-amber-200 flex items-center gap-2">
+            <Info className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>โหมดทดสอบ Staging (ยังไม่เปิดให้บริการสาธารณะ • ไม่มีการเก็บค่าโดยสารจริง)</span>
+          </div>
+        )}
+
         {/* Main CTA Button: เรียกวิน / ยืนยันนัดหมาย */}
         <div className="pointer-events-auto w-full max-w-full">
           <button
             onClick={handleCallWin}
             disabled={isLoading || isSearching}
             className={`w-full py-3 sm:py-3.5 px-4 rounded-full font-black text-sm sm:text-base flex items-center justify-center gap-2 hover:brightness-105 active:scale-[0.98] transition-all disabled:opacity-50 ${
-              bookingMode === 'SCHEDULE' && scheduledAt
+              selectedService === 'TAXI'
+                ? 'text-slate-950 bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 shadow-[0_10px_25px_rgba(245,158,11,0.35)]'
+                : bookingMode === 'SCHEDULE' && scheduledAt
                 ? 'text-[#041a12] bg-gradient-to-r from-emerald-300 via-teal-300 to-[#00e58b] shadow-[0_10px_25px_rgba(0,229,139,0.35)]'
                 : preferredDriver
                 ? 'text-[#191003] bg-gradient-to-r from-amber-300 via-yellow-400 to-[#00e58b] shadow-[0_10px_25px_rgba(245,158,11,0.35)]'
                 : 'text-[#041a12] bg-gradient-to-r from-[#00f293] via-[#00d075] to-[#00b865] shadow-[0_10px_25px_rgba(0,229,139,0.35)]'
             }`}
           >
-            {bookingMode === 'SCHEDULE' && scheduledAt ? (
+            {selectedService === 'TAXI' ? (
+              <Car className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950 stroke-[2.5]" />
+            ) : bookingMode === 'SCHEDULE' && scheduledAt ? (
               <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-[#041a12] stroke-[2.5]" />
             ) : preferredDriver ? (
               <Star className="w-4 h-4 sm:w-5 sm:h-5 text-[#191003] fill-[#191003]" />
@@ -965,6 +1016,8 @@ export default function HomeView() {
             <span className="tracking-tight font-black">
               {isLoading
                 ? 'กำลังส่งคำขอ...'
+                : selectedService === 'TAXI'
+                ? 'เรียกรถแท็กซี่ (Staging)'
                 : bookingMode === 'SCHEDULE' && scheduledAt
                 ? (preferredDriver ? `นัดหมายวินประจำ (${scheduledDisplay})` : `ยืนยันนัดหมายเวลา (${scheduledDisplay})`)
                 : preferredDriver

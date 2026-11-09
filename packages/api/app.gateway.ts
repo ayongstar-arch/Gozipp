@@ -3,7 +3,7 @@ import {
   MessageBody, ConnectedSocket, OnGatewayConnection, OnGatewayDisconnect
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, UnauthorizedException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Logger, UnauthorizedException, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { DriverService } from './driver.service';
 import { PassengerService } from './passenger.service';
@@ -11,6 +11,7 @@ import { ChatService } from './chat.service';
 import { SosService } from './sos.service';
 import { TripActionDto } from './dtos';
 import { FairQueueService } from './fair-queue.service';
+import { TaxiMatchingService } from './taxi-matching.service';
 import Redis from 'ioredis';
 
 @WebSocketGateway({
@@ -35,6 +36,8 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect, OnM
     private readonly sosService: SosService,
     private readonly jwtService: JwtService,
     private readonly fairQueueService: FairQueueService,
+    @Optional()
+    private readonly taxiMatchingService?: TaxiMatchingService,
   ) { }
 
   async onModuleInit() {
@@ -74,6 +77,32 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect, OnM
       const trip = await this.passengerService.getTripForDispatch(tripId);
       if (!trip || trip.status !== 'SEARCHING') return;
 
+      const serviceType = (trip as any).service_type || (trip as any).serviceType || 'MOTO';
+
+      // ==========================================
+      // SERVICE TYPE ROUTER (STAGE 3)
+      // ==========================================
+      if (serviceType === 'TAXI') {
+        if (this.taxiMatchingService) {
+          const telemetry = await this.taxiMatchingService.dispatchTaxiTrip(tripId);
+          if (telemetry.finalState === 'OFFER_SENT' && telemetry.assignedDriverId) {
+            const pendingOfferId = await this.redis.get(`driver:${telemetry.assignedDriverId}:pending_offer`);
+            const offer = pendingOfferId ? await this.taxiMatchingService.getOffer(pendingOfferId) : null;
+            if (offer) {
+              this.server.to(`user:${telemetry.assignedDriverId}`).emit('TAXI_RIDE_OFFER', {
+                offer,
+                trip,
+                expiresInSeconds: offer.timeoutSeconds,
+              });
+            }
+          } else if (telemetry.finalState === 'NO_DRIVER_FOUND') {
+            this.server.to(`user:${trip.passengerId}`).emit('NO_TAXI_AVAILABLE', { tripId });
+          }
+        }
+        return;
+      }
+
+      // Existing MOTO Engine: FairQueueService with 100m Win Station Geofence (Preserved 100%)
       let driverId: string | null = null;
       let stationId: string | null = null;
 
@@ -252,12 +281,22 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect, OnM
   }
 
   @SubscribeMessage('TRIP_DRIVER_ARRIVED')
-  async handleDriverArrived(@MessageBody() data: { tripId: string }, @ConnectedSocket() client: Socket) {
+  async handleDriverArrived(
+    @MessageBody() data: { tripId: string; lat?: number; lng?: number; accuracyMeters?: number; clientTimestamp?: number },
+    @ConnectedSocket() client: Socket
+  ) {
     const user = this.getUser(client);
     if (!user || user.role !== 'DRIVER') return;
     try {
-      await this.driverService.markDriverArrived(user.userId, data.tripId);
-      this.server.to(`trip:${data.tripId}`).emit('TRIP_STATUS_UPDATE', { tripId: data.tripId, status: 'DRIVER_ARRIVED' });
+      const result = await this.driverService.markDriverArrived(user.userId, data.tripId, data);
+      this.server.to(`trip:${data.tripId}`).emit('TRIP_STATUS_UPDATE', {
+        tripId: data.tripId,
+        status: 'DRIVER_ARRIVED',
+        arrivalVerified: result.arrivalVerified,
+        verificationStatus: result.verificationStatus,
+        distanceToPickupMeters: result.distanceToPickupMeters,
+      });
+      client.emit('TRIP_ARRIVED_CONFIRMED', result);
     } catch (e) {
       client.emit('TRIP_ERROR', { message: e.message });
     }
@@ -411,5 +450,37 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect, OnM
       this.logger.error(`SOS create failed: ${err.message}`);
       client.emit('SOS_ERROR', { message: 'Failed to create SOS alert' });
     });
+  }
+
+  // --- TAXI DISPATCH WEBSOCKET EVENTS (STAGE 3) ---
+
+  @SubscribeMessage('TAXI_OFFER_ACCEPT')
+  async handleTaxiOfferAccept(
+    @MessageBody() data: { offerId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const user = this.getUser(client);
+    if (!user || user.role !== 'DRIVER') {
+      throw new UnauthorizedException('Only drivers can accept taxi offers');
+    }
+    if (!this.taxiMatchingService) {
+      throw new UnauthorizedException('Taxi matching engine not available');
+    }
+    const result = await this.taxiMatchingService.acceptOffer(user.userId, data.offerId);
+    client.emit('TAXI_OFFER_ACCEPTED', result);
+    return result;
+  }
+
+  @SubscribeMessage('TAXI_OFFER_REJECT')
+  async handleTaxiOfferReject(
+    @MessageBody() data: { offerId: string; reason?: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const user = this.getUser(client);
+    if (!user || user.role !== 'DRIVER') {
+      throw new UnauthorizedException('Only drivers can reject taxi offers');
+    }
+    if (!this.taxiMatchingService) return { success: true };
+    return this.taxiMatchingService.rejectOffer(user.userId, data.offerId, data.reason);
   }
 }

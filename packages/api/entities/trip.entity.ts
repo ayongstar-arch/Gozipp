@@ -13,6 +13,14 @@ export class TripEntity {
   @Index()
   driver_id: string;
 
+  @Column({ type: 'varchar', length: 20, default: 'MOTO' })
+  @Index()
+  service_type: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  @Index()
+  vehicle_id: string;
+
   @Column({ nullable: true })
   station_id: string;
 
@@ -82,6 +90,24 @@ export class TripEntity {
 
   @Column({ nullable: true })
   preferred_driver_id: string;
+
+  // Idempotency Protection (Stage 4)
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  @Index()
+  idempotency_key: string;
+
+  // Arrival Verification Telemetry (Stage 4)
+  @Column({ type: 'boolean', default: false })
+  arrival_verified: boolean;
+
+  @Column({ type: 'float', nullable: true })
+  arrival_gps_accuracy: number;
+
+  @Column({ type: 'float', nullable: true })
+  arrival_distance_meters: number;
+
+  @Column({ type: 'varchar', length: 30, default: 'UNVERIFIED' })
+  arrival_verification_status: string;
 
   // Timestamps
   @CreateDateColumn({ type: 'timestamptz' })

@@ -226,6 +226,8 @@ export const useRide = () => {
     options?: {
       scheduledAt?: string;
       preferredDriverId?: string;
+      serviceType?: string;
+      taxiCategory?: string;
     }
   ): Promise<boolean> => {
     setIsLoading(true);
@@ -252,6 +254,8 @@ export const useRide = () => {
         destLng,
         destAddress,
         isEmergency,
+        serviceType: options?.serviceType || 'MOTO',
+        taxiCategory: options?.taxiCategory,
         scheduledAt: options?.scheduledAt,
         preferredDriverId: options?.preferredDriverId,
       };
@@ -259,8 +263,15 @@ export const useRide = () => {
         payload.passengerId = passengerId;
       }
 
+      const clientKey = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `idemp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
       const data = await apiFetch('/api/v1/passenger/ride/request', {
         method: 'POST',
+        headers: {
+          'Idempotency-Key': clientKey,
+        },
         body: JSON.stringify(payload),
       });
 

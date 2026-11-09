@@ -338,6 +338,182 @@ export class DatabaseMigrationService implements OnModuleInit {
       );
     `);
     await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_sos_events_status ON sos_events(status);`);
+
+    // ==========================================
+    // 13. DUAL MOBILITY FOUNDATION (STAGE 2)
+    // ==========================================
+
+    // 13.1 Driver Vehicles
+    await this.safeQuery(`
+      CREATE TABLE IF NOT EXISTS driver_vehicles (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        driver_id UUID NOT NULL,
+        category VARCHAR(50) NOT NULL DEFAULT 'MOTORCYCLE',
+        plate VARCHAR(50) NOT NULL,
+        province VARCHAR(100) NOT NULL DEFAULT 'กรุงเทพมหานคร',
+        brand VARCHAR(100) NOT NULL,
+        model VARCHAR(100) NOT NULL,
+        color VARCHAR(50) NOT NULL,
+        year INTEGER,
+        passenger_capacity INTEGER NOT NULL DEFAULT 1,
+        verification_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+        rejection_reason TEXT,
+        verified_at TIMESTAMPTZ,
+        verified_by UUID,
+        tax_expiry_date DATE,
+        insurance_expiry_date DATE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_driver_vehicles_driver_id ON driver_vehicles(driver_id);`);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_driver_vehicles_verification_status ON driver_vehicles(verification_status);`);
+
+    // 13.2 Vehicle Documents
+    await this.safeQuery(`
+      CREATE TABLE IF NOT EXISTS vehicle_documents (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        vehicle_id UUID NOT NULL,
+        document_type VARCHAR(50) NOT NULL,
+        file_url TEXT NOT NULL,
+        verification_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+        rejection_reason TEXT,
+        verified_at TIMESTAMPTZ,
+        verified_by UUID,
+        expiry_date DATE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_vehicle_documents_vehicle_id ON vehicle_documents(vehicle_id);`);
+
+    // 13.3 Driver Service Profiles
+    await this.safeQuery(`
+      CREATE TABLE IF NOT EXISTS driver_service_profiles (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        driver_id UUID NOT NULL,
+        service_type VARCHAR(20) NOT NULL,
+        active_vehicle_id UUID,
+        is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        is_online BOOLEAN NOT NULL DEFAULT FALSE,
+        eligibility_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.safeQuery(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'uq_driver_service_profile'
+        ) THEN
+          ALTER TABLE driver_service_profiles ADD CONSTRAINT uq_driver_service_profile UNIQUE (driver_id, service_type);
+        END IF;
+      END $$;
+    `);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_driver_service_profiles_driver ON driver_service_profiles(driver_id);`);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_driver_service_profiles_online ON driver_service_profiles(service_type, is_online, eligibility_status);`);
+
+    // 13.4 Driver Active Assignments (Global Active Ride Lock - P0)
+    await this.safeQuery(`
+      CREATE TABLE IF NOT EXISTS driver_active_assignments (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        driver_id UUID NOT NULL UNIQUE,
+        trip_id UUID NOT NULL UNIQUE,
+        service_type VARCHAR(20) NOT NULL,
+        vehicle_id UUID NOT NULL,
+        state VARCHAR(50) NOT NULL DEFAULT 'ACCEPTED',
+        assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_driver_active_assignments_driver ON driver_active_assignments(driver_id);`);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_driver_active_assignments_trip ON driver_active_assignments(trip_id);`);
+
+    // 13.5 Trips Table Additive Extension
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS service_type VARCHAR(20) DEFAULT 'MOTO';`);
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS vehicle_id UUID;`);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_trips_service_status ON trips(service_type, status);`);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_trips_vehicle_id ON trips(vehicle_id);`);
+
+    // ==========================================
+    // 14. GATE 2.4 LEGACY MOTO DATA BACKFILL
+    // ==========================================
+    // Backfill existing motorcycle drivers into driver_vehicles with LEGACY_REVIEW status
+    await this.safeQuery(`
+      INSERT INTO driver_vehicles (
+        id, driver_id, category, plate, province, brand, model, color, passenger_capacity, verification_status, created_at, updated_at
+      )
+      SELECT 
+        uuid_generate_v4(),
+        d.id,
+        'MOTORCYCLE',
+        COALESCE(NULLIF(d.plate, ''), 'UNKNOWN'),
+        'กรุงเทพมหานคร',
+        'Motorcycle',
+        'Standard',
+        'Unknown',
+        1,
+        'LEGACY_REVIEW',
+        NOW(),
+        NOW()
+      FROM drivers d
+      WHERE NOT EXISTS (
+        SELECT 1 FROM driver_vehicles dv WHERE dv.driver_id = d.id
+      );
+    `);
+
+    // Create default MOTO service profiles for existing drivers
+    await this.safeQuery(`
+      INSERT INTO driver_service_profiles (
+        id, driver_id, service_type, active_vehicle_id, is_enabled, is_online, eligibility_status, created_at, updated_at
+      )
+      SELECT 
+        uuid_generate_v4(),
+        d.id,
+        'MOTO',
+        (SELECT dv.id FROM driver_vehicles dv WHERE dv.driver_id = d.id LIMIT 1),
+        TRUE,
+        (d.current_status != 'OFFLINE'),
+        'ELIGIBLE',
+        NOW(),
+        NOW()
+      FROM drivers d
+      WHERE NOT EXISTS (
+        SELECT 1 FROM driver_service_profiles dsp WHERE dsp.driver_id = d.id AND dsp.service_type = 'MOTO'
+      );
+    `);
+
+    // ==========================================
+    // 15. STAGE 4: TRANSACTIONAL OUTBOX & ARRIVAL VERIFICATION
+    // ==========================================
+    await this.safeQuery(`
+      CREATE TABLE IF NOT EXISTS outbox_events (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        aggregate_type VARCHAR(50) NOT NULL,
+        aggregate_id VARCHAR(100) NOT NULL,
+        event_type VARCHAR(100) NOT NULL,
+        payload JSONB NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        retry_count INT NOT NULL DEFAULT 0,
+        max_retries INT NOT NULL DEFAULT 5,
+        last_error TEXT,
+        correlation_id VARCHAR(100) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        published_at TIMESTAMPTZ
+      );
+    `);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_outbox_events_status_created ON outbox_events(status, created_at);`);
+    await this.safeQuery(`CREATE INDEX IF NOT EXISTS idx_outbox_events_correlation ON outbox_events(correlation_id);`);
+
+    // Additive columns to trips for Stage 4
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(64);`);
+    await this.safeQuery(`CREATE UNIQUE INDEX IF NOT EXISTS idx_trips_idempotency_key ON trips(idempotency_key) WHERE idempotency_key IS NOT NULL;`);
+
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS arrival_verified BOOLEAN DEFAULT FALSE;`);
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS arrival_gps_accuracy FLOAT;`);
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS arrival_distance_meters FLOAT;`);
+    await this.safeQuery(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS arrival_verification_status VARCHAR(30) DEFAULT 'UNVERIFIED';`);
   }
 
   private async safeQuery(sql: string) {
