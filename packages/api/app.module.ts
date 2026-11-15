@@ -127,7 +127,7 @@ import { FareEstimationService } from './fare-estimation.service';
       logging: process.env.NODE_ENV !== 'production',
       retryAttempts: 3,
       retryDelay: 3000,
-      extra: { max: 20, idleTimeoutMillis: 30000 },
+      extra: { max: parseInt(process.env.DB_POOL_MAX || '15', 10), idleTimeoutMillis: 30000 },
       autoLoadEntities: true,
     }),
 

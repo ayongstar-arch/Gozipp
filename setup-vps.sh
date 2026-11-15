@@ -15,6 +15,26 @@ echo -e "${GREEN}====================================================${NC}"
 echo -e "${GREEN}   GOZIPP Dual Mobility — VPS Deployment Automator  ${NC}"
 echo -e "${GREEN}====================================================${NC}"
 
+# 0. Setup Swap for 2GB RAM instances (Safety against Out-of-Memory)
+SWAP_TOTAL=$(free -m | awk '/Swap:/ {print $2}')
+if [ -z "$SWAP_TOTAL" ] || [ "$SWAP_TOTAL" -lt 1000 ]; then
+    echo -e "${YELLOW}[0/5] Ensuring 2GB Swap space for memory stability...${NC}"
+    if [ ! -f /swapfile ]; then
+        fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    else
+        swapon /swapfile 2>/dev/null || true
+    fi
+    sysctl vm.swappiness=10
+    grep -q "vm.swappiness=10" /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
+    echo -e "${GREEN}Swap space configured (2GB protection active).${NC}"
+else
+    echo -e "${GREEN}[0/5] Swap space already present (${SWAP_TOTAL}MB).${NC}"
+fi
+
 # 1. Install Docker if missing
 if ! command -v docker &> /dev/null; then
     echo -e "${YELLOW}[1/5] Docker not found. Installing Docker engine...${NC}"
