@@ -2,6 +2,29 @@ import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger, Bad
 import { Observable, throwError } from 'rxjs';
 import { tap, catchError, retryWhen, scan, delay } from 'rxjs/operators';
 
+const SENSITIVE_LOG_KEYS = new Set([
+  'password', 'pin', 'newpin', 'oldpin', 'otp', 'secret',
+  'token', 'idtoken', 'refreshtoken', 'accesstoken', 'authorization',
+  'nationalid', 'idcard', 'cardnumber', 'cvv', 'cvc', 'pepper'
+]);
+
+function sanitizeLogBody(data: any): any {
+  if (!data || typeof data !== 'object') return data;
+  if (Array.isArray(data)) return data.map(sanitizeLogBody);
+
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (SENSITIVE_LOG_KEYS.has(key.toLowerCase())) {
+      sanitized[key] = '***REDACTED***';
+    } else if (value && typeof value === 'object') {
+      sanitized[key] = sanitizeLogBody(value);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP');
@@ -14,8 +37,9 @@ export class LoggingInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap(() => {
         const ms = Date.now() - now;
-        // Audit Trail: Log every dispatch decision or status change
-        this.logger.log(`${method} ${url} ${ms}ms - User:${request.user?.id || 'Anon'} - Body:${JSON.stringify(body)}`);
+        // Audit Trail: Log dispatch decision or status change with redacted sensitive fields
+        const safeBody = sanitizeLogBody(body);
+        this.logger.log(`${method} ${url} ${ms}ms - User:${request.user?.id || 'Anon'} - Body:${JSON.stringify(safeBody)}`);
       }),
     );
   }

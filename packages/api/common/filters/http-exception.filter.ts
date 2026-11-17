@@ -22,7 +22,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const rawMessage = (exception as any)?.message || (exception as any)?.detail || 'Internal server error';
+    const isProduction = process.env.NODE_ENV === 'production';
+    const rawMessage = isProduction
+      ? 'An unexpected internal server error occurred'
+      : ((exception as any)?.message || (exception as any)?.detail || 'Internal server error');
+
     const message =
       exception instanceof HttpException
         ? exception.getResponse()

@@ -146,9 +146,7 @@ export class AdminAuthService implements OnModuleInit {
       const passwordHash = await hashPin(password);
 
       if (existing) {
-        // Synchronize password if updated in .env
-        await this.adminRepo.update(existing.id, { passwordHash, isActive: true });
-        this.logger.log(`Verified SUPER_ADMIN '${username}' exists (password synchronized).`);
+        this.logger.log(`Verified SUPER_ADMIN '${username}' exists.`);
         return;
       }
 

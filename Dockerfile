@@ -17,6 +17,8 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/api/package.json ./packages/api/
 COPY --from=builder /app/packages/api/node_modules ./packages/api/node_modules
 COPY --from=builder /app/packages/api/dist ./packages/api/dist
+RUN mkdir -p /app/uploads && chown -R node:node /app
+USER node
 ENV NODE_ENV=production
 ENV PORT=3000
 EXPOSE 3000

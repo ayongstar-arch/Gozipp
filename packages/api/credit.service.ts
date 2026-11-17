@@ -213,13 +213,15 @@ export class CreditService {
       throw new BadRequestException('Missing payment reference');
     }
 
-    if (this.paymentWebhookSecret) {
-      if (!signature) {
-        throw new BadRequestException('Missing webhook signature');
-      }
-      if (!verifyTransaction(payload, signature, this.paymentWebhookSecret)) {
-        throw new BadRequestException('Invalid webhook signature');
-      }
+    if (!this.paymentWebhookSecret) {
+      this.logger.error('PAYMENT_WEBHOOK_SECRET is not configured on server');
+      throw new InternalServerErrorException('Payment processing webhook is unconfigured');
+    }
+    if (!signature) {
+      throw new BadRequestException('Missing webhook signature');
+    }
+    if (!verifyTransaction(payload, signature, this.paymentWebhookSecret)) {
+      throw new BadRequestException('Invalid webhook signature');
     }
 
     const status = String(payload?.status || '').toUpperCase();

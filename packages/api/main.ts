@@ -47,7 +47,13 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // 0. Global Exception Filter & Logging
+  // 0. Trust Proxy (Cloudflare / NGINX / AWS ALB reverse proxy client IP resolution)
+  const httpAdapter = app.getHttpAdapter();
+  if (httpAdapter && typeof (httpAdapter as any).getInstance === 'function') {
+    (httpAdapter as any).getInstance().set('trust proxy', 1);
+  }
+
+  // 0.1. Global Exception Filter & Logging
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalInterceptors(new LoggingInterceptor());
 
@@ -91,8 +97,8 @@ async function bootstrap() {
     if (!origin) return true;
     if (allowedOrigins.includes(origin)) return true;
     if (/^https:\/\/([a-z0-9-]+\.)?gozipp\.app$/i.test(origin)) return true;
-    if (/^https:\/\/.*\.vercel\.app$/i.test(origin)) return true;
-    if (/^http:\/\/localhost:[0-9]+$/i.test(origin)) return true;
+    if (/^https:\/\/gozipp(-[a-z0-9-]+)?\.vercel\.app$/i.test(origin)) return true;
+    if (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost:[0-9]+$/i.test(origin)) return true;
     return false;
   };
 
@@ -101,8 +107,8 @@ async function bootstrap() {
       if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
-        logger.warn(`CORS request from unlisted origin: ${origin} (allowed for resiliency)`);
-        callback(null, true);
+        logger.warn(`CORS request blocked from unauthorized origin: ${origin}`);
+        callback(new Error(`Origin ${origin} not allowed by CORS policy`));
       }
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
