@@ -6,6 +6,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'; // Security: Rate Limiting
 import { join } from 'path';
+import Redis from 'ioredis';
 
 import { FairQueueService } from './fair-queue.service';
 import { SmsService } from './sms.service';
@@ -127,6 +128,9 @@ import { FareEstimationService } from './fare-estimation.service';
       logging: process.env.NODE_ENV !== 'production',
       retryAttempts: 3,
       retryDelay: 3000,
+      ssl: process.env.DB_SSL === 'true' || process.env.DB_HOST?.includes('supabase.co') || process.env.DB_HOST?.includes('neon.tech')
+        ? { rejectUnauthorized: false }
+        : false,
       extra: { max: parseInt(process.env.DB_POOL_MAX || '15', 10), idleTimeoutMillis: 30000 },
       autoLoadEntities: true,
     }),
@@ -179,6 +183,15 @@ import { FareEstimationService } from './fare-estimation.service';
     TaxiMatchingService,
     OutboxService,
     FareEstimationService,
+    {
+      provide: 'REDIS_CLIENT',
+      useFactory: () => {
+        return new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+          maxRetriesPerRequest: 3,
+          lazyConnect: true,
+        });
+      },
+    },
     // Add Throttler Guard globally
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },

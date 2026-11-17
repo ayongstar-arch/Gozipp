@@ -1,10 +1,10 @@
 services:
   - type: web
-    name: gozipp-api-staging
+    name: gozipp-api
     env: node
-    plan: starter
+    plan: free
     rootDir: .
-    buildCommand: npm install && npm run build --workspace=@gozipp/api
+    buildCommand: npm install --legacy-peer-deps && npm run build --workspace=@gozipp/api
     startCommand: npm run start --workspace=@gozipp/api
     autoDeploy: true
     healthCheckPath: /api/v1/health

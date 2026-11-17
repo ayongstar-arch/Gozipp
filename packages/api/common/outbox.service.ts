@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Inject, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
 import { OutboxEventEntity, OutboxEventStatus } from '../entities/outbox-event.entity';
@@ -9,13 +9,20 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OutboxService.name);
   private workerInterval: NodeJS.Timeout | null = null;
   private isProcessing = false;
+  private redis: Redis;
 
   constructor(
     @InjectRepository(OutboxEventEntity)
     private readonly outboxRepo: Repository<OutboxEventEntity>,
+    @Optional()
     @Inject('REDIS_CLIENT')
-    private readonly redis: Redis
-  ) {}
+    redis?: Redis
+  ) {
+    this.redis = redis || new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+      lazyConnect: true,
+      maxRetriesPerRequest: 3,
+    });
+  }
 
   onModuleInit() {
     // Start background polling worker every 1 second
