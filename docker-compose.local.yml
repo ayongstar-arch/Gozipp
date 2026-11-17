@@ -1,0 +1,83 @@
+version: '3.8'
+
+# ==============================================================================
+# GOZIPP Dual Mobility Platform — Local Zero-Cost Testing Stack with Cloudflare Tunnel
+# 100% Free: Uses your PC resources + Free Cloudflare Tunnel (No port forwarding)
+# ==============================================================================
+
+services:
+  gozipp-db:
+    image: postgis/postgis:15-3.4-alpine
+    container_name: gozipp-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-gozipp_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-gozipp_secure_pass_2026}
+      POSTGRES_DB: ${DB_NAME:-gozipp_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_local:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-gozipp_user} -d ${DB_NAME:-gozipp_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  gozipp-redis:
+    image: redis:7-alpine
+    container_name: gozipp-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata_local:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  gozipp-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gozipp-api
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      gozipp-db:
+        condition: service_healthy
+      gozipp-redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DB_HOST=gozipp-db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-gozipp_user}
+      - DB_PASSWORD=${DB_PASSWORD:-gozipp_secure_pass_2026}
+      - DB_NAME=${DB_NAME:-gozipp_db}
+      - REDIS_URL=redis://gozipp-redis:6379
+      - JWT_SECRET=${JWT_SECRET:-gozipp_jwt_secret_dev_testing_key_must_be_at_least_64_characters_long_for_auth}
+      - PIN_PEPPER=${PIN_PEPPER:-gozipp_pin_pepper_dev_testing_32chars}
+      - ALLOWED_ORIGINS=*
+      - ALLOW_TEST_OTP=true
+      - ALLOW_REGISTRATION_WITHOUT_OTP=false
+      - TAXI_PUBLIC_BOOKING_ENABLED=true
+
+  # Cloudflare Tunnel: Gives you a free public HTTPS URL without router port forwarding
+  gozipp-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: gozipp-tunnel
+    restart: always
+    command: tunnel --no-autoupdate --url http://gozipp-api:3000
+    depends_on:
+      - gozipp-api
+
+volumes:
+  pgdata_local:
+  redisdata_local:
