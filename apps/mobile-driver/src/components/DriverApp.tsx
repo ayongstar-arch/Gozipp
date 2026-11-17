@@ -301,10 +301,14 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
         try {
             let sent = false;
-            try {
-                sent = await sendFirebaseOtp(phone);
-            } catch (fbErr: any) {
-                console.warn('Firebase sendOtp error, attempting backend fallback:', fbErr);
+            const otpProvider = process.env.NEXT_PUBLIC_OTP_PROVIDER || 'firebase';
+
+            if (otpProvider !== 'thaibulksms') {
+                try {
+                    sent = await sendFirebaseOtp(phone);
+                } catch (fbErr: any) {
+                    console.warn('Firebase sendOtp error, attempting backend fallback:', fbErr);
+                }
             }
 
             if (!sent) {
@@ -449,10 +453,14 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
         try {
             let idToken: string | null = null;
-            try {
-                idToken = await confirmFirebaseOtp(otp);
-            } catch (fbErr: any) {
-                console.warn('Firebase confirmOtp error, attempting backend fallback:', fbErr);
+            const otpProvider = process.env.NEXT_PUBLIC_OTP_PROVIDER || 'firebase';
+
+            if (otpProvider !== 'thaibulksms') {
+                try {
+                    idToken = await confirmFirebaseOtp(otp);
+                } catch (fbErr: any) {
+                    console.warn('Firebase confirmOtp error, attempting backend fallback:', fbErr);
+                }
             }
 
             let data: any = null;
