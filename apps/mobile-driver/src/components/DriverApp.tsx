@@ -12,6 +12,8 @@ import InstallPwaPrompt from './InstallPwaPrompt';
 import dynamic from 'next/dynamic';
 import ChatModal from './ChatModal';
 import SOSButton from './SOSButton';
+import { driverSoundManager } from '../services/sound.service';
+import { SoundSettingsModal } from './SoundSettingsModal';
 
 const LiveMapView = dynamic(() => import('./LiveMapView'), { ssr: false });
 
@@ -99,6 +101,9 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
 
     const [hasNewJob, setHasNewJob] = useState(false);
     const [gpsId, setGpsId] = useState<number | null>(null);
+
+    // Sound & Notification Settings Modal
+    const [isSoundModalOpen, setIsSoundModalOpen] = useState(false);
 
     // Notification State
     const [isLineConnected, setIsLineConnected] = useState(false);
@@ -861,9 +866,12 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
             setTripPhase('TO_PICKUP');
             setHasNewJob(true);
 
-            if (window.navigator.vibrate) window.navigator.vibrate([200, 100, 200, 100, 500]);
-            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-            audio.play().catch(e => console.error("Audio play failed", e));
+            // Enterprise-grade audio dispatch alert (Radar Chime / Siren / Voice Loop)
+            driverSoundManager.startDispatchAlert({
+                serviceType: 'MOTO',
+                fare: Number(activeJob?.fare || 0),
+                distanceKm: Number(activeJob?.distanceKm || 0),
+            });
         };
 
         // Dual Mobility: TAXI Ride Offer (Stage 4)
@@ -906,11 +914,17 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                 setCurrentTripId(job.tripId);
                 setTripPhase('TO_PICKUP');
                 setHasNewJob(true);
-                if (window.navigator.vibrate) window.navigator.vibrate([200, 100, 200, 100, 500]);
+                // Enterprise-grade audio dispatch alert for TAXI
+                driverSoundManager.startDispatchAlert({
+                    serviceType: 'TAXI',
+                    fare: Number(job.fare || 0),
+                    distanceKm: Number(job.distanceKm || 0),
+                });
             }
         };
 
         const handleRideCancel = () => {
+            driverSoundManager.stopDispatchAlert();
             setMatchedRider(undefined);
             setActiveJob(null);
             setHasNewJob(false);
@@ -919,6 +933,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
         };
 
         const handleTripComplete = () => {
+            driverSoundManager.stopDispatchAlert();
             setMatchedRider(undefined);
             setActiveJob(null);
             setHasNewJob(false);
@@ -1050,6 +1065,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     }, [isBusy, matchedRider]);
 
     const handleStartWork = () => {
+        driverSoundManager.unlockAudio();
         socket.emit('DRIVER_UPDATE_STATUS', {
             id: driverData?.id,
             status: 'IDLE',
@@ -1071,6 +1087,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     };
 
     const handleStopWork = () => {
+        driverSoundManager.stopDispatchAlert();
         socket.emit('DRIVER_UPDATE_STATUS', { id: driverData?.id, status: 'OFFLINE' });
         setDriverData(undefined);
     };
@@ -1080,6 +1097,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     const activeTripId = activeJob?.tripId || currentTripId || matchedRider?.id;
 
     const handleAcceptJob = () => {
+        driverSoundManager.stopDispatchAlert();
         if (!activeTripId) {
             setAuthError('ไม่พบข้อมูลทริป กรุณารอรับงานใหม่');
             return;
@@ -1095,6 +1113,7 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
     };
 
     const handleRejectJob = () => {
+        driverSoundManager.stopDispatchAlert();
         if (activeJob?.serviceType === 'TAXI' && activeJob?.offerId) {
             socket.emit('TAXI_OFFER_REJECT', { offerId: activeJob.offerId, tripId: activeTripId });
         } else if (activeTripId) {
@@ -2387,9 +2406,18 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                                 </div>
                             </div>
                         </div>
-                        <button onClick={handleStopWork} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-xl text-xs font-bold border border-red-500/20 transition-colors">
-                            พักงาน
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setIsSoundModalOpen(true)}
+                                className="bg-slate-800 hover:bg-slate-750 text-amber-400 p-2 rounded-xl border border-slate-700/80 transition-colors flex items-center justify-center text-base active:scale-95"
+                                title="ตั้งค่าเสียงแจ้งเตือน"
+                            >
+                                🔔
+                            </button>
+                            <button onClick={handleStopWork} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-xl text-xs font-bold border border-red-500/20 transition-colors">
+                                พักงาน
+                            </button>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -2461,6 +2489,9 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                         </div>
                     </div>
                 </div>
+
+                {/* Sound & Notification Settings Modal */}
+                <SoundSettingsModal isOpen={isSoundModalOpen} onClose={() => setIsSoundModalOpen(false)} />
             </div>
         );
     }
@@ -2501,6 +2532,19 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                     </div>
                 </div>
             )}
+
+            {/* Sound Settings Button */}
+            <div className="absolute top-6 left-6 flex items-center gap-2 z-20">
+                <button
+                    type="button"
+                    onClick={() => setIsSoundModalOpen(true)}
+                    className="p-3 bg-slate-900/90 hover:bg-slate-800 border border-slate-750 text-amber-400 rounded-2xl shadow-lg flex items-center gap-1.5 transition active:scale-95 text-xs font-semibold"
+                    title="ตั้งค่าเสียงแจ้งเตือน"
+                >
+                    <span className="text-base">🔔</span>
+                    <span className="hidden sm:inline">ตั้งค่าเสียง</span>
+                </button>
+            </div>
 
             <div className="absolute top-6 right-6">
                 <div className="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 overflow-hidden shadow-lg flex items-center justify-center font-bold text-white text-base">
@@ -2657,6 +2701,9 @@ const DriverApp: React.FC<DriverAppProps> = ({ driverData: initialDriverData, ma
                     </div>
                 </div>
             )}
+
+            {/* Sound & Notification Settings Modal */}
+            <SoundSettingsModal isOpen={isSoundModalOpen} onClose={() => setIsSoundModalOpen(false)} />
         </div>
     );
 };
